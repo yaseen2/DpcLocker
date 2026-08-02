@@ -1,0 +1,10 @@
+# Exclude raw image screenshots folder
+Chrome manifest restrictions images/
+
+# Build artifacts
+DpcLocker/build/obj/
+TestDPC.apk
+
+# Temporary OS files
+.DS_Store
+Thumbs.db
