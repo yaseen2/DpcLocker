@@ -26,12 +26,23 @@ $hostsEntries = @(
     "216.239.38.120 www.bing.com",
     "216.239.38.120 strict.bing.com"
 )
-$currentHosts = Get-Content $hostsPath -ErrorAction SilentlyContinue
+
+# Read hosts file completely into memory to prevent file handle locking
+$existingContent = [System.IO.File]::ReadAllText($hostsPath)
+$newEntriesToAdd = @()
+
 foreach ($entry in $hostsEntries) {
-    if ($currentHosts -notcontains $entry) {
-        Add-Content -Path $hostsPath -Value $entry
-        Write-Host "   [+] Added hosts entry: $entry" -ForegroundColor Green
+    if (-not $existingContent.Contains($entry)) {
+        $newEntriesToAdd += $entry
+        Write-Host "   [+] Adding hosts entry: $entry" -ForegroundColor Green
     }
+}
+
+if ($newEntriesToAdd.Count -gt 0) {
+    $textToAppend = "`r`n" + ($newEntriesToAdd -join "`r`n")
+    [System.IO.File]::AppendAllText($hostsPath, $textToAppend)
+} else {
+    Write-Host "   [+] SafeSearch hosts entries are already present." -ForegroundColor Green
 }
 
 # 3. Apply Chrome & Edge Registry Policies
