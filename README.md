@@ -1,6 +1,6 @@
 # DPC Locker 🔒
 
-**Zero-Trust, Impulse-Proof Android Device Owner Lock & Self-Control System**
+**Zero-Trust, Impulse-Proof Android Device Owner Lock & Cross-Platform Protection System**
 
 DPC Locker is a lightweight, 100% offline Android protection system paired with Windows Registry policies. It locks down Android enterprise device management (`Test DPC`) so that policy changes, un-provisioning, or disabling browser safety restrictions **can only be performed when physically connected to a PC via USB ADB cable**.
 
@@ -34,8 +34,8 @@ DPC Locker is a lightweight, 100% offline Android protection system paired with 
 ├── Lock_TestDPC.bat                    # 1-Click USB ADB Script: Lock Test DPC & Toggle Screen
 ├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
 ├── build_dpclocker.ps1                 # Standalone PowerShell Build Script (AAPT2 + javac + D8 + apksigner)
-├── disable_incognito_inprivate.ps1    # Windows PowerShell Script (Chrome & Edge Incognito Registry Keys)
-├── disable_incognito_inprivate.reg    # Windows Registry (.reg) File for Chrome & Edge Incognito
+├── enable_windows_protection.ps1       # Windows PowerShell Script (Lean Adult Content & SafeSearch Setup)
+├── enable_windows_protection.reg       # Windows Registry (.reg) File (Chrome & Edge Incognito & SafeSearch)
 └── README.md                           # Documentation
 ```
 
@@ -43,13 +43,18 @@ DPC Locker is a lightweight, 100% offline Android protection system paired with 
 
 ## 🛠️ Complete Setup Guide
 
-### 1. Windows Setup (Chrome & Edge Incognito Disabled)
+### 1. Windows Setup (Adult Content & Incognito Blocked)
 
-Double-click `disable_incognito_inprivate.reg` or run `disable_incognito_inprivate.ps1` in PowerShell as Administrator.
+Run `enable_windows_protection.ps1` in PowerShell as Administrator or double-click `enable_windows_protection.reg`.
 
-Applied Registry Keys:
-* **Chrome Policy:** `HKLM\SOFTWARE\Policies\Google\Chrome` -> `IncognitoModeAvailability = 1`
-* **Edge Policy:** `HKLM\SOFTWARE\Policies\Microsoft\Edge` -> `InPrivateModeAvailability = 1`
+Applied Policies:
+* **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
+* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
+* **Chrome & Edge Registry Policies:**
+  * `IncognitoModeAvailability` = `1` (Disables Incognito)
+  * `InPrivateModeAvailability` = `1` (Disables InPrivate)
+  * `ForceGoogleSafeSearch` = `1` (Forces Strict SafeSearch)
+  * `SafeSitesFilterBehavior` = `1` (Enforces Chrome adult site filter)
 
 ---
 
@@ -96,12 +101,7 @@ Connect phone via USB and run `Unlock_TestDPC.bat` to open Test DPC:
    * `SafeSearchMode` = `1`
 3. **Chrome Built-in Adult Content Filtering:**
    * `SafeSitesFilterBehavior` = `1`
-   * `SafeBrowsingProtectionLevel` = `2`
-4. **Block Pop-up Ad Redirects:**
-   * `DefaultPopupsSetting` = `2`
-5. **Strict YouTube Restricted Mode:**
-   * `ForceYouTubeRestrict` = `2`
-6. **Enforce User Restrictions:**
+4. **Enforce User Restrictions:**
    * `DISALLOW_UNINSTALL_APPS` = `true` *(Prevents uninstalling DpcLocker on phone UI)*
    * `DISALLOW_APPS_CONTROL` = `true` *(Prevents clearing app data or modifying app settings)*
    * `DISALLOW_CONFIG_PRIVATE_DNS` = `true` *(Locks Private DNS filter)*
@@ -131,8 +131,6 @@ DPC Locker requires no heavy IDEs to build. You can build it using raw Android S
 ```powershell
 powershell -ExecutionPolicy Bypass -File "build_dpclocker.ps1"
 ```
-
-The script compiles resources with `aapt2`, compiles Java with `javac`, converts bytecode to DEX with `d8`, aligns with `zipalign`, and signs with `apksigner`.
 
 ---
 
