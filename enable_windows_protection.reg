@@ -7,7 +7,6 @@ Windows Registry Editor Version 5.00
 "IncognitoModeAvailability"=dword:00000001
 "ForceGoogleSafeSearch"=dword:00000001
 "SafeSitesFilterBehavior"=dword:00000001
-"ExtensionInstallBlocklist"=hex(7):2a,00,00,00,00,00
 
 ; ========================================================
 ; MICROSOFT EDGE - ADULT CONTENT & INPRIVATE BLOCK
@@ -15,7 +14,6 @@ Windows Registry Editor Version 5.00
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
 "ForceGoogleSafeSearch"=dword:00000001
-"ExtensionInstallBlocklist"=hex(7):2a,00,00,00,00,00
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES

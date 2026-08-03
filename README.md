@@ -16,7 +16,7 @@ DPC Locker is a lightweight, 100% offline Android protection system paired with 
 * **USB ADB State Control:** Lock state is toggled via system settings (`dpclocker_enabled`) using 1-click batch scripts over USB ADB.
 * **100% Offline & Private:** Zero internet permissions declared; 0% data tracking.
 * **Pixel OS Crash-Resistant:** Uses a persistent `ForegroundService` notification and battery optimization exemptions to prevent Android 14/15 Phantom Process Killer from freezing the service.
-* **Cross-Platform Protection:** Disables Incognito and InPrivate browsing on Windows (Chrome & Edge) and Android (Chrome).
+* **Cross-Platform Protection:** Disables Incognito and InPrivate browsing on Windows (Chrome & Edge) and Android (Chrome), and locks VPN/Proxy creation in Windows Settings.
 
 ---
 
@@ -34,8 +34,8 @@ DPC Locker is a lightweight, 100% offline Android protection system paired with 
 ├── Lock_TestDPC.bat                    # 1-Click USB ADB Script: Lock Test DPC & Toggle Screen
 ├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
 ├── build_dpclocker.ps1                 # Standalone PowerShell Build Script (AAPT2 + javac + D8 + apksigner)
-├── enable_windows_protection.ps1       # Windows PowerShell Script (Lean Adult Content & SafeSearch Setup)
-├── enable_windows_protection.reg       # Windows Registry (.reg) File (Chrome & Edge Incognito & SafeSearch)
+├── enable_windows_protection.ps1       # Windows PowerShell Script (Adult Content, SafeSearch & VPN Lock)
+├── enable_windows_protection.reg       # Windows Registry (.reg) File (Chrome, Edge & Windows Network Policies)
 └── README.md                           # Documentation
 ```
 
@@ -43,13 +43,15 @@ DPC Locker is a lightweight, 100% offline Android protection system paired with 
 
 ## 🛠️ Complete Setup Guide
 
-### 1. Windows Setup (Adult Content & Incognito Blocked)
+### 1. Windows Setup (Adult Content, Incognito & VPN Locked)
 
 Run `enable_windows_protection.ps1` in PowerShell as Administrator or double-click `enable_windows_protection.reg`.
 
 Applied Policies:
 * **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
 * **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
+* **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings.
+* **Disables Windows RasMan Service:** Prevents starting the Windows Remote Access VPN service.
 * **Chrome & Edge Registry Policies:**
   * `IncognitoModeAvailability` = `1` (Disables Incognito)
   * `InPrivateModeAvailability` = `1` (Disables InPrivate)
