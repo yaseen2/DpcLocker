@@ -100,21 +100,32 @@ Applied Policies:
 
 ---
 
-### 4. Configuring Chrome & Security Restrictions in Test DPC
+### 4. Key Test DPC Policies & User Restrictions
 
 Connect phone via USB and run `Unlock_TestDPC.bat` to open Test DPC:
 
-1. **Disable Chrome Incognito:**
-   * **Manage App Restrictions** -> **Google Chrome** -> `IncognitoModeAvailability` = `1`
-2. **Force Strict SafeSearch (No Unblur Option):**
-   * `ForceGoogleSafeSearch` = `true`
-   * `SafeSearchMode` = `1`
-3. **Chrome Built-in Adult Content Filtering:**
-   * `SafeSitesFilterBehavior` = `1`
-4. **Enforce User Restrictions:**
-   * `DISALLOW_UNINSTALL_APPS` = `true` *(Prevents uninstalling DpcLocker on phone UI)*
-   * `DISALLOW_APPS_CONTROL` = `true` *(Prevents clearing app data or modifying app settings)*
-   * `DISALLOW_CONFIG_PRIVATE_DNS` = `true` *(Locks Private DNS filter)*
+#### ⚙️ Managed Configurations (App Restrictions)
+* **Chrome Incognito:** `IncognitoModeAvailability` = `1` *(Disables Incognito Mode)*
+* **Strict Google SafeSearch:** `ForceGoogleSafeSearch` = `true` & `SafeSearchMode` = `1` *(Removes explicit images & unblur toggle)*
+* **Chrome Adult Site Filtering:** `SafeSitesFilterBehavior` = `1` *(Enforces Chrome's built-in SafeSites adult content filter)*
+
+#### 🔒 Critical User Restrictions (In Test DPC > User Restrictions)
+* **`Disallow uninstall apps` (`DISALLOW_UNINSTALL_APPS`):**  
+  *Grays out and disables the "Uninstall" button for all applications on the phone UI (prevents uninstalling `DpcLocker`).*
+* **`Disallow apps control` (`DISALLOW_APPS_CONTROL`):**  
+  *Prevents clearing app data, modifying app permissions, or force-stopping apps in Android Settings.*
+* **`Disallow install apps` (`DISALLOW_INSTALL_APPS`):**  
+  *Blocks installing any new applications on the phone UI.*
+* **`Disallow install from unknown sources` (`DISALLOW_INSTALL_UNKNOWN_SOURCES`):**  
+  *Blocks installing APK files from outside the Google Play Store for the current user profile.*
+* **`Disallow install from unknown sources globally` (`DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY`):**  
+  *Enforces system-wide blocking of APK side-loading across all user profiles on the device.*
+* **`Block Installation of Apps`:**  
+  *Allows blacklisting specific package names (e.g. specific secondary browsers or VPN apps) from ever being installed on the device.*
+* **`Suspend Apps`:**  
+  *Instantly freezes and hides specific target apps on the phone UI without uninstalling them.*
+* **`Disallow config private DNS` (`DISALLOW_CONFIG_PRIVATE_DNS`):**  
+  *Locks system Private DNS settings so the CleanBrowsing adult filter cannot be changed.*
 
 ---
 
