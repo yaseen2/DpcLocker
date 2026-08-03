@@ -7,6 +7,7 @@ Windows Registry Editor Version 5.00
 "IncognitoModeAvailability"=dword:00000001
 "ForceGoogleSafeSearch"=dword:00000001
 "SafeSitesFilterBehavior"=dword:00000001
+"ExtensionInstallBlocklist"=hex(7):2a,00,00,00,00,00
 
 ; ========================================================
 ; MICROSOFT EDGE - ADULT CONTENT & INPRIVATE BLOCK
@@ -14,3 +15,24 @@ Windows Registry Editor Version 5.00
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
 "ForceGoogleSafeSearch"=dword:00000001
+"ExtensionInstallBlocklist"=hex(7):2a,00,00,00,00,00
+
+; ========================================================
+; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES
+; ========================================================
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\Network Connections]
+"NC_NewConnectionWizard"=dword:00000001
+"NC_DeleteAllUserConnection"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Internet Explorer\Control Panel]
+"Proxy"=dword:00000001
+"Connwiz Admin Lock"=dword:00000001
+
+; ========================================================
+; WINDOWS SERVICES - DISABLE WINDOWS VPN SERVICE (RASMAN)
+; ========================================================
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\RasMan]
+"Start"=dword:00000004
+
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\RasAuto]
+"Start"=dword:00000004

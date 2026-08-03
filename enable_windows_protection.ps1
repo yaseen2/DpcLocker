@@ -5,7 +5,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "  Enabling Windows Adult Content Protection (Lean Setup)" -ForegroundColor Cyan
+Write-Host "  Enabling Windows Adult Content & VPN Protection" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 
 # 1. Apply CleanBrowsing Family DNS to all Active Network Adapters
@@ -27,7 +27,6 @@ $hostsEntries = @(
     "216.239.38.120 strict.bing.com"
 )
 
-# Read hosts file completely into memory to prevent file handle locking
 $existingContent = [System.IO.File]::ReadAllText($hostsPath)
 $newEntriesToAdd = @()
 
@@ -45,17 +44,23 @@ if ($newEntriesToAdd.Count -gt 0) {
     Write-Host "   [+] SafeSearch hosts entries are already present." -ForegroundColor Green
 }
 
-# 3. Apply Chrome & Edge Registry Policies
-Write-Host "`n3. Applying Chrome & Edge Registry Policies..." -ForegroundColor Yellow
+# 3. Apply Registry Policies (Chrome, Edge, VPN & Proxy Lock)
+Write-Host "`n3. Applying Registry Policies (Browser, VPN & Proxy Locks)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
-Write-Host "   [+] Applied Incognito & SafeSearch Registry Policies" -ForegroundColor Green
+Write-Host "   [+] Applied Chrome, Edge, VPN & Proxy Registry Policies" -ForegroundColor Green
 
-# 4. Flush DNS Cache
-Write-Host "`n4. Flushing DNS Cache..." -ForegroundColor Yellow
+# 4. Stop and Disable Windows RasMan Service (Built-in VPN)
+Write-Host "`n4. Disabling Windows VPN Service (RasMan)..." -ForegroundColor Yellow
+Stop-Service -Name "RasMan" -Force -ErrorAction SilentlyContinue
+Set-Service -Name "RasMan" -StartupType Disabled -ErrorAction SilentlyContinue
+Write-Host "   [+] Disabled Remote Access Connection Manager (Windows VPN)" -ForegroundColor Green
+
+# 5. Flush DNS Cache
+Write-Host "`n5. Flushing DNS Cache..." -ForegroundColor Yellow
 Clear-DnsClientCache
 Write-Host "   [+] DNS Cache flushed successfully!" -ForegroundColor Green
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
-Write-Host "  ADULT CONTENT PROTECTION IS NOW ACTIVE ON WINDOWS!" -ForegroundColor Cyan
+Write-Host "  ADULT CONTENT & VPN PROTECTION IS NOW ACTIVE ON WINDOWS!" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
