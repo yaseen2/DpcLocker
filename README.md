@@ -1,22 +1,30 @@
 # DPC Locker 🔒
 
-**Zero-Trust, Impulse-Proof Android Device Owner Lock & Cross-Platform Protection System**
+**Zero-Trust, Impulse-Proof Android Device Owner Lock & Cross-Platform Self-Control System**
 
-DPC Locker is a lightweight, 100% offline Android protection system paired with Windows Registry policies. It locks down Android enterprise device management (`Test DPC`) so that policy changes, un-provisioning, or disabling browser safety restrictions **can only be performed when physically connected to a PC via USB ADB cable**.
+DPC Locker is a lightweight, 100% offline Android protection system paired with Windows Registry policies. It locks down Android enterprise device management (`Test DPC`) and browser safety settings so that policy modifications, un-provisioning, or disabling protection **can only be performed when physically connected to a PC via USB ADB cable**.
 
 ---
 
 ## 🎯 Key Features & Architecture
 
-* **Impulse-Proof Local Enforcement:** Prevents modifying Test DPC or turning off protection on the phone UI.
+### 📱 Android Protection Architecture
+* **Impulse-Proof Local Enforcement:** Prevents opening Test DPC or turning off protection on the phone UI.
 * **Laser-Targeted Protection:** 
   * Blocks launching Test DPC (`com.afwsamples.testdpc`).
   * Blocks accessing the specific **"Use DPC Locker Protection"** toggle screen in Android Settings.
-  * **Leaves 100% of standard phone settings (Wi-Fi, Bluetooth, Display, Sound, Battery, Storage, etc.) completely accessible.**
+  * **Leaves 100% of standard phone settings (Wi-Fi, Bluetooth, Display, Sound, Battery, Storage, Apps, etc.) completely accessible.**
 * **USB ADB State Control:** Lock state is toggled via system settings (`dpclocker_enabled`) using 1-click batch scripts over USB ADB.
 * **100% Offline & Private:** Zero internet permissions declared; 0% data tracking.
 * **Pixel OS Crash-Resistant:** Uses a persistent `ForegroundService` notification and battery optimization exemptions to prevent Android 14/15 Phantom Process Killer from freezing the service.
-* **Cross-Platform Protection:** Disables Incognito and InPrivate browsing on Windows (Chrome & Edge) and Android (Chrome), and locks VPN/Proxy creation in Windows Settings.
+* **Browser Adult Content & SafeSearch Enforcement:** Disables Incognito in Chrome, forces Strict Google SafeSearch (no unblur option), and enables Chrome's built-in SafeSites adult content filter.
+
+### 💻 Windows 10 PC Protection Architecture
+* **System-Wide Adult Content DNS Filter:** Sets Wi-Fi & Ethernet DNS to CleanBrowsing Family Filter (`185.228.168.168` / `185.228.169.168`) to block adult domains across all Windows apps.
+* **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
+* **Chrome & Edge Registry Policies:** Disables Incognito in Chrome and InPrivate in Edge, forces Strict SafeSearch, and enables Chrome SafeSites adult filter.
+* **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings, and disables the Windows `RasMan` Remote Access VPN service.
+* **Productivity Friendly:** Normal Chrome and Edge extensions remain 100% allowed so daily productivity tools continue working uninterrupted.
 
 ---
 
@@ -34,7 +42,7 @@ DPC Locker is a lightweight, 100% offline Android protection system paired with 
 ├── Lock_TestDPC.bat                    # 1-Click USB ADB Script: Lock Test DPC & Toggle Screen
 ├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
 ├── build_dpclocker.ps1                 # Standalone PowerShell Build Script (AAPT2 + javac + D8 + apksigner)
-├── enable_windows_protection.ps1       # Windows PowerShell Script (Adult Content, SafeSearch & VPN Lock)
+├── enable_windows_protection.ps1       # Windows PowerShell Script (Lean Adult Content, SafeSearch & VPN Lock)
 ├── enable_windows_protection.reg       # Windows Registry (.reg) File (Chrome, Edge & Windows Network Policies)
 └── README.md                           # Documentation
 ```
@@ -45,7 +53,7 @@ DPC Locker is a lightweight, 100% offline Android protection system paired with 
 
 ### 1. Windows Setup (Adult Content, Incognito & VPN Locked)
 
-Run `enable_windows_protection.ps1` in PowerShell as Administrator or double-click `enable_windows_protection.reg`.
+Open PowerShell as Administrator and run `enable_windows_protection.ps1` (or double-click `enable_windows_protection.reg`).
 
 Applied Policies:
 * **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
