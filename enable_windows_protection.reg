@@ -9,7 +9,7 @@ Windows Registry Editor Version 5.00
 "SafeSitesFilterBehavior"=dword:00000001
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\URLBlocklist]
-"1"="*fboxtv.org*"
+"1"="fboxtv.org"
 
 ; ========================================================
 ; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE & DOMAIN BLOCK
@@ -19,7 +19,7 @@ Windows Registry Editor Version 5.00
 "ForceGoogleSafeSearch"=dword:00000001
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist]
-"1"="*fboxtv.org*"
+"1"="fboxtv.org"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES
