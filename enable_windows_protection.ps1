@@ -5,7 +5,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "  Enabling Windows Adult Content & VPN Protection" -ForegroundColor Cyan
+Write-Host "  Enabling Windows Adult Content & Domain Protection" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 
 # 1. Apply CleanBrowsing Family DNS to all Active Network Adapters
@@ -16,15 +16,17 @@ foreach ($adapter in $adapters) {
     Write-Host "   [+] Set CleanBrowsing Family DNS on: $($adapter.Name)" -ForegroundColor Green
 }
 
-# 2. Update Hosts File for Google & Bing SafeSearch
-Write-Host "`n2. Updating System Hosts File for Google & Bing SafeSearch..." -ForegroundColor Yellow
+# 2. Update Hosts File for SafeSearch & Blocked Domains
+Write-Host "`n2. Updating System Hosts File for SafeSearch & Domain Block..." -ForegroundColor Yellow
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 $hostsEntries = @(
     "216.239.38.120 www.google.com",
     "216.239.38.120 google.com",
     "216.239.38.120 forcesafesearch.google.com",
     "216.239.38.120 www.bing.com",
-    "216.239.38.120 strict.bing.com"
+    "216.239.38.120 strict.bing.com",
+    "0.0.0.0 www.fboxtv.org",
+    "0.0.0.0 fboxtv.org"
 )
 
 $existingContent = [System.IO.File]::ReadAllText($hostsPath)
@@ -41,14 +43,14 @@ if ($newEntriesToAdd.Count -gt 0) {
     $textToAppend = "`r`n" + ($newEntriesToAdd -join "`r`n")
     [System.IO.File]::AppendAllText($hostsPath, $textToAppend)
 } else {
-    Write-Host "   [+] SafeSearch hosts entries are already present." -ForegroundColor Green
+    Write-Host "   [+] All hosts entries are already present." -ForegroundColor Green
 }
 
-# 3. Apply Registry Policies (Chrome, Edge, VPN & Proxy Lock)
-Write-Host "`n3. Applying Registry Policies (Browser, VPN & Proxy Locks)..." -ForegroundColor Yellow
+# 3. Apply Registry Policies (Chrome, Edge, Domain Block, VPN & Proxy Lock)
+Write-Host "`n3. Applying Registry Policies (Browser Policies & fboxtv.org Block)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
-Write-Host "   [+] Applied Chrome, Edge, VPN & Proxy Registry Policies" -ForegroundColor Green
+Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies" -ForegroundColor Green
 
 # 4. Stop and Disable Windows RasMan Service (Built-in VPN)
 Write-Host "`n4. Disabling Windows VPN Service (RasMan)..." -ForegroundColor Yellow
@@ -62,5 +64,5 @@ Clear-DnsClientCache
 Write-Host "   [+] DNS Cache flushed successfully!" -ForegroundColor Green
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
-Write-Host "  ADULT CONTENT & VPN PROTECTION IS NOW ACTIVE ON WINDOWS!" -ForegroundColor Cyan
+Write-Host "  DOMAIN & ADULT PROTECTION IS NOW ACTIVE ON WINDOWS!" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan

@@ -1,19 +1,25 @@
 Windows Registry Editor Version 5.00
 
 ; ========================================================
-; GOOGLE CHROME - ADULT CONTENT & INCOGNITO BLOCK
+; GOOGLE CHROME - ADULT CONTENT, INCOGNITO & DOMAIN BLOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
 "IncognitoModeAvailability"=dword:00000001
 "ForceGoogleSafeSearch"=dword:00000001
 "SafeSitesFilterBehavior"=dword:00000001
 
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\URLBlocklist]
+"1"="*fboxtv.org*"
+
 ; ========================================================
-; MICROSOFT EDGE - ADULT CONTENT & INPRIVATE BLOCK
+; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE & DOMAIN BLOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
 "ForceGoogleSafeSearch"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist]
+"1"="*fboxtv.org*"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES
