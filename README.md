@@ -17,12 +17,12 @@ DPC Locker is a lightweight, 100% offline Android protection system paired with 
 * **USB ADB State Control:** Lock state is toggled via system settings (`dpclocker_enabled`) using 1-click batch scripts over USB ADB.
 * **100% Offline & Private:** Zero internet permissions declared; 0% data tracking.
 * **Pixel OS Crash-Resistant:** Uses a persistent `ForegroundService` notification and battery optimization exemptions to prevent Android 14/15 Phantom Process Killer from freezing the service.
-* **Browser Adult Content & SafeSearch Enforcement:** Disables Incognito in Chrome, forces Strict Google SafeSearch (no unblur option), and enables Chrome's built-in SafeSites adult content filter.
+* **Browser Adult Content & Domain Enforcement:** Disables Incognito in Chrome, forces Strict Google SafeSearch (no unblur option), enables Chrome's built-in SafeSites adult content filter, and blocks custom domains (e.g. `fboxtv.org`).
 
 ### 💻 Windows 10 PC Protection Architecture
 * **System-Wide Adult Content DNS Filter:** Sets Wi-Fi & Ethernet DNS to CleanBrowsing Family Filter (`185.228.168.168` / `185.228.169.168`) to block adult domains across all Windows apps.
-* **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
-* **Chrome & Edge Registry Policies:** Disables Incognito in Chrome and InPrivate in Edge, forces Strict SafeSearch, and enables Chrome SafeSites adult filter.
+* **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and blocks specific domains (e.g. `fboxtv.org`) to `0.0.0.0`.
+* **Chrome & Edge Registry Policies:** Disables Incognito in Chrome and InPrivate in Edge, forces Strict SafeSearch, enables Chrome SafeSites adult filter, and blocks custom domains via `URLBlocklist`.
 * **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings, and disables the Windows `RasMan` Remote Access VPN service.
 * **Productivity Friendly:** Normal Chrome and Edge extensions remain 100% allowed so daily productivity tools continue working uninterrupted.
 
@@ -42,7 +42,7 @@ DPC Locker is a lightweight, 100% offline Android protection system paired with 
 ├── Lock_TestDPC.bat                    # 1-Click USB ADB Script: Lock Test DPC & Toggle Screen
 ├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
 ├── build_dpclocker.ps1                 # Standalone PowerShell Build Script (AAPT2 + javac + D8 + apksigner)
-├── enable_windows_protection.ps1       # Windows PowerShell Script (Lean Adult Content, SafeSearch & VPN Lock)
+├── enable_windows_protection.ps1       # Windows PowerShell Script (Adult Content, SafeSearch, Domain & VPN Lock)
 ├── enable_windows_protection.reg       # Windows Registry (.reg) File (Chrome, Edge & Windows Network Policies)
 └── README.md                           # Documentation
 ```
@@ -57,7 +57,7 @@ Open PowerShell as Administrator and run `enable_windows_protection.ps1` (or dou
 
 Applied Policies:
 * **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
-* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
+* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and maps `fboxtv.org` & `www.fboxtv.org` to `0.0.0.0`.
 * **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings.
 * **Disables Windows RasMan Service:** Prevents starting the Windows Remote Access VPN service.
 * **Chrome & Edge Registry Policies:**
@@ -65,6 +65,7 @@ Applied Policies:
   * `InPrivateModeAvailability` = `1` (Disables InPrivate)
   * `ForceGoogleSafeSearch` = `1` (Forces Strict SafeSearch)
   * `SafeSitesFilterBehavior` = `1` (Enforces Chrome adult site filter)
+  * `URLBlocklist` = `["*fboxtv.org*"]` (Blocks custom target domains)
 
 ---
 
@@ -108,24 +109,17 @@ Connect phone via USB and run `Unlock_TestDPC.bat` to open Test DPC:
 * **Chrome Incognito:** `IncognitoModeAvailability` = `1` *(Disables Incognito Mode)*
 * **Strict Google SafeSearch:** `ForceGoogleSafeSearch` = `true` & `SafeSearchMode` = `1` *(Removes explicit images & unblur toggle)*
 * **Chrome Adult Site Filtering:** `SafeSitesFilterBehavior` = `1` *(Enforces Chrome's built-in SafeSites adult content filter)*
+* **Chrome Domain Blocklist (`URLBlocklist`):** `String[]` -> `["fboxtv.org"]` *(Blocks specific websites and subdomains in Chrome)*
 
-#### 🔒 Critical User Restrictions (In Test DPC > User Restrictions)
-* **`Disallow uninstall apps` (`DISALLOW_UNINSTALL_APPS`):**  
-  *Grays out and disables the "Uninstall" button for all applications on the phone UI (prevents uninstalling `DpcLocker`).*
-* **`Disallow apps control` (`DISALLOW_APPS_CONTROL`):**  
-  *Prevents clearing app data, modifying app permissions, or force-stopping apps in Android Settings.*
-* **`Disallow install apps` (`DISALLOW_INSTALL_APPS`):**  
-  *Blocks installing any new applications on the phone UI.*
-* **`Disallow install from unknown sources` (`DISALLOW_INSTALL_UNKNOWN_SOURCES`):**  
-  *Blocks installing APK files from outside the Google Play Store for the current user profile.*
-* **`Disallow install from unknown sources globally` (`DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY`):**  
-  *Enforces system-wide blocking of APK side-loading across all user profiles on the device.*
-* **`Block Installation of Apps`:**  
-  *Allows blacklisting specific package names (e.g. specific secondary browsers or VPN apps) from ever being installed on the device.*
-* **`Suspend Apps`:**  
-  *Instantly freezes and hides specific target apps on the phone UI without uninstalling them.*
-* **`Disallow config private DNS` (`DISALLOW_CONFIG_PRIVATE_DNS`):**  
-  *Locks system Private DNS settings so the CleanBrowsing adult filter cannot be changed.*
+#### 🔒 Critical User Restrictions (In Test DPC)
+* **`Disallow uninstall apps` (`DISALLOW_UNINSTALL_APPS`):** Grays out and disables the "Uninstall" button for all apps on the phone UI (prevents uninstalling `DpcLocker`).
+* **`Disallow apps control` (`DISALLOW_APPS_CONTROL`):** Prevents clearing app data, modifying app permissions, or force-stopping apps in Android Settings.
+* **`Disallow install apps` (`DISALLOW_INSTALL_APPS`):** Blocks installing any new applications on the phone UI.
+* **`Disallow install from unknown sources` (`DISALLOW_INSTALL_UNKNOWN_SOURCES`):** Blocks installing APK files from outside the Google Play Store for the current user profile.
+* **`Disallow install from unknown sources globally` (`DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY`):** Enforces system-wide blocking of APK side-loading across all user profiles on the device.
+* **`Block Installation of Apps`:** Blacklists specific package names (e.g. specific secondary browsers or VPN apps) from ever being installed on the device.
+* **`Suspend Apps`:** Instantly freezes and hides specific target apps on the phone UI without uninstalling them.
+* **`Disallow config private DNS` (`DISALLOW_CONFIG_PRIVATE_DNS`):** Locks system Private DNS settings so the CleanBrowsing adult filter cannot be changed.
 
 ---
 
