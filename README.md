@@ -26,7 +26,7 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 * **Pure Dynamic Intent Filter Inspection (`MATCH_ALL`):** Dynamically detects third-party web browsers (Opera Mini, Firefox, Brave, UC Browser, Phoenix Browser, DuckDuckGo, Tor, Vivaldi, Kiwi, etc.) by inspecting generic `http://` and `https://` `BROWSABLE` intent filters **without relying on hardcoded package lists**.
 * **Instant Auto-Freeze:** Automatically suspends third-party browsers (`dpm.setPackagesSuspended([packageName], true)`) immediately upon installation, graying out their app icons.
 * **100% Freedom for Normal Apps:** Games, social media, shopping apps, tools, banking apps, and messaging apps (WhatsApp, Telegram, etc.) do not claim generic web intents and remain **100% active and unrestricted**.
-* **Chrome & Google App Whitelist:** Google Chrome (`com.android.chrome`), Google App (`com.google.android.googlequicksearchbox`), and Play Store (`com.android.vending`) remain fully functional while guarded by Strict SafeSearch, SafeSites adult filter, and Private DNS.
+* **Chrome & Google App Whitelist:** Google Chrome (`com.android.chrome`), Google App (`com.google.android.googlequicksearchbox`), and Play Store (`com.android.vending`) remain fully functional while guarded by Strict SafeSearch and SafeSites adult filtering.
 * **UI Control Switch:** Includes an `Auto-Block Non-Chrome Browsers` preference switch in Test DPC's UI (backed by app-private `SharedPreferences` for 0-crash stability).
 
 ---
@@ -42,11 +42,12 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 ---
 
 ### 💻 4. Windows 10/11 PC Protection Architecture
-* **System-Wide Adult Content DNS Filter:** Sets Wi-Fi & Ethernet DNS to CleanBrowsing Family Filter (`185.228.168.168` / `185.228.169.168`) to block adult domains across all Windows apps.
-* **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and maps custom domains (e.g. `fboxtv.org`) to `0.0.0.0`.
-* **Chrome & Edge Registry Policies:** Disables Incognito in Chrome and InPrivate in Edge, forces Strict SafeSearch, enables Chrome SafeSites adult filter, and blocks custom domains via `URLBlocklist`.
-* **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings, and disables the Windows `RasMan` Remote Access VPN service.
-* **Productivity Friendly:** Normal Chrome and Edge extensions remain 100% allowed so daily productivity tools continue working uninterrupted.
+* **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
+* **Chrome & Edge Registry Policies:**
+  * **`ForceGoogleSafeSearch`**: Forces Strict Google SafeSearch system-wide in Chrome.
+  * **`SafeSitesFilterBehavior`**: Enforces Chrome's built-in SafeSites adult content filter for all web traffic.
+  * **`IncognitoModeAvailability` / `InPrivateModeAvailability`**: Disables Incognito in Chrome & InPrivate in Edge.
+* **Windows VPN & Proxy Lock (`DISALLOW_CONFIG_VPN`):** Disables adding new VPN connections or proxy servers in Windows Settings, and disables the Windows `RasMan` Remote Access VPN service.
 
 ---
 
@@ -67,7 +68,7 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 ├── Lock_TestDPC.bat                    # 1-Click USB ADB Script: Lock Test DPC & Protection
 ├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
 ├── build_merged_dpc.ps1                # PowerShell Script to compile Test DPC APK
-├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, CleanBrowsing DNS & VPN Lock)
+├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, Cloudflare DNS & VPN Lock)
 ├── enable_windows_protection.reg       # Windows Registry (.reg) Policy Export
 └── README.md                           # Comprehensive Documentation
 ```
@@ -76,25 +77,34 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 
 ## 🛠️ Complete Setup Guide
 
-### 1. Windows Setup (Adult Content, Incognito & VPN Locked)
+### 1. Core Essential Chrome & Android Policies
 
-Open PowerShell as Administrator and run `enable_windows_protection.ps1` (or double-click `enable_windows_protection.reg`).
+When managing policies inside Test DPC (`Unlock_TestDPC.bat`), the primary enforced policies are:
 
-**Applied System Policies:**
-* **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
-* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and maps `fboxtv.org` & `www.fboxtv.org` to `0.0.0.0`.
-* **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings.
-* **Disables Windows RasMan Service:** Prevents starting the Windows Remote Access VPN service.
-* **Chrome & Edge Registry Policies:**
-  * `IncognitoModeAvailability` = `1` *(Disables Incognito)*
-  * `InPrivateModeAvailability` = `1` *(Disables InPrivate)*
-  * `ForceGoogleSafeSearch` = `1` *(Forces Strict SafeSearch)*
-  * `SafeSitesFilterBehavior` = `1` *(Enforces Chrome adult site filter)*
-  * `URLBlocklist` = `["*fboxtv.org*"]` *(Blocks custom target domains)*
+#### ⚙️ Managed Configurations (App Restrictions for Chrome)
+1. **`ForceGoogleSafeSearch` = `true` / `1`**: Forces Strict Google SafeSearch system-wide in Google Chrome (completely removes explicit search results and prevents unblurring).
+2. **`SafeSitesFilterBehavior` = `1`**: Enables Chrome's built-in SafeSites automatic adult content filter for all browsing traffic.
+
+#### 🔒 Critical User Restrictions (In Test DPC)
+1. **`Disallow config VPN` (`DISALLOW_CONFIG_VPN`)**: Completely disables adding, editing, or configuring VPN connections in Settings, preventing any proxy/VPN bypass attempts.
+2. **`Disallow uninstall apps` (`DISALLOW_UNINSTALL_APPS`)**: Prevents uninstalling protected applications from the phone UI.
+3. **`Disallow apps control` (`DISALLOW_APPS_CONTROL`)**: Prevents clearing app data, modifying app permissions, or force-stopping apps in Android Settings.
+4. **`Disallow install from unknown sources` (`DISALLOW_INSTALL_UNKNOWN_SOURCES`)**: Blocks installing APK files from outside the Google Play Store.
 
 ---
 
-### 2. Android Device Owner Provisioning (Test DPC)
+### 2. Private DNS Configuration (Cloudflare Family)
+
+* **Preferred Private DNS:** `family.cloudflare-dns.com` (Cloudflare Family DNS).
+* *Note:* When the Chrome policies (`ForceGoogleSafeSearch` and `SafeSitesFilterBehavior`) are enforced directly inside Chrome, Private DNS serves as an optional secondary network-layer backup.
+
+On your phone, go to **Settings > Network & Internet > Private DNS**:
+* Select **Private DNS provider hostname** and enter:
+  `family.cloudflare-dns.com`
+
+---
+
+### 3. Android Device Owner Provisioning
 
 1. Build or install the merged **Test DPC** APK (`TestDPC-normal-debug.apk`) on your Android phone.
 2. Remove all secondary user profiles and Google accounts from phone settings temporarily during provisioning.
@@ -103,32 +113,6 @@ Open PowerShell as Administrator and run `enable_windows_protection.ps1` (or dou
    adb shell dpm set-device-owner com.afwsamples.testdpc/.DeviceAdminReceiver
    ```
 4. Re-add your Google accounts.
-
----
-
-### 3. Key Test DPC Policies & Managed Configurations
-
-Connect phone via USB ADB and run `Unlock_TestDPC.bat` to open Test DPC:
-
-#### ⚙️ Managed Configurations (Chrome Policy)
-* **Chrome Incognito:** `IncognitoModeAvailability` = `1` *(Disables Incognito Mode)*
-* **Strict Google SafeSearch:** `ForceGoogleSafeSearch` = `true` & `SafeSearchMode` = `1` *(Removes explicit images & unblur toggle)*
-* **Chrome Adult Site Filtering:** `SafeSitesFilterBehavior` = `1` *(Enforces Chrome's built-in SafeSites adult content filter)*
-* **Chrome Domain Blocklist (`URLBlocklist`):** `String[]` -> `["fboxtv.org"]` *(Blocks specific websites and subdomains in Chrome)*
-
-#### 🔒 Critical User Restrictions (In Test DPC)
-* **`Disallow uninstall apps` (`DISALLOW_UNINSTALL_APPS`):** Grays out and disables the "Uninstall" button for all apps on the phone UI.
-* **`Disallow apps control` (`DISALLOW_APPS_CONTROL`):** Prevents clearing app data, modifying app permissions, or force-stopping apps in Android Settings.
-* **`Disallow install from unknown sources` (`DISALLOW_INSTALL_UNKNOWN_SOURCES`):** Blocks installing APK files from outside the Google Play Store.
-* **`Disallow config private DNS` (`DISALLOW_CONFIG_PRIVATE_DNS`):** Locks system Private DNS settings so the CleanBrowsing adult filter cannot be changed.
-
----
-
-### 4. Private DNS System-Wide Adult Filter
-
-On your phone, go to **Settings > Network & Internet > Private DNS**:
-* Select **Private DNS provider hostname** and enter:
-  `family-filter-dns.cleanbrowsing.org`
 
 ---
 
