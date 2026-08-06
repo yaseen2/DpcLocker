@@ -28,6 +28,7 @@ public class AppTimerReceiver extends BroadcastReceiver {
                 try {
                     DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
                     if (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName())) {
+                        AppTimerManager.setSuspendedToday(context, packageName, true);
                         dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{packageName}, true);
                         Toast.makeText(context.getApplicationContext(), "Daily time limit reached!", Toast.LENGTH_LONG).show();
                         Log.i(TAG, "SUSPENDED " + packageName + " due to timer limit.");
@@ -36,8 +37,11 @@ public class AppTimerReceiver extends BroadcastReceiver {
                     Log.e(TAG, "Error suspending package on limit exceeded", e);
                 }
             }
-        } else if (ACTION_MIDNIGHT_RESET.equals(action) || Intent.ACTION_BOOT_COMPLETED.equals(action)) {
-            Log.i(TAG, "Executing Midnight Reset / Boot Check...");
+        } else if (ACTION_MIDNIGHT_RESET.equals(action)) {
+            Log.i(TAG, "Executing Midnight Reset...");
+            AppTimerManager.performMidnightReset(context);
+        } else if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
+            Log.i(TAG, "Executing Boot Check...");
             AppTimerManager.registerAllObservers(context);
         }
     }
