@@ -50,14 +50,13 @@ public class BrowserBlocker {
                         public void onPackageAdded(String packageName, UserHandle user) {
                             Log.i(TAG, "LauncherApps onPackageAdded: " + packageName);
                             checkAndSuspendPackage(context, packageName);
-                            AppTimerManager.checkSinglePackageLimit(context, packageName);
+                            AppTimerManager.checkAndEnforceLimits(context);
                         }
 
                         @Override
                         public void onPackageChanged(String packageName, UserHandle user) {
                             Log.i(TAG, "LauncherApps onPackageChanged: " + packageName);
                             checkAndSuspendPackage(context, packageName);
-                            AppTimerManager.checkSinglePackageLimit(context, packageName);
                         }
 
                         @Override
