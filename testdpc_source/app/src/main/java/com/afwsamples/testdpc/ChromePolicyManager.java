@@ -19,6 +19,9 @@ public class ChromePolicyManager {
 
             Bundle chromeBundle = new Bundle();
 
+            // Set Permission Policy to standard PROMPT mode so runtime permissions (Contacts, Camera, etc.) work normally
+            dpm.setPermissionPolicy(DeviceAdminReceiver.getComponentName(context), DevicePolicyManager.PERMISSION_POLICY_PROMPT);
+
             // 1. Enable Incognito Mode (IncognitoModeAvailability = 0)
             chromeBundle.putInt("IncognitoModeAvailability", 0);
 
