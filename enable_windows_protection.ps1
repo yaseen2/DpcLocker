@@ -16,7 +16,7 @@ foreach ($adapter in $adapters) {
     Write-Host "   [+] Set CleanBrowsing Family DNS on: $($adapter.Name)" -ForegroundColor Green
 }
 
-# 2. Update Hosts File for SafeSearch & Blocked Domains (Including X/Twitter Media Blocking)
+# 2. Update Hosts File for SafeSearch & Blocked Domains (Including All X/Twitter Media Domains)
 Write-Host "`n2. Updating System Hosts File for SafeSearch & Domain Block..." -ForegroundColor Yellow
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 $hostsEntries = @(
@@ -27,8 +27,13 @@ $hostsEntries = @(
     "216.239.38.120 strict.bing.com",
     "0.0.0.0 www.fboxtv.org",
     "0.0.0.0 fboxtv.org",
+    "0.0.0.0 twimg.com",
+    "0.0.0.0 www.twimg.com",
     "0.0.0.0 pbs.twimg.com",
-    "0.0.0.0 video.twimg.com"
+    "0.0.0.0 video.twimg.com",
+    "0.0.0.0 abs.twimg.com",
+    "0.0.0.0 ton.twimg.com",
+    "0.0.0.0 media.twimg.com"
 )
 
 $existingContent = [System.IO.File]::ReadAllText($hostsPath)
@@ -48,7 +53,7 @@ if ($newEntriesToAdd.Count -gt 0) {
     Write-Host "   [+] All hosts entries are already present." -ForegroundColor Green
 }
 
-# 3. Apply Registry Policies (Chrome, Edge, Domain Block, VPN & Proxy Lock)
+# 3. Apply Registry Policies (Chrome, Edge, DoH Disable, Domain Block, VPN & Proxy Lock)
 Write-Host "`n3. Applying Registry Policies (Browser Policies & fboxtv.org / X-Media Block)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
@@ -60,10 +65,12 @@ Stop-Service -Name "RasMan" -Force -ErrorAction SilentlyContinue
 Set-Service -Name "RasMan" -StartupType Disabled -ErrorAction SilentlyContinue
 Write-Host "   [+] Disabled Remote Access Connection Manager (Windows VPN)" -ForegroundColor Green
 
-# 5. Flush DNS Cache
-Write-Host "`n5. Flushing DNS Cache..." -ForegroundColor Yellow
+# 5. Flush DNS Cache and Reset Browser Sockets
+Write-Host "`n5. Flushing DNS Cache & Resetting Browser Connections..." -ForegroundColor Yellow
 Clear-DnsClientCache
-Write-Host "   [+] DNS Cache flushed successfully!" -ForegroundColor Green
+Stop-Process -Name "chrome" -Force -ErrorAction SilentlyContinue
+Stop-Process -Name "msedge" -Force -ErrorAction SilentlyContinue
+Write-Host "   [+] DNS Cache flushed and browser processes reset successfully!" -ForegroundColor Green
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
 Write-Host "  DOMAIN & ADULT PROTECTION IS NOW ACTIVE ON WINDOWS!" -ForegroundColor Cyan
