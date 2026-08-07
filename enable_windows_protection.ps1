@@ -16,20 +16,22 @@ foreach ($adapter in $adapters) {
     Write-Host "   [+] Set CleanBrowsing Family DNS on: $($adapter.Name)" -ForegroundColor Green
 }
 
-# 2. Clean Up Old Discord Entries from Hosts File & Purge Stale URLBlocklist Registry Keys
-Write-Host "`n2. Cleaning Up Allowed Domains (Unblocking Discord)..." -ForegroundColor Yellow
+# 2. Clean Up Old Discord Entries from Hosts File & Purge Stale URLBlocklist / Extension Registry Keys
+Write-Host "`n2. Cleaning Up Allowed Domains & Purging Stale Registry Keys..." -ForegroundColor Yellow
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 if (Test-Path $hostsPath) {
-    $lines = Get-Content $hostsPath | Where-Object { $_ -notmatch "discord" }
+    $lines = Get-Content $hostsPath | Where-Object { $_ -notmatch "discord" -and $_ -notmatch "chromewebstore" }
     [System.IO.File]::WriteAllLines($hostsPath, $lines)
-    Write-Host "   [+] Removed Discord entries from hosts file" -ForegroundColor Green
+    Write-Host "   [+] Removed Discord & WebStore entries from hosts file" -ForegroundColor Green
 }
 
 Remove-Item -Path "HKLM:\SOFTWARE\Policies\Google\Chrome\URLBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "   [+] Purged old registry URLBlocklist keys" -ForegroundColor Green
+Remove-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "   [+] Purged old registry extension & blocklist restriction keys" -ForegroundColor Green
 
-# 3. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Web Stores, Proxies - Discord Allowed)
+# 3. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Proxies - Discord & Web Store Allowed)
 Write-Host "`n3. Updating System Hosts File for SafeSearch & Notorious Domains..." -ForegroundColor Yellow
 $hostsEntries = @(
     "216.239.38.120 www.google.com",
@@ -69,8 +71,7 @@ $hostsEntries = @(
     "0.0.0.0 www.croxyproxy.com",
     "0.0.0.0 proxysite.com",
     "0.0.0.0 hide.me",
-    "0.0.0.0 blockaway.net",
-    "0.0.0.0 chromewebstore.google.com"
+    "0.0.0.0 blockaway.net"
 )
 
 $existingContent = [System.IO.File]::ReadAllText($hostsPath)
@@ -90,8 +91,8 @@ if ($newEntriesToAdd.Count -gt 0) {
     Write-Host "   [+] All hosts entries are already present." -ForegroundColor Green
 }
 
-# 4. Apply Registry Policies (Chrome, Edge, ProxyLock Direct, Extension Block, Notorious Domains Block, VPN Lock)
-Write-Host "`n4. Applying Registry Policies (Browser Policies, Proxy Direct & Extension Lock)..." -ForegroundColor Yellow
+# 4. Apply Registry Policies (Chrome, Edge, Proxy Direct Lock, VPN & Notorious Domains Block)
+Write-Host "`n4. Applying Registry Policies (Browser Policies & Proxy Direct Lock)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
 Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies" -ForegroundColor Green

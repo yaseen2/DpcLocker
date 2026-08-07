@@ -1,7 +1,7 @@
 Windows Registry Editor Version 5.00
 
 ; ========================================================
-; GOOGLE CHROME - ADULT CONTENT, INCOGNITO, PROXY LOCK, EXTENSION BLOCK & TOTAL NOTORIOUS DOMAIN BLOCK
+; GOOGLE CHROME - ADULT CONTENT, INCOGNITO, DOH DISABLE, PROXY DIRECT LOCK & NOTORIOUS DOMAIN BLOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
 "IncognitoModeAvailability"=dword:00000001
@@ -9,9 +9,6 @@ Windows Registry Editor Version 5.00
 "SafeSitesFilterBehavior"=dword:00000001
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
-
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallBlocklist]
-"1"="*"
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\URLBlocklist]
 "1"="*fboxtv.org*"
@@ -29,20 +26,15 @@ Windows Registry Editor Version 5.00
 "13"="*proxysite.com*"
 "14"="*hide.me*"
 "15"="*blockaway.net*"
-"16"="*chromewebstore.google.com*"
-"17"="*chrome.google.com/webstore*"
 
 ; ========================================================
-; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE, PROXY LOCK, EXTENSION BLOCK & TOTAL NOTORIOUS DOMAIN BLOCK
+; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE, DOH DISABLE, PROXY DIRECT LOCK & NOTORIOUS DOMAIN BLOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
 "ForceGoogleSafeSearch"=dword:00000001
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
-
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist]
-"1"="*"
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist]
 "1"="*fboxtv.org*"
@@ -60,7 +52,6 @@ Windows Registry Editor Version 5.00
 "13"="*proxysite.com*"
 "14"="*hide.me*"
 "15"="*blockaway.net*"
-"16"="*microsoftedge.microsoft.com/addons*"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES
