@@ -18,8 +18,8 @@ public class ChromePolicyManager {
 
             Bundle chromeBundle = new Bundle();
 
-            // 1. Disable Incognito Mode (IncognitoModeAvailability = 1)
-            chromeBundle.putInt("IncognitoModeAvailability", 1);
+            // 1. Enable Incognito Mode (IncognitoModeAvailability = 0)
+            chromeBundle.putInt("IncognitoModeAvailability", 0);
 
             // 2. Force Strict Google SafeSearch (ForceGoogleSafeSearch = true, SafeSearchMode = 1)
             chromeBundle.putBoolean("ForceGoogleSafeSearch", true);
