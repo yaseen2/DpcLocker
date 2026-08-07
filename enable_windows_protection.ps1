@@ -16,9 +16,21 @@ foreach ($adapter in $adapters) {
     Write-Host "   [+] Set CleanBrowsing Family DNS on: $($adapter.Name)" -ForegroundColor Green
 }
 
-# 2. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Proxies - Discord Allowed)
-Write-Host "`n2. Updating System Hosts File for SafeSearch & Notorious Domains..." -ForegroundColor Yellow
+# 2. Clean Up Old Discord Entries from Hosts File & Purge Stale URLBlocklist Registry Keys
+Write-Host "`n2. Cleaning Up Allowed Domains (Unblocking Discord)..." -ForegroundColor Yellow
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
+if (Test-Path $hostsPath) {
+    $lines = Get-Content $hostsPath | Where-Object { $_ -notmatch "discord" }
+    [System.IO.File]::WriteAllLines($hostsPath, $lines)
+    Write-Host "   [+] Removed Discord entries from hosts file" -ForegroundColor Green
+}
+
+Remove-Item -Path "HKLM:\SOFTWARE\Policies\Google\Chrome\URLBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "   [+] Purged old registry URLBlocklist keys" -ForegroundColor Green
+
+# 3. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Proxies - Discord Allowed)
+Write-Host "`n3. Updating System Hosts File for SafeSearch & Notorious Domains..." -ForegroundColor Yellow
 $hostsEntries = @(
     "216.239.38.120 www.google.com",
     "216.239.38.120 google.com",
@@ -77,20 +89,20 @@ if ($newEntriesToAdd.Count -gt 0) {
     Write-Host "   [+] All hosts entries are already present." -ForegroundColor Green
 }
 
-# 3. Apply Registry Policies (Chrome, Edge, DoH Disable, Notorious Domains Block, VPN & Proxy Lock)
-Write-Host "`n3. Applying Registry Policies (Browser Policies & Notorious Domains Block)..." -ForegroundColor Yellow
+# 4. Apply Registry Policies (Chrome, Edge, DoH Disable, Notorious Domains Block, VPN & Proxy Lock)
+Write-Host "`n4. Applying Registry Policies (Browser Policies & Notorious Domains Block)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
 Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies" -ForegroundColor Green
 
-# 4. Stop and Disable Windows RasMan Service (Built-in VPN)
-Write-Host "`n4. Disabling Windows VPN Service (RasMan)..." -ForegroundColor Yellow
+# 5. Stop and Disable Windows RasMan Service (Built-in VPN)
+Write-Host "`n5. Disabling Windows VPN Service (RasMan)..." -ForegroundColor Yellow
 Stop-Service -Name "RasMan" -Force -ErrorAction SilentlyContinue
 Set-Service -Name "RasMan" -StartupType Disabled -ErrorAction SilentlyContinue
 Write-Host "   [+] Disabled Remote Access Connection Manager (Windows VPN)" -ForegroundColor Green
 
-# 5. Flush DNS Cache and Reset Browser Sockets
-Write-Host "`n5. Flushing DNS Cache & Resetting Browser Connections..." -ForegroundColor Yellow
+# 6. Flush DNS Cache and Reset Browser Sockets
+Write-Host "`n6. Flushing DNS Cache & Resetting Browser Connections..." -ForegroundColor Yellow
 Clear-DnsClientCache
 Stop-Process -Name "chrome" -Force -ErrorAction SilentlyContinue
 Stop-Process -Name "msedge" -Force -ErrorAction SilentlyContinue
