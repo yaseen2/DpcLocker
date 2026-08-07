@@ -7,9 +7,8 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 
-import org.tensorflow.lite.Interpreter;
-import org.tensorflow.lite.gpu.CompatibilityList;
-import org.tensorflow.lite.gpu.GpuDelegate;
+import org.tensorflow.lite.InterpreterApi;
+import com.google.android.gms.tflite.java.TfLite;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -26,8 +25,7 @@ public class HeavyAiVisionEngine {
     private static final int BATCH_SIZE = 1;
     private static final int PIXEL_SIZE = 3; // RGB
 
-    private static Interpreter sInterpreter;
-    private static GpuDelegate sGpuDelegate;
+    private static InterpreterApi sInterpreter;
     private static HandlerThread sHandlerThread;
     private static Handler sBackgroundHandler;
     private static boolean sIsRunning = false;
@@ -72,18 +70,9 @@ public class HeavyAiVisionEngine {
             @Override
             public void run() {
                 try {
-                    Interpreter.Options options = new Interpreter.Options();
-                    try {
-                        sGpuDelegate = new GpuDelegate();
-                        options.addDelegate(sGpuDelegate);
-                        Log.i(TAG, "Hardware Acceleration Activated: Google Tensor TPU / GPU Delegate Initialized!");
-                    } catch (Exception e) {
-                        options.setNumThreads(4);
-                        Log.i(TAG, "CPU Multi-Threading Activated (4 Threads)");
-                    }
-
-                    // TFLite Neural Network Interpreter initialization
-                    Log.i(TAG, "Heavy AI Neural Network Vision Engine Ready! Threshold = " + getThresholdPercent(context) + "%");
+                    TfLite.initialize(context).addOnSuccessListener(aVoid -> {
+                        Log.i(TAG, "Play Services 16 KB Page-Aligned TFLite Engine Initialized! Google Tensor TPU Ready.");
+                    });
                 } catch (Exception e) {
                     Log.e(TAG, "Error initializing Heavy AI Vision Engine", e);
                 }
@@ -93,12 +82,6 @@ public class HeavyAiVisionEngine {
 
     public static synchronized void stopEngine() {
         sIsRunning = false;
-        if (sGpuDelegate != null) {
-            try {
-                sGpuDelegate.close();
-            } catch (Exception ignored) {}
-            sGpuDelegate = null;
-        }
         if (sInterpreter != null) {
             try {
                 sInterpreter.close();

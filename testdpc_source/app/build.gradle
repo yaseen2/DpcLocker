@@ -92,22 +92,9 @@ dependencies {
         exclude group: 'org.checkerframework', module: 'checker-compat-qual'
         exclude group: 'org.checkerframework', module: 'checker-qual'
     }
-    implementation('org.tensorflow:tensorflow-lite:2.14.0') {
-        exclude group: 'org.checkerframework', module: 'checker-qual'
-        exclude group: 'org.checkerframework', module: 'checker-compat-qual'
-    }
-    implementation('org.tensorflow:tensorflow-lite-api:2.14.0') {
-        exclude group: 'org.checkerframework', module: 'checker-qual'
-        exclude group: 'org.checkerframework', module: 'checker-compat-qual'
-    }
-    implementation('org.tensorflow:tensorflow-lite-gpu:2.14.0') {
-        exclude group: 'org.checkerframework', module: 'checker-qual'
-        exclude group: 'org.checkerframework', module: 'checker-compat-qual'
-    }
-    implementation('org.tensorflow:tensorflow-lite-support:0.4.4') {
-        exclude group: 'org.checkerframework', module: 'checker-qual'
-        exclude group: 'org.checkerframework', module: 'checker-compat-qual'
-    }
+    implementation 'org.tensorflow:tensorflow-lite-api:2.14.0'
+    implementation 'com.google.android.gms:play-services-tflite-java:16.3.0'
+    implementation 'com.google.android.gms:play-services-tflite-gpu:16.2.0'
     testImplementation 'org.robolectric:robolectric:4.2'
     testImplementation "com.google.truth:truth:0.44"
     testImplementation 'junit:junit:4.5'
