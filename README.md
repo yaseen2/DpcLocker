@@ -43,7 +43,7 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 
 ### 💻 4. Windows 10/11 PC Protection Architecture
 * **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
-* **Total Notorious Domain Lockdown:** Maps X (`x.com`, `twitter.com`, `twimg.com`), Reddit (`reddit.com`, `redditmedia.com`, `redd.it`), Tumblr (`tumblr.com`), Telegram Web (`telegram.org`, `t.me`), Discord Web (`discord.com`, `discordapp.com`), and Web Proxies (`croxyproxy.com`, `proxysite.com`, `hide.me`, `blockaway.net`) to `0.0.0.0` in system `hosts` file and adds wildcard entries to Chrome & Edge `URLBlocklist`.
+* **Total Notorious Domain Lockdown:** Maps X (`x.com`, `twitter.com`, `twimg.com`), Reddit (`reddit.com`, `redditmedia.com`, `redd.it`), Tumblr (`tumblr.com`), Telegram Web (`telegram.org`, `t.me`), and Web Proxies (`croxyproxy.com`, `proxysite.com`, `hide.me`, `blockaway.net`) to `0.0.0.0` in system `hosts` file and adds wildcard entries to Chrome & Edge `URLBlocklist`. *(Discord is allowed)*.
 * **Chrome & Edge Registry Policies:**
   * **`ForceGoogleSafeSearch`**: Forces Strict Google SafeSearch system-wide in Chrome.
   * **`SafeSitesFilterBehavior`**: Enforces Chrome's built-in SafeSites adult content filter for all web traffic.
@@ -86,7 +86,7 @@ Right-click **`Enable_Windows_Protection.bat`** > **Run as Administrator** (or r
 
 **Applied System Policies:**
 * **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
-* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and blocks X/Twitter, Reddit, Tumblr, Telegram, Discord, and Web Proxies to `0.0.0.0`.
+* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and blocks X/Twitter, Reddit, Tumblr, Telegram, and Web Proxies to `0.0.0.0`.
 * **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings.
 * **Disables Windows RasMan Service:** Prevents starting the Windows Remote Access VPN service.
 * **Chrome & Edge Registry Policies:**
@@ -95,7 +95,7 @@ Right-click **`Enable_Windows_Protection.bat`** > **Run as Administrator** (or r
   * `ForceGoogleSafeSearch` = `1` *(Forces Strict SafeSearch)*
   * `SafeSitesFilterBehavior` = `1` *(Enforces Chrome adult site filter)*
   * `DnsOverHttpsMode` = `"off"` *(Disables Secure DNS DoH bypass)*
-  * `URLBlocklist` = `["*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*", "*discord.com*", "*discordapp.com*", "*croxyproxy.com*", "*proxysite.com*", "*hide.me*", "*blockaway.net*"]`
+  * `URLBlocklist` = `["*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*", "*croxyproxy.com*", "*proxysite.com*", "*hide.me*", "*blockaway.net*"]`
 
 ---
 
@@ -106,7 +106,7 @@ When managing policies inside Test DPC (`Unlock_TestDPC.bat`), the primary enfor
 #### ⚙️ Managed Configurations (App Restrictions for Chrome)
 1. **`ForceGoogleSafeSearch` = `true` / `1`**: Forces Strict Google SafeSearch system-wide in Google Chrome (completely removes explicit search results and prevents unblurring).
 2. **`SafeSitesFilterBehavior` = `1`**: Enables Chrome's built-in SafeSites automatic adult content filter for all browsing traffic.
-3. **`URLBlocklist`**: `["*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*", "*discord.com*", "*discordapp.com*"]`.
+3. **`URLBlocklist`**: `["*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*"]`.
 
 #### 🔒 Critical User Restrictions (In Test DPC)
 1. **`Disallow config VPN` (`DISALLOW_CONFIG_VPN`)**: Completely disables adding, editing, or configuring VPN connections in Settings.

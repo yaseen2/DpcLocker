@@ -21,12 +21,10 @@ Windows Registry Editor Version 5.00
 "9"="*telegram.org*"
 "10"="*telegram.me*"
 "11"="*t.me*"
-"12"="*discord.com*"
-"13"="*discordapp.com*"
-"14"="*croxyproxy.com*"
-"15"="*proxysite.com*"
-"16"="*hide.me*"
-"17"="*blockaway.net*"
+"12"="*croxyproxy.com*"
+"13"="*proxysite.com*"
+"14"="*hide.me*"
+"15"="*blockaway.net*"
 
 ; ========================================================
 ; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE, DOH DISABLE & TOTAL NOTORIOUS DOMAIN BLOCK
@@ -48,12 +46,10 @@ Windows Registry Editor Version 5.00
 "9"="*telegram.org*"
 "10"="*telegram.me*"
 "11"="*t.me*"
-"12"="*discord.com*"
-"13"="*discordapp.com*"
-"14"="*croxyproxy.com*"
-"15"="*proxysite.com*"
-"16"="*hide.me*"
-"17"="*blockaway.net*"
+"12"="*croxyproxy.com*"
+"13"="*proxysite.com*"
+"14"="*hide.me*"
+"15"="*blockaway.net*"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES

@@ -16,7 +16,7 @@ foreach ($adapter in $adapters) {
     Write-Host "   [+] Set CleanBrowsing Family DNS on: $($adapter.Name)" -ForegroundColor Green
 }
 
-# 2. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Discord, Proxies)
+# 2. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Proxies - Discord Allowed)
 Write-Host "`n2. Updating System Hosts File for SafeSearch & Notorious Domains..." -ForegroundColor Yellow
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 $hostsEntries = @(
@@ -53,9 +53,6 @@ $hostsEntries = @(
     "0.0.0.0 telegram.org",
     "0.0.0.0 web.telegram.org",
     "0.0.0.0 t.me",
-    "0.0.0.0 discord.com",
-    "0.0.0.0 www.discord.com",
-    "0.0.0.0 cdn.discordapp.com",
     "0.0.0.0 croxyproxy.com",
     "0.0.0.0 www.croxyproxy.com",
     "0.0.0.0 proxysite.com",
