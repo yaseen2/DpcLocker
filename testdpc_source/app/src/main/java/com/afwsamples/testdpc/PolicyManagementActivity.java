@@ -57,6 +57,7 @@ public class PolicyManagementActivity extends Activity implements
         BrowserBlocker.initLauncherAppsCallback(this);
         BrowserBlocker.scanAndSuspendAllBrowsers(this);
         AppTimerManager.registerAllObservers(this);
+        ChromePolicyManager.enforceDefaultChromePolicies(this);
         setContentView(R.layout.activity_main);
         if (savedInstanceState == null) {
             getFragmentManager().beginTransaction().add(R.id.container,

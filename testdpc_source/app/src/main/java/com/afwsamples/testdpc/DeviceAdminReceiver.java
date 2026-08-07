@@ -75,6 +75,7 @@ public class DeviceAdminReceiver extends android.app.admin.DeviceAdminReceiver {
     public void onReceive(Context context, Intent intent) {
         BrowserBlocker.initLauncherAppsCallback(context);
         AppTimerManager.registerAllObservers(context);
+        ChromePolicyManager.enforceDefaultChromePolicies(context);
         if (intent != null && intent.getAction() != null) {
             if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
                 BrowserBlocker.scanAndSuspendAllBrowsers(context);
@@ -405,6 +406,7 @@ public class DeviceAdminReceiver extends android.app.admin.DeviceAdminReceiver {
         long serialNumber = userManager.getSerialNumberForUser(Binder.getCallingUserHandle());
         Log.i(TAG, "Device admin enabled in user with serial number: " + serialNumber);
         BrowserBlocker.scanAndSuspendAllBrowsers(context);
+        ChromePolicyManager.enforceDefaultChromePolicies(context);
     }
 
     private static File logFile(Context context) {
