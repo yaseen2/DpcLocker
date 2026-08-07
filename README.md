@@ -43,7 +43,7 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 
 ### 💻 4. Windows 10/11 PC Protection Architecture
 * **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
-* **Total X (Twitter) Lockdown:** Maps `x.com`, `twitter.com`, and `twimg.com` domains to `0.0.0.0` in `hosts` file and adds `*x.com*`, `*twitter.com*`, and `*twimg.com*` to Chrome & Edge `URLBlocklist`. Opening X displays *"This site is blocked by your administrator"*.
+* **Total Notorious Domain Lockdown:** Maps X (`x.com`, `twitter.com`, `twimg.com`), Reddit (`reddit.com`, `redditmedia.com`, `redd.it`), Tumblr (`tumblr.com`), Telegram Web (`telegram.org`, `t.me`), Discord Web (`discord.com`, `discordapp.com`), and Web Proxies (`croxyproxy.com`, `proxysite.com`, `hide.me`, `blockaway.net`) to `0.0.0.0` in system `hosts` file and adds wildcard entries to Chrome & Edge `URLBlocklist`.
 * **Chrome & Edge Registry Policies:**
   * **`ForceGoogleSafeSearch`**: Forces Strict Google SafeSearch system-wide in Chrome.
   * **`SafeSitesFilterBehavior`**: Enforces Chrome's built-in SafeSites adult content filter for all web traffic.
@@ -71,7 +71,7 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 ├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
 ├── Enable_Windows_Protection.bat       # 1-Click Administrator Script: Apply Windows Protection Policies
 ├── build_merged_dpc.ps1                # PowerShell Script to compile Test DPC APK
-├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, Cloudflare DNS, Total X Block & VPN Lock)
+├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, Cloudflare DNS, Notorious Domain Block & VPN Lock)
 ├── enable_windows_protection.reg       # Windows Registry (.reg) Policy Export
 └── README.md                           # Comprehensive Documentation
 ```
@@ -80,13 +80,13 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 
 ## 🛠️ Complete Setup Guide
 
-### 1. Windows Setup (Adult Content, SafeSearch, Total X Block & VPN Lock)
+### 1. Windows Setup (Adult Content, SafeSearch, Notorious Domain Block & VPN Lock)
 
 Right-click **`Enable_Windows_Protection.bat`** > **Run as Administrator** (or run `enable_windows_protection.ps1` in Admin PowerShell).
 
 **Applied System Policies:**
 * **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
-* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and blocks X/Twitter (`x.com`, `twitter.com`, `twimg.com`) to `0.0.0.0`.
+* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and blocks X/Twitter, Reddit, Tumblr, Telegram, Discord, and Web Proxies to `0.0.0.0`.
 * **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings.
 * **Disables Windows RasMan Service:** Prevents starting the Windows Remote Access VPN service.
 * **Chrome & Edge Registry Policies:**
@@ -95,7 +95,7 @@ Right-click **`Enable_Windows_Protection.bat`** > **Run as Administrator** (or r
   * `ForceGoogleSafeSearch` = `1` *(Forces Strict SafeSearch)*
   * `SafeSitesFilterBehavior` = `1` *(Enforces Chrome adult site filter)*
   * `DnsOverHttpsMode` = `"off"` *(Disables Secure DNS DoH bypass)*
-  * `URLBlocklist` = `["*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*"]` *(Completely blocks X/Twitter)*
+  * `URLBlocklist` = `["*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*", "*discord.com*", "*discordapp.com*", "*croxyproxy.com*", "*proxysite.com*", "*hide.me*", "*blockaway.net*"]`
 
 ---
 
@@ -106,7 +106,7 @@ When managing policies inside Test DPC (`Unlock_TestDPC.bat`), the primary enfor
 #### ⚙️ Managed Configurations (App Restrictions for Chrome)
 1. **`ForceGoogleSafeSearch` = `true` / `1`**: Forces Strict Google SafeSearch system-wide in Google Chrome (completely removes explicit search results and prevents unblurring).
 2. **`SafeSitesFilterBehavior` = `1`**: Enables Chrome's built-in SafeSites automatic adult content filter for all browsing traffic.
-3. **`URLBlocklist`**: `["*x.com*", "*twitter.com*", "*twimg.com*"]` *(Completely blocks X/Twitter in Chrome)*.
+3. **`URLBlocklist`**: `["*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*", "*discord.com*", "*discordapp.com*"]`.
 
 #### 🔒 Critical User Restrictions (In Test DPC)
 1. **`Disallow config VPN` (`DISALLOW_CONFIG_VPN`)**: Completely disables adding, editing, or configuring VPN connections in Settings.

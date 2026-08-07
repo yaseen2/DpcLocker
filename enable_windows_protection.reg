@@ -1,7 +1,7 @@
 Windows Registry Editor Version 5.00
 
 ; ========================================================
-; GOOGLE CHROME - ADULT CONTENT, INCOGNITO, DOH DISABLE & TOTAL DOMAIN BLOCK
+; GOOGLE CHROME - ADULT CONTENT, INCOGNITO, DOH DISABLE & TOTAL NOTORIOUS DOMAIN BLOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
 "IncognitoModeAvailability"=dword:00000001
@@ -14,9 +14,22 @@ Windows Registry Editor Version 5.00
 "2"="*x.com*"
 "3"="*twitter.com*"
 "4"="*twimg.com*"
+"5"="*reddit.com*"
+"6"="*redditmedia.com*"
+"7"="*redd.it*"
+"8"="*tumblr.com*"
+"9"="*telegram.org*"
+"10"="*telegram.me*"
+"11"="*t.me*"
+"12"="*discord.com*"
+"13"="*discordapp.com*"
+"14"="*croxyproxy.com*"
+"15"="*proxysite.com*"
+"16"="*hide.me*"
+"17"="*blockaway.net*"
 
 ; ========================================================
-; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE, DOH DISABLE & TOTAL DOMAIN BLOCK
+; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE, DOH DISABLE & TOTAL NOTORIOUS DOMAIN BLOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
@@ -28,6 +41,19 @@ Windows Registry Editor Version 5.00
 "2"="*x.com*"
 "3"="*twitter.com*"
 "4"="*twimg.com*"
+"5"="*reddit.com*"
+"6"="*redditmedia.com*"
+"7"="*redd.it*"
+"8"="*tumblr.com*"
+"9"="*telegram.org*"
+"10"="*telegram.me*"
+"11"="*t.me*"
+"12"="*discord.com*"
+"13"="*discordapp.com*"
+"14"="*croxyproxy.com*"
+"15"="*proxysite.com*"
+"16"="*hide.me*"
+"17"="*blockaway.net*"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES

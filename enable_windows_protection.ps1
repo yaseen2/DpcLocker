@@ -16,8 +16,8 @@ foreach ($adapter in $adapters) {
     Write-Host "   [+] Set CleanBrowsing Family DNS on: $($adapter.Name)" -ForegroundColor Green
 }
 
-# 2. Update Hosts File for SafeSearch & Blocked Domains (Including Complete X/Twitter Block)
-Write-Host "`n2. Updating System Hosts File for SafeSearch & Domain Block..." -ForegroundColor Yellow
+# 2. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Discord, Proxies)
+Write-Host "`n2. Updating System Hosts File for SafeSearch & Notorious Domains..." -ForegroundColor Yellow
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 $hostsEntries = @(
     "216.239.38.120 www.google.com",
@@ -40,7 +40,27 @@ $hostsEntries = @(
     "0.0.0.0 video.twimg.com",
     "0.0.0.0 abs.twimg.com",
     "0.0.0.0 ton.twimg.com",
-    "0.0.0.0 media.twimg.com"
+    "0.0.0.0 media.twimg.com",
+    "0.0.0.0 reddit.com",
+    "0.0.0.0 www.reddit.com",
+    "0.0.0.0 old.reddit.com",
+    "0.0.0.0 i.redd.it",
+    "0.0.0.0 v.redd.it",
+    "0.0.0.0 preview.redd.it",
+    "0.0.0.0 redditmedia.com",
+    "0.0.0.0 tumblr.com",
+    "0.0.0.0 www.tumblr.com",
+    "0.0.0.0 telegram.org",
+    "0.0.0.0 web.telegram.org",
+    "0.0.0.0 t.me",
+    "0.0.0.0 discord.com",
+    "0.0.0.0 www.discord.com",
+    "0.0.0.0 cdn.discordapp.com",
+    "0.0.0.0 croxyproxy.com",
+    "0.0.0.0 www.croxyproxy.com",
+    "0.0.0.0 proxysite.com",
+    "0.0.0.0 hide.me",
+    "0.0.0.0 blockaway.net"
 )
 
 $existingContent = [System.IO.File]::ReadAllText($hostsPath)
@@ -60,8 +80,8 @@ if ($newEntriesToAdd.Count -gt 0) {
     Write-Host "   [+] All hosts entries are already present." -ForegroundColor Green
 }
 
-# 3. Apply Registry Policies (Chrome, Edge, DoH Disable, Total X/Twitter Block, VPN & Proxy Lock)
-Write-Host "`n3. Applying Registry Policies (Browser Policies & fboxtv.org / X Total Block)..." -ForegroundColor Yellow
+# 3. Apply Registry Policies (Chrome, Edge, DoH Disable, Notorious Domains Block, VPN & Proxy Lock)
+Write-Host "`n3. Applying Registry Policies (Browser Policies & Notorious Domains Block)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
 Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies" -ForegroundColor Green
