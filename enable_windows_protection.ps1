@@ -8,12 +8,12 @@ Write-Host "========================================================" -Foregroun
 Write-Host "  Enabling Windows Adult Content & Domain Protection" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 
-# 1. Apply CleanBrowsing Family DNS to all Active Network Adapters
-Write-Host "`n1. Configuring Family-Filter DNS on Network Adapters..." -ForegroundColor Yellow
+# 1. Apply Cloudflare Family DNS (1.1.1.3 / 1.0.0.3) to all Active Network Adapters
+Write-Host "`n1. Configuring Cloudflare Family-Filter DNS on Network Adapters..." -ForegroundColor Yellow
 $adapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
 foreach ($adapter in $adapters) {
-    Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses ("185.228.168.168", "185.228.169.168")
-    Write-Host "   [+] Set CleanBrowsing Family DNS on: $($adapter.Name)" -ForegroundColor Green
+    Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses ("1.1.1.3", "1.0.0.3")
+    Write-Host "   [+] Set Cloudflare Family DNS (1.1.1.3 / 1.0.0.3) on: $($adapter.Name)" -ForegroundColor Green
 }
 
 # 2. Clean Up Old Discord Entries from Hosts File & Purge Stale URLBlocklist / Extension Registry Keys
