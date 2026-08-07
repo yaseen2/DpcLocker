@@ -27,8 +27,6 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.REQUEST_PASSWORD_COMPLEXITY"/>
@@ -235,11 +233,6 @@
             <action android:name="androidx.enterprise.feedback.action.APP_STATES" />
           </intent-filter>
         </service>
-
-        <service
-            android:name=".AiScreenShieldService"
-            android:foregroundServiceType="mediaProjection"
-            android:exported="false" />
 
     </application>
 

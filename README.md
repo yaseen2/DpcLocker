@@ -2,7 +2,7 @@
 
 **Zero-Trust, Impulse-Proof Android Device Owner Lock & Cross-Platform Self-Control System**
 
-DPC Locker is a unified Android protection system paired with Windows Registry policies. It merges **Test DPC (Device Policy Controller)** with an **Impulse-Proof USB ADB Guard**, an **Auto Non-Chrome Browser Blocker**, an **Auto Notorious App Installation Blocker**, and an **Impulse-Proof Daily App Timer System (Family Link style)**. 
+DPC Locker is a unified Android protection system paired with Windows Registry policies. It merges **Test DPC (Device Policy Controller)** with an **Impulse-Proof USB ADB Guard**, an **Auto Non-Chrome Browser Blocker**, and an **Impulse-Proof Daily App Timer System (Family Link style)**. 
 
 Policy modifications, app timer changes, or disabling protection **can only be performed when physically connected to a PC via USB ADB cable**.
 
@@ -21,12 +21,13 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 
 ---
 
-### 🌐 2. Pure Dynamic Auto Non-Chrome Browser Blocker & Notorious App Blocker
+### 🌐 2. Pure Dynamic Auto Non-Chrome Browser Blocker
 * **Real-time `LauncherApps.Callback` Engine:** Uses Android's native system callback to inspect new app installations in real time.
 * **Pure Dynamic Intent Filter Inspection (`MATCH_ALL`):** Dynamically detects third-party web browsers (Opera Mini, Firefox, Brave, UC Browser, Phoenix Browser, DuckDuckGo, Tor, Vivaldi, Kiwi, etc.) by inspecting generic `http://` and `https://` `BROWSABLE` intent filters **without relying on hardcoded package lists**.
-* **Notorious App Auto-Freezer:** Auto-detects and freezes installation of notorious apps (X/Twitter, Reddit, Tumblr, Telegram) immediately upon installation while allowing uninstallation.
+* **Instant Auto-Freeze:** Automatically suspends third-party browsers (`dpm.setPackagesSuspended([packageName], true)`) immediately upon installation, graying out their app icons.
+* **100% Freedom for Normal Apps:** Games, social media, shopping apps, tools, banking apps, and messaging apps (WhatsApp, Telegram, etc.) do not claim generic web intents and remain **100% active and unrestricted**.
 * **Chrome & Google App Whitelist:** Google Chrome (`com.android.chrome`), Google App (`com.google.android.googlequicksearchbox`), and Play Store (`com.android.vending`) remain fully functional while guarded by Strict SafeSearch and SafeSites adult filtering.
-* **UI Control Switch & Package Blocklist:** Includes an `Auto-Block Non-Chrome Browsers` preference switch and an interactive `Blocked Apps & Package Blocklist` dialog in Test DPC's UI.
+* **UI Control Switch:** Includes an `Auto-Block Non-Chrome Browsers` preference switch in Test DPC's UI (backed by app-private `SharedPreferences` for 0-crash stability).
 
 ---
 
@@ -36,16 +37,11 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 * **Automatic App Suspension on Limit:** The moment an app reaches its configured daily limit (e.g., 30 minutes for YouTube, 15 minutes for Instagram), Android OS notifies Test DPC, which **instantly freezes the app**.
 * **Un-Uninstallable Protection:** Apps with active timers are marked as un-uninstallable (`setUninstallBlocked`). Reinstalling an app during the same day instantly re-suspends it upon installation.
 * **12:00 AM Midnight Auto-Reset:** An `AlarmManager` daily alarm automatically resets usage counters and unsuspends all apps every night at midnight (12:00 AM).
+* **Impulse-Proof Protection:** Because Test DPC is locked via `Lock_TestDPC.bat`, you cannot open Test DPC on your phone to grant yourself "5 more minutes" on impulse.
 
 ---
 
-### 🤖 4. Experimental On-Device AI Screen Shield (Toggleable)
-* **On-Device Vision Classifier (`ExperimentalAiScanner.java`):** Embedded lightweight HSV color space and skin-density heuristic vision classifier for analyzing screen buffer frames.
-* **UI Toggleable (OFF by default):** Includes an `Experimental AI Screen Shield` switch in Test DPC's UI. Remains completely OFF by default to preserve 100% battery life and 0% CPU usage.
-
----
-
-### 💻 5. Windows 10/11 PC Protection Architecture
+### 💻 4. Windows 10/11 PC Protection Architecture
 * **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
 * **Total Notorious Domain Lockdown:** Maps X (`x.com`, `twitter.com`, `twimg.com`), Reddit (`reddit.com`, `redditmedia.com`, `redd.it`), Tumblr (`tumblr.com`), Telegram Web (`telegram.org`, `t.me`), and Web Proxies (`croxyproxy.com`, `proxysite.com`, `hide.me`, `blockaway.net`) to `0.0.0.0` in system `hosts` file and adds wildcard entries to Chrome & Edge `URLBlocklist`. *(Discord is allowed)*.
 * **Chrome & Edge Registry Policies:**
@@ -60,19 +56,17 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 ## 📁 Repository Structure
 
 ```text
-├── testdpc_source/                     # Merged Single App Source Code (Test DPC + Guard + Blocker + Timers + AI Shield)
+├── testdpc_source/                     # Merged Single App Source Code (Test DPC + Guard + Blocker + Timers)
 │   └── app/src/main/java/com/afwsamples/testdpc/
 │       ├── PolicyManagementActivity.java # Main DPC Activity with USB ADB Lock Guard
 │       ├── SetupManagementActivity.java  # Setup Activity with USB ADB Lock Guard
 │       ├── BrowserBlocker.java           # Pure Dynamic Auto Non-Chrome Browser Blocker Engine
-│       ├── NotoriousAppBlocker.java      # Notorious App Installation Blocker & Package Blocklist Engine
-│       ├── ChromePolicyManager.java      # Android Chrome Default Policy & URLBlocklist Engine
-│       ├── ExperimentalAiScanner.java    # Toggleable On-Device AI Vision Classifier Engine
+│       ├── PackageInstallReceiver.java   # Real-Time Package Install BroadcastReceiver
 │       ├── AppTimerManager.java          # Impulse-Proof App Usage Limits & System Observers Engine
 │       ├── AppTimerReceiver.java         # Daily Limit Exceeded & Midnight Reset Receiver
 │       ├── DeviceAdminReceiver.java      # Device Owner Receiver & System Boot Listener
 │       └── policy/
-│           └── PolicyManagementFragment.java # Test DPC UI with Auto-Blockers, Blocklist Dialog & AI Shield
+│           └── PolicyManagementFragment.java # Test DPC UI with Auto-Blocker Switch & App Timers Dialog
 ├── Lock_TestDPC.bat                    # 1-Click USB ADB Script: Lock Test DPC & Protection
 ├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
 ├── Enable_Windows_Protection.bat       # 1-Click Administrator Script: Apply Windows Protection Policies
@@ -90,6 +84,19 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 
 Right-click **`Enable_Windows_Protection.bat`** > **Run as Administrator** (or run `enable_windows_protection.ps1` in Admin PowerShell).
 
+**Applied System Policies:**
+* **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
+* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and blocks X/Twitter, Reddit, Tumblr, Telegram, and Web Proxies to `0.0.0.0`.
+* **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings.
+* **Disables Windows RasMan Service:** Prevents starting the Windows Remote Access VPN service.
+* **Chrome & Edge Registry Policies:**
+  * `IncognitoModeAvailability` = `1` *(Disables Incognito)*
+  * `InPrivateModeAvailability` = `1` *(Disables InPrivate)*
+  * `ForceGoogleSafeSearch` = `1` *(Forces Strict SafeSearch)*
+  * `SafeSitesFilterBehavior` = `1` *(Enforces Chrome adult site filter)*
+  * `DnsOverHttpsMode` = `"off"` *(Disables Secure DNS DoH bypass)*
+  * `URLBlocklist` = `["*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*", "*croxyproxy.com*", "*proxysite.com*", "*hide.me*", "*blockaway.net*"]`
+
 ---
 
 ### 2. Core Essential Chrome & Android Policies
@@ -97,9 +104,25 @@ Right-click **`Enable_Windows_Protection.bat`** > **Run as Administrator** (or r
 When managing policies inside Test DPC (`Unlock_TestDPC.bat`), the primary enforced policies are:
 
 #### ⚙️ Managed Configurations (App Restrictions for Chrome)
-1. **`ForceGoogleSafeSearch` = `true` / `1`**: Forces Strict Google SafeSearch system-wide in Google Chrome.
+1. **`ForceGoogleSafeSearch` = `true` / `1`**: Forces Strict Google SafeSearch system-wide in Google Chrome (completely removes explicit search results and prevents unblurring).
 2. **`SafeSitesFilterBehavior` = `1`**: Enables Chrome's built-in SafeSites automatic adult content filter for all browsing traffic.
-3. **`URLBlocklist`**: `["fboxtv.org", "x.com", "twitter.com", "twimg.com", "reddit.com", "redditmedia.com", "redd.it", "tumblr.com", "telegram.org", "t.me"]`.
+3. **`URLBlocklist`**: `["*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*"]`.
+
+#### 🔒 Critical User Restrictions (In Test DPC)
+1. **`Disallow config VPN` (`DISALLOW_CONFIG_VPN`)**: Completely disables adding, editing, or configuring VPN connections in Settings.
+2. **`Disallow uninstall apps` (`DISALLOW_UNINSTALL_APPS`)**: Prevents uninstalling protected applications from the phone UI.
+3. **`Disallow apps control` (`DISALLOW_APPS_CONTROL`)**: Prevents clearing app data, modifying app permissions, or force-stopping apps in Android Settings.
+4. **`Disallow install from unknown sources` (`DISALLOW_INSTALL_UNKNOWN_SOURCES`)**: Blocks installing APK files from outside the Google Play Store.
+
+---
+
+### 3. Private DNS Configuration (Cloudflare Family)
+
+* **Preferred Private DNS:** `family.cloudflare-dns.com` (Cloudflare Family DNS).
+
+On your phone, go to **Settings > Network & Internet > Private DNS**:
+* Select **Private DNS provider hostname** and enter:
+  `family.cloudflare-dns.com`
 
 ---
 
@@ -108,10 +131,23 @@ When managing policies inside Test DPC (`Unlock_TestDPC.bat`), the primary enfor
 * **🔒 To Lock Everything (Default Protection State):**  
   Double-click `Lock_TestDPC.bat`. Opening Test DPC will display:
   > *"Protection Active! Connect via USB ADB to unlock."*
-  and instantly close.
+  and instantly close, preventing any policy, timer, or browser blocker changes on impulse.
 
 * **🔓 To Maintenance / Update Policies & Timers:**  
   Plug your phone into PC via USB cable and double-click `Unlock_TestDPC.bat`. Open Test DPC on your phone to configure policies, adjust app timers, or toggle settings. When finished, double-click `Lock_TestDPC.bat`.
+
+---
+
+## 🔨 Building Test DPC from Source
+
+You can build the merged APK directly from PowerShell using local Gradle:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "build_merged_dpc.ps1"
+```
+
+The compiled APK will be created at:
+`testdpc_source\app\build\outputs\apk\normal\debug\TestDPC-normal-debug.apk`
 
 ---
 

@@ -89,10 +89,6 @@ import androidx.core.content.FileProvider;
 import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
 import com.afwsamples.testdpc.NotoriousAppBlocker;
-import com.afwsamples.testdpc.ExperimentalAiScanner;
-import com.afwsamples.testdpc.HeavyAiVisionEngine;
-import com.afwsamples.testdpc.AiScreenShieldService;
-import android.media.projection.MediaProjectionManager;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceManager;
 import androidx.preference.SwitchPreference;
@@ -504,19 +500,11 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     private DpcEditTextPreference mProfileMaxTimeOff;
 
     private static final String BLOCKED_PACKAGE_LIST_KEY = "blocked_package_list";
-    private static final String EXPERIMENTAL_AI_SHIELD_KEY = "experimental_ai_shield";
-    private static final String EXPERIMENTAL_AI_THRESHOLD_KEY = "experimental_ai_threshold";
-    private static final String HEAVY_AI_ENGINE_KEY = "heavy_ai_engine";
-    private static final String HEAVY_AI_THRESHOLD_KEY = "heavy_ai_threshold";
 
     private DpcSwitchPreference mLockdownAdminConfiguredNetworksPreference;
     private DpcSwitchPreference mAutoBlockBrowsersPreference;
     private DpcPreference mAppUsageTimersPreference;
     private DpcPreference mBlockedPackageListPreference;
-    private DpcSwitchPreference mExperimentalAiShieldPreference;
-    private DpcPreference mExperimentalAiThresholdPreference;
-    private DpcSwitchPreference mHeavyAiEnginePreference;
-    private DpcPreference mHeavyAiThresholdPreference;
 
     private GetAccessibilityServicesTask mGetAccessibilityServicesTask = null;
     private GetInputMethodsTask mGetInputMethodsTask = null;
@@ -566,30 +554,6 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         mBlockedPackageListPreference = (DpcPreference) findPreference(BLOCKED_PACKAGE_LIST_KEY);
         if (mBlockedPackageListPreference != null) {
             mBlockedPackageListPreference.setOnPreferenceClickListener(this);
-        }
-
-        mExperimentalAiShieldPreference = (DpcSwitchPreference) findPreference(EXPERIMENTAL_AI_SHIELD_KEY);
-        if (mExperimentalAiShieldPreference != null) {
-            mExperimentalAiShieldPreference.setChecked(ExperimentalAiScanner.isEnabled(getActivity()));
-            mExperimentalAiShieldPreference.setOnPreferenceChangeListener(this);
-        }
-
-        mExperimentalAiThresholdPreference = (DpcPreference) findPreference(EXPERIMENTAL_AI_THRESHOLD_KEY);
-        if (mExperimentalAiThresholdPreference != null) {
-            mExperimentalAiThresholdPreference.setOnPreferenceClickListener(this);
-            mExperimentalAiThresholdPreference.setSummary("Current Threshold: " + ExperimentalAiScanner.getThresholdPercent(getActivity()) + "% (Click to change sensitivity)");
-        }
-
-        mHeavyAiEnginePreference = (DpcSwitchPreference) findPreference(HEAVY_AI_ENGINE_KEY);
-        if (mHeavyAiEnginePreference != null) {
-            mHeavyAiEnginePreference.setChecked(HeavyAiVisionEngine.isEnabled(getActivity()));
-            mHeavyAiEnginePreference.setOnPreferenceChangeListener(this);
-        }
-
-        mHeavyAiThresholdPreference = (DpcPreference) findPreference(HEAVY_AI_THRESHOLD_KEY);
-        if (mHeavyAiThresholdPreference != null) {
-            mHeavyAiThresholdPreference.setOnPreferenceClickListener(this);
-            mHeavyAiThresholdPreference.setSummary("Current Threshold: " + HeavyAiVisionEngine.getThresholdPercent(getActivity()) + "% (Click to change Heavy AI sensitivity)");
         }
 
         EditTextPreference overrideKeySelectionPreference =
@@ -953,12 +917,6 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 return true;
             case BLOCKED_PACKAGE_LIST_KEY:
                 showBlockedPackageListDialog();
-                return true;
-            case EXPERIMENTAL_AI_THRESHOLD_KEY:
-                showAiThresholdDialog();
-                return true;
-            case HEAVY_AI_THRESHOLD_KEY:
-                showHeavyAiThresholdDialog();
                 return true;
             case MANAGE_LOCK_TASK_LIST_KEY:
                 showManageLockTaskListPrompt(R.string.lock_task_title,
@@ -1471,16 +1429,6 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         switch (key) {
             case AUTO_BLOCK_BROWSERS_KEY:
                 BrowserBlocker.setAutoBlockEnabled(getActivity(), (Boolean) newValue);
-                return true;
-            case EXPERIMENTAL_AI_SHIELD_KEY:
-                boolean aiEnabled = (Boolean) newValue;
-                ExperimentalAiScanner.setEnabled(getActivity(), aiEnabled);
-                handleAiShieldToggle(aiEnabled);
-                return true;
-            case HEAVY_AI_ENGINE_KEY:
-                boolean heavyEnabled = (Boolean) newValue;
-                HeavyAiVisionEngine.setEnabled(getActivity(), heavyEnabled);
-                handleAiShieldToggle(heavyEnabled);
                 return true;
             case OVERRIDE_KEY_SELECTION_KEY:
                 preference.setSummary((String) newValue);
@@ -3009,17 +2957,6 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                     break;
                 case INSTALL_APK_PACKAGE_REQUEST_CODE:
                     installApkPackageFromIntent(data);
-                    break;
-                case REQUEST_CODE_SCREEN_CAPTURE:
-                    Activity screenActivity = getActivity();
-                    if (screenActivity != null && data != null) {
-                        Intent serviceIntent = new Intent(screenActivity, AiScreenShieldService.class);
-                        serviceIntent.putExtra(AiScreenShieldService.EXTRA_RESULT_CODE, resultCode);
-                        serviceIntent.putExtra(AiScreenShieldService.EXTRA_DATA_INTENT, data);
-                        androidx.core.content.ContextCompat.startForegroundService(screenActivity, serviceIntent);
-                        Toast.makeText(screenActivity, "🛡️ AI Screen Capture & Black Shield Activated!", Toast.LENGTH_SHORT).show();
-                    }
-                    break;
             }
         }
     }
@@ -4244,138 +4181,5 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         });
         builder.setNegativeButton("Close", null);
         builder.show();
-    }
-
-    private void showAiThresholdDialog() {
-        final Context context = getActivity();
-        if (context == null) return;
-
-        final String[] options = new String[]{
-                "Strict Protection (20% - Blocks revealing outfits & dance media)",
-                "High Sensitivity (25% - Recommended)",
-                "Medium Sensitivity (35% - Balanced)",
-                "Relaxed (45% - Explicit Nudity only)",
-                "Custom Percentage..."
-        };
-
-        new AlertDialog.Builder(context)
-                .setTitle("AI Sensitivity Threshold")
-                .setItems(options, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        int chosenPercent = 25;
-                        if (which == 0) chosenPercent = 20;
-                        else if (which == 1) chosenPercent = 25;
-                        else if (which == 2) chosenPercent = 35;
-                        else if (which == 3) chosenPercent = 45;
-                        else if (which == 4) {
-                            final EditText input = new EditText(context);
-                            input.setInputType(InputType.TYPE_CLASS_NUMBER);
-                            input.setText(String.valueOf(ExperimentalAiScanner.getThresholdPercent(context)));
-                            new AlertDialog.Builder(context)
-                                    .setTitle("Set Custom AI Threshold")
-                                    .setMessage("Enter threshold percentage (10% to 80%):")
-                                    .setView(input)
-                                    .setPositiveButton("Save", new DialogInterface.OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface d, int w) {
-                                            try {
-                                                int val = Integer.parseInt(input.getText().toString().trim());
-                                                ExperimentalAiScanner.setThresholdPercent(context, val);
-                                                mExperimentalAiThresholdPreference.setSummary("Current Threshold: " + ExperimentalAiScanner.getThresholdPercent(context) + "% (Click to change sensitivity)");
-                                                Toast.makeText(context, "AI Threshold set to " + val + "%", Toast.LENGTH_SHORT).show();
-                                            } catch (Exception ignored) {}
-                                        }
-                                    })
-                                    .setNegativeButton("Cancel", null)
-                                    .show();
-                            return;
-                        }
-
-                        ExperimentalAiScanner.setThresholdPercent(context, chosenPercent);
-                        mExperimentalAiThresholdPreference.setSummary("Current Threshold: " + chosenPercent + "% (Click to change sensitivity)");
-                        Toast.makeText(context, "AI Sensitivity set to " + chosenPercent + "%", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
-
-    private void showHeavyAiThresholdDialog() {
-        final Context context = getActivity();
-        if (context == null) return;
-
-        final String[] options = new String[]{
-                "Strict Protection (20% - Blocks revealing outfits, swimwear & dance media)",
-                "High Sensitivity (25% - Recommended Tensor TPU threshold)",
-                "Medium Sensitivity (35% - Balanced)",
-                "Relaxed (45% - Explicit Nudity only)",
-                "Custom Percentage..."
-        };
-
-        new AlertDialog.Builder(context)
-                .setTitle("Heavy AI Sensitivity Threshold")
-                .setItems(options, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        int chosenPercent = 25;
-                        if (which == 0) chosenPercent = 20;
-                        else if (which == 1) chosenPercent = 25;
-                        else if (which == 2) chosenPercent = 35;
-                        else if (which == 3) chosenPercent = 45;
-                        else if (which == 4) {
-                            final EditText input = new EditText(context);
-                            input.setInputType(InputType.TYPE_CLASS_NUMBER);
-                            input.setText(String.valueOf(HeavyAiVisionEngine.getThresholdPercent(context)));
-                            new AlertDialog.Builder(context)
-                                    .setTitle("Set Custom Heavy AI Threshold")
-                                    .setMessage("Enter threshold percentage (10% to 80%):")
-                                    .setView(input)
-                                    .setPositiveButton("Save", new DialogInterface.OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface d, int w) {
-                                            try {
-                                                int val = Integer.parseInt(input.getText().toString().trim());
-                                                HeavyAiVisionEngine.setThresholdPercent(context, val);
-                                                mHeavyAiThresholdPreference.setSummary("Current Threshold: " + HeavyAiVisionEngine.getThresholdPercent(context) + "% (Click to change Heavy AI sensitivity)");
-                                                Toast.makeText(context, "Heavy AI Threshold set to " + val + "%", Toast.LENGTH_SHORT).show();
-                                            } catch (Exception ignored) {}
-                                        }
-                                    })
-                                    .setNegativeButton("Cancel", null)
-                                    .show();
-                            return;
-                        }
-
-                        HeavyAiVisionEngine.setThresholdPercent(context, chosenPercent);
-                        mHeavyAiThresholdPreference.setSummary("Current Threshold: " + chosenPercent + "% (Click to change Heavy AI sensitivity)");
-                        Toast.makeText(context, "Heavy AI Sensitivity set to " + chosenPercent + "%", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
-
-    private static final int REQUEST_CODE_SCREEN_CAPTURE = 9988;
-
-    private void handleAiShieldToggle(boolean enabled) {
-        Activity activity = getActivity();
-        if (activity == null) return;
-
-        if (enabled) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + activity.getPackageName()));
-                startActivity(intent);
-                Toast.makeText(activity, "Please grant 'Display over other apps' permission for AI Black Shield Overlay", Toast.LENGTH_LONG).show();
-            }
-
-            MediaProjectionManager projectionManager = (MediaProjectionManager) activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-            if (projectionManager != null) {
-                startActivityForResult(projectionManager.createScreenCaptureIntent(), REQUEST_CODE_SCREEN_CAPTURE);
-            }
-        } else {
-            activity.stopService(new Intent(activity, AiScreenShieldService.class));
-            Toast.makeText(activity, "AI Screen Shield Service Stopped", Toast.LENGTH_SHORT).show();
-        }
     }
 }

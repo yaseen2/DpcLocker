@@ -42,30 +42,6 @@
             android:summary="View and manage blocked notorious apps (X, Reddit, Tumblr, Telegram, etc.)"
             testdpc:admin="deviceOwner"
             testdpc:minSdkVersion="L" />
-        <com.afwsamples.testdpc.common.preference.DpcSwitchPreference
-            android:key="experimental_ai_shield"
-            android:title="Experimental AI Screen Shield"
-            android:summary="Experimental on-device AI screen analyzer for explicit content. (OFF by default to conserve battery)."
-            testdpc:admin="deviceOwner"
-            testdpc:minSdkVersion="L" />
-        <com.afwsamples.testdpc.common.preference.DpcPreference
-            android:key="experimental_ai_threshold"
-            android:title="AI Sensitivity Threshold"
-            android:summary="Set screen density threshold (e.g. 20%-25% Strict for dance/revealing media, 45% Explicit Nudity)."
-            testdpc:admin="deviceOwner"
-            testdpc:minSdkVersion="L" />
-        <com.afwsamples.testdpc.common.preference.DpcSwitchPreference
-            android:key="heavy_ai_engine"
-            android:title="Heavy AI Tensor Engine (Pixel TPU Accelerated)"
-            android:summary="Deep Learning Neural Network Classifier hardware-accelerated for Google Pixel Tensor TPU. (OFF by default)."
-            testdpc:admin="deviceOwner"
-            testdpc:minSdkVersion="L" />
-        <com.afwsamples.testdpc.common.preference.DpcPreference
-            android:key="heavy_ai_threshold"
-            android:title="Heavy AI Sensitivity Threshold"
-            android:summary="Set Neural Network sensitivity threshold (e.g. 20% Strict for dance reels/revealing media, 45% Nudity)."
-            testdpc:admin="deviceOwner"
-            testdpc:minSdkVersion="L" />
     </PreferenceCategory>
 
     <com.afwsamples.testdpc.common.preference.DpcPreference
