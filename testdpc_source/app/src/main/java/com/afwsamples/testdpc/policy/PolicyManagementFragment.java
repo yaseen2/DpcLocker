@@ -91,6 +91,8 @@ import androidx.preference.ListPreference;
 import com.afwsamples.testdpc.NotoriousAppBlocker;
 import com.afwsamples.testdpc.ExperimentalAiScanner;
 import com.afwsamples.testdpc.HeavyAiVisionEngine;
+import com.afwsamples.testdpc.AiScreenShieldService;
+import android.media.projection.MediaProjectionManager;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceManager;
 import androidx.preference.SwitchPreference;
@@ -1473,12 +1475,12 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
             case EXPERIMENTAL_AI_SHIELD_KEY:
                 boolean aiEnabled = (Boolean) newValue;
                 ExperimentalAiScanner.setEnabled(getActivity(), aiEnabled);
-                Toast.makeText(getActivity(), "Experimental AI Shield " + (aiEnabled ? "Enabled" : "Disabled"), Toast.LENGTH_SHORT).show();
+                handleAiShieldToggle(aiEnabled);
                 return true;
             case HEAVY_AI_ENGINE_KEY:
                 boolean heavyEnabled = (Boolean) newValue;
                 HeavyAiVisionEngine.setEnabled(getActivity(), heavyEnabled);
-                Toast.makeText(getActivity(), "Heavy AI Tensor Engine " + (heavyEnabled ? "Activated (Google TPU Accelerated)" : "Deactivated"), Toast.LENGTH_SHORT).show();
+                handleAiShieldToggle(heavyEnabled);
                 return true;
             case OVERRIDE_KEY_SELECTION_KEY:
                 preference.setSummary((String) newValue);
@@ -3007,6 +3009,17 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                     break;
                 case INSTALL_APK_PACKAGE_REQUEST_CODE:
                     installApkPackageFromIntent(data);
+                    break;
+                case REQUEST_CODE_SCREEN_CAPTURE:
+                    Activity screenActivity = getActivity();
+                    if (screenActivity != null && data != null) {
+                        Intent serviceIntent = new Intent(screenActivity, AiScreenShieldService.class);
+                        serviceIntent.putExtra(AiScreenShieldService.EXTRA_RESULT_CODE, resultCode);
+                        serviceIntent.putExtra(AiScreenShieldService.EXTRA_DATA_INTENT, data);
+                        androidx.core.content.ContextCompat.startForegroundService(screenActivity, serviceIntent);
+                        Toast.makeText(screenActivity, "🛡️ AI Screen Capture & Black Shield Activated!", Toast.LENGTH_SHORT).show();
+                    }
+                    break;
             }
         }
     }
@@ -4341,5 +4354,28 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private static final int REQUEST_CODE_SCREEN_CAPTURE = 9988;
+
+    private void handleAiShieldToggle(boolean enabled) {
+        Activity activity = getActivity();
+        if (activity == null) return;
+
+        if (enabled) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + activity.getPackageName()));
+                startActivity(intent);
+                Toast.makeText(activity, "Please grant 'Display over other apps' permission for AI Black Shield Overlay", Toast.LENGTH_LONG).show();
+            }
+
+            MediaProjectionManager projectionManager = (MediaProjectionManager) activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+            if (projectionManager != null) {
+                startActivityForResult(projectionManager.createScreenCaptureIntent(), REQUEST_CODE_SCREEN_CAPTURE);
+            }
+        } else {
+            activity.stopService(new Intent(activity, AiScreenShieldService.class));
+            Toast.makeText(activity, "AI Screen Shield Service Stopped", Toast.LENGTH_SHORT).show();
+        }
     }
 }
