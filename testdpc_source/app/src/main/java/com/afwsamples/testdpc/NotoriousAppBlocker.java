@@ -78,7 +78,7 @@ public class NotoriousAppBlocker {
                 DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
                 if (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName())) {
                     dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{packageName}, true);
-                    dpm.setUninstallBlocked(DeviceAdminReceiver.getComponentName(context), packageName, true);
+                    dpm.setUninstallBlocked(DeviceAdminReceiver.getComponentName(context), packageName, false);
                     Log.i(TAG, "AUTO-BLOCKED NOTORIOUS APP INSTALLED: " + packageName);
                 }
             } catch (Exception e) {
