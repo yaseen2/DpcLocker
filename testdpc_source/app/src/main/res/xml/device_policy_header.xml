@@ -42,6 +42,12 @@
             android:summary="View and manage blocked notorious apps (X, Reddit, Tumblr, Telegram, etc.)"
             testdpc:admin="deviceOwner"
             testdpc:minSdkVersion="L" />
+        <com.afwsamples.testdpc.common.preference.DpcSwitchPreference
+            android:key="experimental_ai_shield"
+            android:title="Experimental AI Screen Shield"
+            android:summary="Experimental on-device AI screen analyzer for explicit content. (OFF by default to conserve battery)."
+            testdpc:admin="deviceOwner"
+            testdpc:minSdkVersion="L" />
     </PreferenceCategory>
 
     <com.afwsamples.testdpc.common.preference.DpcPreference

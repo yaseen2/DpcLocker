@@ -89,6 +89,7 @@ import androidx.core.content.FileProvider;
 import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
 import com.afwsamples.testdpc.NotoriousAppBlocker;
+import com.afwsamples.testdpc.ExperimentalAiScanner;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceManager;
 import androidx.preference.SwitchPreference;
@@ -500,11 +501,13 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     private DpcEditTextPreference mProfileMaxTimeOff;
 
     private static final String BLOCKED_PACKAGE_LIST_KEY = "blocked_package_list";
+    private static final String EXPERIMENTAL_AI_SHIELD_KEY = "experimental_ai_shield";
 
     private DpcSwitchPreference mLockdownAdminConfiguredNetworksPreference;
     private DpcSwitchPreference mAutoBlockBrowsersPreference;
     private DpcPreference mAppUsageTimersPreference;
     private DpcPreference mBlockedPackageListPreference;
+    private DpcSwitchPreference mExperimentalAiShieldPreference;
 
     private GetAccessibilityServicesTask mGetAccessibilityServicesTask = null;
     private GetInputMethodsTask mGetInputMethodsTask = null;
@@ -554,6 +557,12 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         mBlockedPackageListPreference = (DpcPreference) findPreference(BLOCKED_PACKAGE_LIST_KEY);
         if (mBlockedPackageListPreference != null) {
             mBlockedPackageListPreference.setOnPreferenceClickListener(this);
+        }
+
+        mExperimentalAiShieldPreference = (DpcSwitchPreference) findPreference(EXPERIMENTAL_AI_SHIELD_KEY);
+        if (mExperimentalAiShieldPreference != null) {
+            mExperimentalAiShieldPreference.setChecked(ExperimentalAiScanner.isEnabled(getActivity()));
+            mExperimentalAiShieldPreference.setOnPreferenceChangeListener(this);
         }
 
         EditTextPreference overrideKeySelectionPreference =
@@ -1429,6 +1438,11 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         switch (key) {
             case AUTO_BLOCK_BROWSERS_KEY:
                 BrowserBlocker.setAutoBlockEnabled(getActivity(), (Boolean) newValue);
+                return true;
+            case EXPERIMENTAL_AI_SHIELD_KEY:
+                boolean aiEnabled = (Boolean) newValue;
+                ExperimentalAiScanner.setEnabled(getActivity(), aiEnabled);
+                Toast.makeText(getActivity(), "Experimental AI Shield " + (aiEnabled ? "Enabled" : "Disabled"), Toast.LENGTH_SHORT).show();
                 return true;
             case OVERRIDE_KEY_SELECTION_KEY:
                 preference.setSummary((String) newValue);
