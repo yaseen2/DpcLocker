@@ -51,6 +51,7 @@ public class BrowserBlocker {
                             Log.i(TAG, "LauncherApps onPackageAdded: " + packageName);
                             checkAndSuspendPackage(context, packageName);
                             AppTimerManager.checkAndEnforceLimits(context);
+                            NotoriousAppBlocker.checkAndSuspendNotoriousPackage(context, packageName);
                         }
 
                         @Override

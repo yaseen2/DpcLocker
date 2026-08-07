@@ -88,6 +88,7 @@ import androidx.annotation.StringRes;
 import androidx.core.content.FileProvider;
 import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
+import com.afwsamples.testdpc.NotoriousAppBlocker;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceManager;
 import androidx.preference.SwitchPreference;
@@ -498,9 +499,12 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     private DpcSwitchPreference mSuspendPersonalApps;
     private DpcEditTextPreference mProfileMaxTimeOff;
 
+    private static final String BLOCKED_PACKAGE_LIST_KEY = "blocked_package_list";
+
     private DpcSwitchPreference mLockdownAdminConfiguredNetworksPreference;
     private DpcSwitchPreference mAutoBlockBrowsersPreference;
     private DpcPreference mAppUsageTimersPreference;
+    private DpcPreference mBlockedPackageListPreference;
 
     private GetAccessibilityServicesTask mGetAccessibilityServicesTask = null;
     private GetInputMethodsTask mGetInputMethodsTask = null;
@@ -545,6 +549,11 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         mAppUsageTimersPreference = (DpcPreference) findPreference(APP_USAGE_TIMERS_KEY);
         if (mAppUsageTimersPreference != null) {
             mAppUsageTimersPreference.setOnPreferenceClickListener(this);
+        }
+
+        mBlockedPackageListPreference = (DpcPreference) findPreference(BLOCKED_PACKAGE_LIST_KEY);
+        if (mBlockedPackageListPreference != null) {
+            mBlockedPackageListPreference.setOnPreferenceClickListener(this);
         }
 
         EditTextPreference overrideKeySelectionPreference =
@@ -905,6 +914,9 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 return true;
             case APP_USAGE_TIMERS_KEY:
                 showAppUsageTimersDialog();
+                return true;
+            case BLOCKED_PACKAGE_LIST_KEY:
+                showBlockedPackageListDialog();
                 return true;
             case MANAGE_LOCK_TASK_LIST_KEY:
                 showManageLockTaskListPrompt(R.string.lock_task_title,
@@ -4100,6 +4112,71 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                         })
                         .setNegativeButton("Cancel", null)
                         .show();
+            }
+        });
+        builder.setNegativeButton("Close", null);
+        builder.show();
+    }
+
+    private void showBlockedPackageListDialog() {
+        final Context context = getActivity();
+        if (context == null) return;
+
+        Set<String> blockedSet = NotoriousAppBlocker.getBlockedPackages(context);
+        final List<String> blockedList = new java.util.ArrayList<>(blockedSet);
+        java.util.Collections.sort(blockedList);
+
+        final String[] items = new String[blockedList.size() + 1];
+        for (int i = 0; i < blockedList.size(); i++) {
+            String pkg = blockedList.get(i);
+            boolean installed = false;
+            try {
+                context.getPackageManager().getPackageInfo(pkg, 0);
+                installed = true;
+            } catch (Exception ignored) {}
+            items[i] = pkg + (installed ? " [INSTALLED & BLOCKED]" : " [BLOCKED]");
+        }
+        items[blockedList.size()] = "+ Add Package to Blocklist";
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle("Blocked Apps & Package Blocklist");
+        builder.setItems(items, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                if (which == blockedList.size()) {
+                    final EditText input = new EditText(context);
+                    input.setHint("e.g. com.reddit.frontpage");
+                    new AlertDialog.Builder(context)
+                            .setTitle("Add Package to Blocklist")
+                            .setMessage("Enter Android package name to block:")
+                            .setView(input)
+                            .setPositiveButton("Add & Block", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface d, int w) {
+                                    String pkg = input.getText().toString().trim();
+                                    if (!pkg.isEmpty()) {
+                                        NotoriousAppBlocker.addPackageToBlocklist(context, pkg);
+                                        Toast.makeText(context, "Added & blocked: " + pkg, Toast.LENGTH_SHORT).show();
+                                    }
+                                }
+                            })
+                            .setNegativeButton("Cancel", null)
+                            .show();
+                } else {
+                    final String selectedPkg = blockedList.get(which);
+                    new AlertDialog.Builder(context)
+                            .setTitle("Manage Blocked Package")
+                            .setMessage("Package: " + selectedPkg)
+                            .setPositiveButton("Remove from Blocklist", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface d, int w) {
+                                    NotoriousAppBlocker.removePackageFromBlocklist(context, selectedPkg);
+                                    Toast.makeText(context, "Unblocked: " + selectedPkg, Toast.LENGTH_SHORT).show();
+                                }
+                            })
+                            .setNegativeButton("Cancel", null)
+                            .show();
+                }
             }
         });
         builder.setNegativeButton("Close", null);

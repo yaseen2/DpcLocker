@@ -33,7 +33,13 @@
         <com.afwsamples.testdpc.common.preference.DpcPreference
             android:key="app_usage_timers"
             android:title="App Daily Usage Timers"
-            android:summary="Set daily time limits per app (Family Link style). Apps freeze automatically when limit is reached."
+            android:summary="Configure impulse-proof daily screen-on usage limits per application."
+            testdpc:admin="deviceOwner"
+            testdpc:minSdkVersion="L" />
+        <com.afwsamples.testdpc.common.preference.DpcPreference
+            android:key="blocked_package_list"
+            android:title="Blocked Apps &amp; Package Blocklist"
+            android:summary="View and manage blocked notorious apps (X, Reddit, Tumblr, Telegram, etc.)"
             testdpc:admin="deviceOwner"
             testdpc:minSdkVersion="L" />
     </PreferenceCategory>
