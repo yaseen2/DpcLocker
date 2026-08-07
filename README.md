@@ -43,11 +43,12 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 
 ### 💻 4. Windows 10/11 PC Protection Architecture
 * **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
-* **X (Twitter) Text-Only Platform Mode:** Maps X media domains (`pbs.twimg.com` and `video.twimg.com`) to `0.0.0.0` in `hosts` file and adds `*pbs.twimg.com*` & `*video.twimg.com*` to Chrome & Edge `URLBlocklist`. Text tweets load normally while **100% of images, GIFs, and videos on X are blocked system-wide**.
+* **Total X (Twitter) Lockdown:** Maps `x.com`, `twitter.com`, and `twimg.com` domains to `0.0.0.0` in `hosts` file and adds `*x.com*`, `*twitter.com*`, and `*twimg.com*` to Chrome & Edge `URLBlocklist`. Opening X displays *"This site is blocked by your administrator"*.
 * **Chrome & Edge Registry Policies:**
   * **`ForceGoogleSafeSearch`**: Forces Strict Google SafeSearch system-wide in Chrome.
   * **`SafeSitesFilterBehavior`**: Enforces Chrome's built-in SafeSites adult content filter for all web traffic.
   * **`IncognitoModeAvailability` / `InPrivateModeAvailability`**: Disables Incognito in Chrome & InPrivate in Edge.
+  * **`DnsOverHttpsMode` = `"off"`**: Disables Chrome's Secure DNS bypass to enforce system `hosts` policy.
 * **Windows VPN & Proxy Lock (`DISALLOW_CONFIG_VPN`):** Disables adding new VPN connections or proxy servers in Windows Settings, and disables the Windows `RasMan` Remote Access VPN service.
 
 ---
@@ -68,8 +69,9 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 │           └── PolicyManagementFragment.java # Test DPC UI with Auto-Blocker Switch & App Timers Dialog
 ├── Lock_TestDPC.bat                    # 1-Click USB ADB Script: Lock Test DPC & Protection
 ├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
+├── Enable_Windows_Protection.bat       # 1-Click Administrator Script: Apply Windows Protection Policies
 ├── build_merged_dpc.ps1                # PowerShell Script to compile Test DPC APK
-├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, Cloudflare DNS, X-Media Block & VPN Lock)
+├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, Cloudflare DNS, Total X Block & VPN Lock)
 ├── enable_windows_protection.reg       # Windows Registry (.reg) Policy Export
 └── README.md                           # Comprehensive Documentation
 ```
@@ -78,13 +80,13 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 
 ## 🛠️ Complete Setup Guide
 
-### 1. Windows Setup (Adult Content, SafeSearch, X Text-Only & VPN Lock)
+### 1. Windows Setup (Adult Content, SafeSearch, Total X Block & VPN Lock)
 
-Open PowerShell as Administrator and run `enable_windows_protection.ps1` (or double-click `enable_windows_protection.reg`).
+Right-click **`Enable_Windows_Protection.bat`** > **Run as Administrator** (or run `enable_windows_protection.ps1` in Admin PowerShell).
 
 **Applied System Policies:**
 * **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
-* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and blocks X/Twitter media (`pbs.twimg.com` and `video.twimg.com`) to `0.0.0.0`.
+* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and blocks X/Twitter (`x.com`, `twitter.com`, `twimg.com`) to `0.0.0.0`.
 * **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings.
 * **Disables Windows RasMan Service:** Prevents starting the Windows Remote Access VPN service.
 * **Chrome & Edge Registry Policies:**
@@ -92,7 +94,8 @@ Open PowerShell as Administrator and run `enable_windows_protection.ps1` (or dou
   * `InPrivateModeAvailability` = `1` *(Disables InPrivate)*
   * `ForceGoogleSafeSearch` = `1` *(Forces Strict SafeSearch)*
   * `SafeSitesFilterBehavior` = `1` *(Enforces Chrome adult site filter)*
-  * `URLBlocklist` = `["*fboxtv.org*", "*pbs.twimg.com*", "*video.twimg.com*"]` *(Turns X into a Text-Only platform)*
+  * `DnsOverHttpsMode` = `"off"` *(Disables Secure DNS DoH bypass)*
+  * `URLBlocklist` = `["*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*"]` *(Completely blocks X/Twitter)*
 
 ---
 
@@ -103,7 +106,7 @@ When managing policies inside Test DPC (`Unlock_TestDPC.bat`), the primary enfor
 #### ⚙️ Managed Configurations (App Restrictions for Chrome)
 1. **`ForceGoogleSafeSearch` = `true` / `1`**: Forces Strict Google SafeSearch system-wide in Google Chrome (completely removes explicit search results and prevents unblurring).
 2. **`SafeSitesFilterBehavior` = `1`**: Enables Chrome's built-in SafeSites automatic adult content filter for all browsing traffic.
-3. **`URLBlocklist`**: `["*pbs.twimg.com*", "*video.twimg.com*"]` *(Blocks all images, GIFs, and videos on X/Twitter)*.
+3. **`URLBlocklist`**: `["*x.com*", "*twitter.com*", "*twimg.com*"]` *(Completely blocks X/Twitter in Chrome)*.
 
 #### 🔒 Critical User Restrictions (In Test DPC)
 1. **`Disallow config VPN` (`DISALLOW_CONFIG_VPN`)**: Completely disables adding, editing, or configuring VPN connections in Settings.

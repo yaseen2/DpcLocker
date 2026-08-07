@@ -16,7 +16,7 @@ foreach ($adapter in $adapters) {
     Write-Host "   [+] Set CleanBrowsing Family DNS on: $($adapter.Name)" -ForegroundColor Green
 }
 
-# 2. Update Hosts File for SafeSearch & Blocked Domains (Including All X/Twitter Media Domains)
+# 2. Update Hosts File for SafeSearch & Blocked Domains (Including Complete X/Twitter Block)
 Write-Host "`n2. Updating System Hosts File for SafeSearch & Domain Block..." -ForegroundColor Yellow
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 $hostsEntries = @(
@@ -27,6 +27,13 @@ $hostsEntries = @(
     "216.239.38.120 strict.bing.com",
     "0.0.0.0 www.fboxtv.org",
     "0.0.0.0 fboxtv.org",
+    "0.0.0.0 x.com",
+    "0.0.0.0 www.x.com",
+    "0.0.0.0 api.x.com",
+    "0.0.0.0 twitter.com",
+    "0.0.0.0 www.twitter.com",
+    "0.0.0.0 mobile.twitter.com",
+    "0.0.0.0 api.twitter.com",
     "0.0.0.0 twimg.com",
     "0.0.0.0 www.twimg.com",
     "0.0.0.0 pbs.twimg.com",
@@ -53,8 +60,8 @@ if ($newEntriesToAdd.Count -gt 0) {
     Write-Host "   [+] All hosts entries are already present." -ForegroundColor Green
 }
 
-# 3. Apply Registry Policies (Chrome, Edge, DoH Disable, Domain Block, VPN & Proxy Lock)
-Write-Host "`n3. Applying Registry Policies (Browser Policies & fboxtv.org / X-Media Block)..." -ForegroundColor Yellow
+# 3. Apply Registry Policies (Chrome, Edge, DoH Disable, Total X/Twitter Block, VPN & Proxy Lock)
+Write-Host "`n3. Applying Registry Policies (Browser Policies & fboxtv.org / X Total Block)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
 Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies" -ForegroundColor Green

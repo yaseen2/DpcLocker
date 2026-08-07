@@ -1,7 +1,7 @@
 Windows Registry Editor Version 5.00
 
 ; ========================================================
-; GOOGLE CHROME - ADULT CONTENT, INCOGNITO, DOH DISABLE & DOMAIN BLOCK
+; GOOGLE CHROME - ADULT CONTENT, INCOGNITO, DOH DISABLE & TOTAL DOMAIN BLOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
 "IncognitoModeAvailability"=dword:00000001
@@ -11,13 +11,12 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\URLBlocklist]
 "1"="*fboxtv.org*"
-"2"="*twimg.com*"
-"3"="*pbs.twimg.com*"
-"4"="*video.twimg.com*"
-"5"="*abs.twimg.com*"
+"2"="*x.com*"
+"3"="*twitter.com*"
+"4"="*twimg.com*"
 
 ; ========================================================
-; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE, DOH DISABLE & DOMAIN BLOCK
+; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE, DOH DISABLE & TOTAL DOMAIN BLOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
@@ -26,10 +25,9 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist]
 "1"="*fboxtv.org*"
-"2"="*twimg.com*"
-"3"="*pbs.twimg.com*"
-"4"="*video.twimg.com*"
-"5"="*abs.twimg.com*"
+"2"="*x.com*"
+"3"="*twitter.com*"
+"4"="*twimg.com*"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES
