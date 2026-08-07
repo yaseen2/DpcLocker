@@ -7,6 +7,7 @@ Windows Registry Editor Version 5.00
 "IncognitoModeAvailability"=dword:00000001
 "ForceGoogleSafeSearch"=dword:00000001
 "SafeSitesFilterBehavior"=dword:00000001
+"ForceYouTubeRestrict"=dword:00000000
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
 
@@ -33,6 +34,7 @@ Windows Registry Editor Version 5.00
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
 "ForceGoogleSafeSearch"=dword:00000001
+"ForceYouTubeRestrict"=dword:00000000
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
 

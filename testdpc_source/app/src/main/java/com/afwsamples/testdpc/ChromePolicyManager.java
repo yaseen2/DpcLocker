@@ -32,6 +32,9 @@ public class ChromePolicyManager {
             // 3. Enable Chrome SafeSites Adult Content Filter (SafeSitesFilterBehavior = 1)
             chromeBundle.putInt("SafeSitesFilterBehavior", 1);
 
+            // Enable YouTube Comments (ForceYouTubeRestrict = 0)
+            chromeBundle.putInt("ForceYouTubeRestrict", 0);
+
             // 4. Force Direct Connections (Disables Proxy/VPN Extensions)
             chromeBundle.putString("ProxyMode", "direct");
 
