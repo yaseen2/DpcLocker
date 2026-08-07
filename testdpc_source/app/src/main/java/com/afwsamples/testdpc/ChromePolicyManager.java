@@ -1,5 +1,6 @@
 package com.afwsamples.testdpc;
 
+import android.app.ActivityManager;
 import android.app.admin.DevicePolicyManager;
 import android.content.Context;
 import android.os.Bundle;
@@ -28,27 +29,34 @@ public class ChromePolicyManager {
             // 3. Enable Chrome SafeSites Adult Content Filter (SafeSitesFilterBehavior = 1)
             chromeBundle.putInt("SafeSitesFilterBehavior", 1);
 
-            // 4. Default Notorious Domain Blocklist (URLBlocklist) including fboxtv.org, X, Reddit, Tumblr, Telegram, Proxies
+            // 4. Default Notorious Domain Blocklist (URLBlocklist & legacy URLBlacklist) using standard Chrome URL patterns
             String[] urlBlocklist = new String[]{
-                "*fboxtv.org*",
-                "*x.com*",
-                "*twitter.com*",
-                "*twimg.com*",
-                "*reddit.com*",
-                "*redditmedia.com*",
-                "*redd.it*",
-                "*tumblr.com*",
-                "*telegram.org*",
-                "*t.me*",
-                "*croxyproxy.com*",
-                "*proxysite.com*",
-                "*hide.me*",
-                "*blockaway.net*"
+                "fboxtv.org",
+                "x.com",
+                "twitter.com",
+                "twimg.com",
+                "reddit.com",
+                "redditmedia.com",
+                "redd.it",
+                "tumblr.com",
+                "telegram.org",
+                "t.me",
+                "croxyproxy.com",
+                "proxysite.com",
+                "hide.me",
+                "blockaway.net"
             };
             chromeBundle.putStringArray("URLBlocklist", urlBlocklist);
+            chromeBundle.putStringArray("URLBlacklist", urlBlocklist);
 
             dpm.setApplicationRestrictions(DeviceAdminReceiver.getComponentName(context), CHROME_PACKAGE, chromeBundle);
-            Log.i(TAG, "Successfully enforced default Chrome policies & domain blocklist (fboxtv.org, X, Reddit, Tumblr, Telegram, Proxies)");
+            Log.i(TAG, "Successfully enforced default Chrome policies & domain blocklist");
+
+            // Kill background process of Chrome to force re-initialization of policies
+            ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                am.killBackgroundProcesses(CHROME_PACKAGE);
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error enforcing default Chrome policies", e);
         }
