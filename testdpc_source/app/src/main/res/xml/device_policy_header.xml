@@ -48,6 +48,12 @@
             android:summary="Experimental on-device AI screen analyzer for explicit content. (OFF by default to conserve battery)."
             testdpc:admin="deviceOwner"
             testdpc:minSdkVersion="L" />
+        <com.afwsamples.testdpc.common.preference.DpcPreference
+            android:key="experimental_ai_threshold"
+            android:title="AI Sensitivity Threshold"
+            android:summary="Set screen density threshold (e.g. 20%-25% Strict for dance/revealing media, 45% Explicit Nudity)."
+            testdpc:admin="deviceOwner"
+            testdpc:minSdkVersion="L" />
     </PreferenceCategory>
 
     <com.afwsamples.testdpc.common.preference.DpcPreference

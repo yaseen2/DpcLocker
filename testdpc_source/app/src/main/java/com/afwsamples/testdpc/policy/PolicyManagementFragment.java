@@ -502,12 +502,14 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
 
     private static final String BLOCKED_PACKAGE_LIST_KEY = "blocked_package_list";
     private static final String EXPERIMENTAL_AI_SHIELD_KEY = "experimental_ai_shield";
+    private static final String EXPERIMENTAL_AI_THRESHOLD_KEY = "experimental_ai_threshold";
 
     private DpcSwitchPreference mLockdownAdminConfiguredNetworksPreference;
     private DpcSwitchPreference mAutoBlockBrowsersPreference;
     private DpcPreference mAppUsageTimersPreference;
     private DpcPreference mBlockedPackageListPreference;
     private DpcSwitchPreference mExperimentalAiShieldPreference;
+    private DpcPreference mExperimentalAiThresholdPreference;
 
     private GetAccessibilityServicesTask mGetAccessibilityServicesTask = null;
     private GetInputMethodsTask mGetInputMethodsTask = null;
@@ -563,6 +565,12 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         if (mExperimentalAiShieldPreference != null) {
             mExperimentalAiShieldPreference.setChecked(ExperimentalAiScanner.isEnabled(getActivity()));
             mExperimentalAiShieldPreference.setOnPreferenceChangeListener(this);
+        }
+
+        mExperimentalAiThresholdPreference = (DpcPreference) findPreference(EXPERIMENTAL_AI_THRESHOLD_KEY);
+        if (mExperimentalAiThresholdPreference != null) {
+            mExperimentalAiThresholdPreference.setOnPreferenceClickListener(this);
+            mExperimentalAiThresholdPreference.setSummary("Current Threshold: " + ExperimentalAiScanner.getThresholdPercent(getActivity()) + "% (Click to change sensitivity)");
         }
 
         EditTextPreference overrideKeySelectionPreference =
@@ -926,6 +934,9 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 return true;
             case BLOCKED_PACKAGE_LIST_KEY:
                 showBlockedPackageListDialog();
+                return true;
+            case EXPERIMENTAL_AI_THRESHOLD_KEY:
+                showAiThresholdDialog();
                 return true;
             case MANAGE_LOCK_TASK_LIST_KEY:
                 showManageLockTaskListPrompt(R.string.lock_task_title,
@@ -4195,5 +4206,60 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         });
         builder.setNegativeButton("Close", null);
         builder.show();
+    }
+
+    private void showAiThresholdDialog() {
+        final Context context = getActivity();
+        if (context == null) return;
+
+        final String[] options = new String[]{
+                "Strict Protection (20% - Blocks revealing outfits & dance media)",
+                "High Sensitivity (25% - Recommended)",
+                "Medium Sensitivity (35% - Balanced)",
+                "Relaxed (45% - Explicit Nudity only)",
+                "Custom Percentage..."
+        };
+
+        new AlertDialog.Builder(context)
+                .setTitle("AI Sensitivity Threshold")
+                .setItems(options, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        int chosenPercent = 25;
+                        if (which == 0) chosenPercent = 20;
+                        else if (which == 1) chosenPercent = 25;
+                        else if (which == 2) chosenPercent = 35;
+                        else if (which == 3) chosenPercent = 45;
+                        else if (which == 4) {
+                            final EditText input = new EditText(context);
+                            input.setInputType(InputType.TYPE_CLASS_NUMBER);
+                            input.setText(String.valueOf(ExperimentalAiScanner.getThresholdPercent(context)));
+                            new AlertDialog.Builder(context)
+                                    .setTitle("Set Custom AI Threshold")
+                                    .setMessage("Enter threshold percentage (10% to 80%):")
+                                    .setView(input)
+                                    .setPositiveButton("Save", new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface d, int w) {
+                                            try {
+                                                int val = Integer.parseInt(input.getText().toString().trim());
+                                                ExperimentalAiScanner.setThresholdPercent(context, val);
+                                                mExperimentalAiThresholdPreference.setSummary("Current Threshold: " + ExperimentalAiScanner.getThresholdPercent(context) + "% (Click to change sensitivity)");
+                                                Toast.makeText(context, "AI Threshold set to " + val + "%", Toast.LENGTH_SHORT).show();
+                                            } catch (Exception ignored) {}
+                                        }
+                                    })
+                                    .setNegativeButton("Cancel", null)
+                                    .show();
+                            return;
+                        }
+
+                        ExperimentalAiScanner.setThresholdPercent(context, chosenPercent);
+                        mExperimentalAiThresholdPreference.setSummary("Current Threshold: " + chosenPercent + "% (Click to change sensitivity)");
+                        Toast.makeText(context, "AI Sensitivity set to " + chosenPercent + "%", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 }

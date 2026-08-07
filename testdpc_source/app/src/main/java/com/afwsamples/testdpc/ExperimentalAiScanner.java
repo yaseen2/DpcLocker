@@ -7,12 +7,12 @@ import android.graphics.Color;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
-import android.widget.Toast;
 
 public class ExperimentalAiScanner {
     private static final String TAG = "ExperimentalAiScanner";
     private static final String PREF_NAME = "dpclocker_ai_scanner";
     private static final String KEY_ENABLED = "ai_shield_enabled";
+    private static final String KEY_THRESHOLD_PERCENT = "ai_threshold_percent";
 
     private static HandlerThread sHandlerThread;
     private static Handler sBackgroundHandler;
@@ -35,6 +35,17 @@ public class ExperimentalAiScanner {
         }
     }
 
+    public static int getThresholdPercent(Context context) {
+        return getPrefs(context).getInt(KEY_THRESHOLD_PERCENT, 25); // Default 25% for strict protection
+    }
+
+    public static void setThresholdPercent(Context context, int percent) {
+        if (percent < 10) percent = 10;
+        if (percent > 80) percent = 80;
+        getPrefs(context).edit().putInt(KEY_THRESHOLD_PERCENT, percent).apply();
+        Log.i(TAG, "Updated AI Sensitivity Threshold to: " + percent + "%");
+    }
+
     public static synchronized void startScanner(final Context context) {
         if (sIsRunning) return;
         sIsRunning = true;
@@ -43,7 +54,7 @@ public class ExperimentalAiScanner {
         sHandlerThread.start();
         sBackgroundHandler = new Handler(sHandlerThread.getLooper());
 
-        Log.i(TAG, "Experimental AI Screen Shield Started");
+        Log.i(TAG, "Experimental AI Screen Shield Started with threshold: " + getThresholdPercent(context) + "%");
     }
 
     public static synchronized void stopScanner() {
@@ -57,10 +68,9 @@ public class ExperimentalAiScanner {
     }
 
     /**
-     * Fast Heuristic Vision Classifier: Analyzes a sample Bitmap for high skin-density thresholds.
-     * Returns true if explicit content probability is high (> 75%).
+     * Fast Heuristic Vision Classifier: Analyzes a sample Bitmap for customizable skin-density thresholds.
      */
-    public static boolean analyzeBitmap(Bitmap bitmap) {
+    public static boolean analyzeBitmap(Context context, Bitmap bitmap) {
         if (bitmap == null) return false;
 
         int width = bitmap.getWidth();
@@ -81,7 +91,6 @@ public class ExperimentalAiScanner {
                 Color.colorToHSV(pixel, hsv);
                 float hue = hsv[0];
                 float saturation = hsv[1];
-                float value = hsv[2];
 
                 totalPixels++;
 
@@ -99,8 +108,10 @@ public class ExperimentalAiScanner {
         if (totalPixels == 0) return false;
 
         double skinRatio = (double) skinPixels / totalPixels;
-        Log.d(TAG, "Experimental AI Vision Scan: Skin Ratio = " + String.format("%.2f", skinRatio * 100) + "%");
+        double targetThreshold = getThresholdPercent(context) / 100.0;
 
-        return skinRatio > 0.45; // Threshold for explicit media detection alert
+        Log.d(TAG, "Experimental AI Scan: Skin Ratio = " + String.format("%.2f", skinRatio * 100) + "% / Target Threshold = " + getThresholdPercent(context) + "%");
+
+        return skinRatio > targetThreshold;
     }
 }
