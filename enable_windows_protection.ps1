@@ -29,7 +29,7 @@ Remove-Item -Path "HKLM:\SOFTWARE\Policies\Google\Chrome\URLBlocklist" -Recurse 
 Remove-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "   [+] Purged old registry URLBlocklist keys" -ForegroundColor Green
 
-# 3. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Proxies - Discord Allowed)
+# 3. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Web Stores, Proxies - Discord Allowed)
 Write-Host "`n3. Updating System Hosts File for SafeSearch & Notorious Domains..." -ForegroundColor Yellow
 $hostsEntries = @(
     "216.239.38.120 www.google.com",
@@ -69,7 +69,8 @@ $hostsEntries = @(
     "0.0.0.0 www.croxyproxy.com",
     "0.0.0.0 proxysite.com",
     "0.0.0.0 hide.me",
-    "0.0.0.0 blockaway.net"
+    "0.0.0.0 blockaway.net",
+    "0.0.0.0 chromewebstore.google.com"
 )
 
 $existingContent = [System.IO.File]::ReadAllText($hostsPath)
@@ -89,8 +90,8 @@ if ($newEntriesToAdd.Count -gt 0) {
     Write-Host "   [+] All hosts entries are already present." -ForegroundColor Green
 }
 
-# 4. Apply Registry Policies (Chrome, Edge, DoH Disable, Notorious Domains Block, VPN & Proxy Lock)
-Write-Host "`n4. Applying Registry Policies (Browser Policies & Notorious Domains Block)..." -ForegroundColor Yellow
+# 4. Apply Registry Policies (Chrome, Edge, ProxyLock Direct, Extension Block, Notorious Domains Block, VPN Lock)
+Write-Host "`n4. Applying Registry Policies (Browser Policies, Proxy Direct & Extension Lock)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
 Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies" -ForegroundColor Green

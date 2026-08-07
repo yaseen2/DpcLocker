@@ -32,7 +32,10 @@ public class ChromePolicyManager {
             // 3. Enable Chrome SafeSites Adult Content Filter (SafeSitesFilterBehavior = 1)
             chromeBundle.putInt("SafeSitesFilterBehavior", 1);
 
-            // 4. Default Notorious Domain Blocklist (URLBlocklist & legacy URLBlacklist) using standard Chrome URL patterns
+            // 4. Force Direct Connections (Disables Proxy/VPN Extensions)
+            chromeBundle.putString("ProxyMode", "direct");
+
+            // 5. Default Notorious Domain Blocklist (URLBlocklist & legacy URLBlacklist) using standard Chrome URL patterns
             String[] urlBlocklist = new String[]{
                 "fboxtv.org",
                 "x.com",
@@ -47,7 +50,8 @@ public class ChromePolicyManager {
                 "croxyproxy.com",
                 "proxysite.com",
                 "hide.me",
-                "blockaway.net"
+                "blockaway.net",
+                "chromewebstore.google.com"
             };
             chromeBundle.putStringArray("URLBlocklist", urlBlocklist);
             chromeBundle.putStringArray("URLBlacklist", urlBlocklist);

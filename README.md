@@ -35,7 +35,6 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 * **Native Android System Observers (`UsageStatsManager`):** Monitors daily foreground screen-on usage per package using Android's native `registerAppUsageObserver` system API.
 * **Zero Battery Drain (0% CPU):** The Android OS kernel tracks foreground app usage natively. No background polling loops or timers are used.
 * **Automatic App Suspension on Limit:** The moment an app reaches its configured daily limit (e.g., 30 minutes for YouTube, 15 minutes for Instagram), Android OS notifies Test DPC, which **instantly freezes the app**.
-* **Un-Uninstallable Protection:** Apps with active timers are marked as un-uninstallable (`setUninstallBlocked`). Reinstalling an app during the same day instantly re-suspends it upon installation.
 * **12:00 AM Midnight Auto-Reset:** An `AlarmManager` daily alarm automatically resets usage counters and unsuspends all apps every night at midnight (12:00 AM).
 * **Impulse-Proof Protection:** Because Test DPC is locked via `Lock_TestDPC.bat`, you cannot open Test DPC on your phone to grant yourself "5 more minutes" on impulse.
 
@@ -44,10 +43,11 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 ### 💻 4. Windows 10/11 PC Protection Architecture
 * **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
 * **Total Notorious Domain Lockdown:** Maps X (`x.com`, `twitter.com`, `twimg.com`), Reddit (`reddit.com`, `redditmedia.com`, `redd.it`), Tumblr (`tumblr.com`), Telegram Web (`telegram.org`, `t.me`), and Web Proxies (`croxyproxy.com`, `proxysite.com`, `hide.me`, `blockaway.net`) to `0.0.0.0` in system `hosts` file and adds wildcard entries to Chrome & Edge `URLBlocklist`. *(Discord is allowed)*.
-* **Chrome & Edge Registry Policies:**
+* **Chrome & Edge Extension & Proxy Lockdown:**
+  * **`ProxyMode` = `"direct"`**: Forces direct connections, disabling proxy and VPN extensions from overriding browser network settings.
+  * **`ExtensionInstallBlocklist` = `["*"]`**: Completely blocks installing unapproved Chrome & Edge extensions.
   * **`ForceGoogleSafeSearch`**: Forces Strict Google SafeSearch system-wide in Chrome.
   * **`SafeSitesFilterBehavior`**: Enforces Chrome's built-in SafeSites adult content filter for all web traffic.
-  * **`IncognitoModeAvailability` / `InPrivateModeAvailability`**: Disables Incognito in Chrome & InPrivate in Edge.
   * **`DnsOverHttpsMode` = `"off"`**: Disables Chrome's Secure DNS bypass to enforce system `hosts` policy.
 * **Windows VPN & Proxy Lock (`DISALLOW_CONFIG_VPN`):** Disables adding new VPN connections or proxy servers in Windows Settings, and disables the Windows `RasMan` Remote Access VPN service.
 
@@ -61,7 +61,8 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 │       ├── PolicyManagementActivity.java # Main DPC Activity with USB ADB Lock Guard
 │       ├── SetupManagementActivity.java  # Setup Activity with USB ADB Lock Guard
 │       ├── BrowserBlocker.java           # Pure Dynamic Auto Non-Chrome Browser Blocker Engine
-│       ├── PackageInstallReceiver.java   # Real-Time Package Install BroadcastReceiver
+│       ├── NotoriousAppBlocker.java      # Notorious App Auto-Freezer Engine
+│       ├── ChromePolicyManager.java      # Default Chrome Managed Policies & Proxy Direct Engine
 │       ├── AppTimerManager.java          # Impulse-Proof App Usage Limits & System Observers Engine
 │       ├── AppTimerReceiver.java         # Daily Limit Exceeded & Midnight Reset Receiver
 │       ├── DeviceAdminReceiver.java      # Device Owner Receiver & System Boot Listener
@@ -71,7 +72,7 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 ├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
 ├── Enable_Windows_Protection.bat       # 1-Click Administrator Script: Apply Windows Protection Policies
 ├── build_merged_dpc.ps1                # PowerShell Script to compile Test DPC APK
-├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, Cloudflare DNS, Notorious Domain Block & VPN Lock)
+├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, Cloudflare DNS, Notorious Domain Block, Proxy Direct & VPN Lock)
 ├── enable_windows_protection.reg       # Windows Registry (.reg) Policy Export
 └── README.md                           # Comprehensive Documentation
 ```
@@ -80,13 +81,15 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 
 ## 🛠️ Complete Setup Guide
 
-### 1. Windows Setup (Adult Content, SafeSearch, Notorious Domain Block & VPN Lock)
+### 1. Windows Setup (Adult Content, SafeSearch, Proxy Direct, Extension Lock & VPN Lock)
 
 Right-click **`Enable_Windows_Protection.bat`** > **Run as Administrator** (or run `enable_windows_protection.ps1` in Admin PowerShell).
 
 **Applied System Policies:**
 * **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
 * **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and blocks X/Twitter, Reddit, Tumblr, Telegram, and Web Proxies to `0.0.0.0`.
+* **Proxy Direct Lockdown (`ProxyMode` = `"direct"`):** Forces direct network connections in Chrome and Edge, completely disabling proxy/VPN extensions (like Hide.me, TouchVPN, etc.) from routing traffic.
+* **Extension Blocklist (`ExtensionInstallBlocklist` = `["*"]`):** Prevents installing new Chrome and Edge extensions.
 * **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings.
 * **Disables Windows RasMan Service:** Prevents starting the Windows Remote Access VPN service.
 * **Chrome & Edge Registry Policies:**
@@ -95,7 +98,7 @@ Right-click **`Enable_Windows_Protection.bat`** > **Run as Administrator** (or r
   * `ForceGoogleSafeSearch` = `1` *(Forces Strict SafeSearch)*
   * `SafeSitesFilterBehavior` = `1` *(Enforces Chrome adult site filter)*
   * `DnsOverHttpsMode` = `"off"` *(Disables Secure DNS DoH bypass)*
-  * `URLBlocklist` = `["*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*", "*croxyproxy.com*", "*proxysite.com*", "*hide.me*", "*blockaway.net*"]`
+  * `URLBlocklist` = `["*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*", "*croxyproxy.com*", "*proxysite.com*", "*hide.me*", "*blockaway.net*", "*chromewebstore.google.com*"]`
 
 ---
 
@@ -106,7 +109,8 @@ When managing policies inside Test DPC (`Unlock_TestDPC.bat`), the primary enfor
 #### ⚙️ Managed Configurations (App Restrictions for Chrome)
 1. **`ForceGoogleSafeSearch` = `true` / `1`**: Forces Strict Google SafeSearch system-wide in Google Chrome (completely removes explicit search results and prevents unblurring).
 2. **`SafeSitesFilterBehavior` = `1`**: Enables Chrome's built-in SafeSites automatic adult content filter for all browsing traffic.
-3. **`URLBlocklist`**: `["*x.com*", "*twitter.com*", "*twimg.com*", "*reddit.com*", "*redditmedia.com*", "*redd.it*", "*tumblr.com*", "*telegram.org*", "*t.me*"]`.
+3. **`ProxyMode` = `"direct"`**: Forces direct connections in Android Chrome, preventing proxy extension overrides.
+4. **`URLBlocklist`**: `["fboxtv.org", "x.com", "twitter.com", "twimg.com", "reddit.com", "redditmedia.com", "redd.it", "tumblr.com", "telegram.org", "t.me", "croxyproxy.com", "proxysite.com", "hide.me", "blockaway.net", "chromewebstore.google.com"]`.
 
 #### 🔒 Critical User Restrictions (In Test DPC)
 1. **`Disallow config VPN` (`DISALLOW_CONFIG_VPN`)**: Completely disables adding, editing, or configuring VPN connections in Settings.
