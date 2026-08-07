@@ -10,6 +10,8 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\URLBlocklist]
 "1"="*fboxtv.org*"
+"2"="*pbs.twimg.com*"
+"3"="*video.twimg.com*"
 
 ; ========================================================
 ; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE & DOMAIN BLOCK
@@ -20,6 +22,8 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist]
 "1"="*fboxtv.org*"
+"2"="*pbs.twimg.com*"
+"3"="*video.twimg.com*"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES

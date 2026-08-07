@@ -16,7 +16,7 @@ foreach ($adapter in $adapters) {
     Write-Host "   [+] Set CleanBrowsing Family DNS on: $($adapter.Name)" -ForegroundColor Green
 }
 
-# 2. Update Hosts File for SafeSearch & Blocked Domains
+# 2. Update Hosts File for SafeSearch & Blocked Domains (Including X/Twitter Media Blocking)
 Write-Host "`n2. Updating System Hosts File for SafeSearch & Domain Block..." -ForegroundColor Yellow
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 $hostsEntries = @(
@@ -26,7 +26,9 @@ $hostsEntries = @(
     "216.239.38.120 www.bing.com",
     "216.239.38.120 strict.bing.com",
     "0.0.0.0 www.fboxtv.org",
-    "0.0.0.0 fboxtv.org"
+    "0.0.0.0 fboxtv.org",
+    "0.0.0.0 pbs.twimg.com",
+    "0.0.0.0 video.twimg.com"
 )
 
 $existingContent = [System.IO.File]::ReadAllText($hostsPath)
@@ -47,7 +49,7 @@ if ($newEntriesToAdd.Count -gt 0) {
 }
 
 # 3. Apply Registry Policies (Chrome, Edge, Domain Block, VPN & Proxy Lock)
-Write-Host "`n3. Applying Registry Policies (Browser Policies & fboxtv.org Block)..." -ForegroundColor Yellow
+Write-Host "`n3. Applying Registry Policies (Browser Policies & fboxtv.org / X-Media Block)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
 Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies" -ForegroundColor Green

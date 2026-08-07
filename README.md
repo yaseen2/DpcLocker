@@ -35,14 +35,15 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 * **Native Android System Observers (`UsageStatsManager`):** Monitors daily foreground screen-on usage per package using Android's native `registerAppUsageObserver` system API.
 * **Zero Battery Drain (0% CPU):** The Android OS kernel tracks foreground app usage natively. No background polling loops or timers are used.
 * **Automatic App Suspension on Limit:** The moment an app reaches its configured daily limit (e.g., 30 minutes for YouTube, 15 minutes for Instagram), Android OS notifies Test DPC, which **instantly freezes the app**.
+* **Un-Uninstallable Protection:** Apps with active timers are marked as un-uninstallable (`setUninstallBlocked`). Reinstalling an app during the same day instantly re-suspends it upon installation.
 * **12:00 AM Midnight Auto-Reset:** An `AlarmManager` daily alarm automatically resets usage counters and unsuspends all apps every night at midnight (12:00 AM).
 * **Impulse-Proof Protection:** Because Test DPC is locked via `Lock_TestDPC.bat`, you cannot open Test DPC on your phone to grant yourself "5 more minutes" on impulse.
-* **App UI Dialog:** Includes an interactive **App Daily Usage Timers** dialog in Test DPC where you can view today's usage (e.g. `YouTube (22m used / 30m limit)`) and set daily minute limits for any installed application.
 
 ---
 
 ### 💻 4. Windows 10/11 PC Protection Architecture
 * **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
+* **X (Twitter) Text-Only Platform Mode:** Maps X media domains (`pbs.twimg.com` and `video.twimg.com`) to `0.0.0.0` in `hosts` file and adds `*pbs.twimg.com*` & `*video.twimg.com*` to Chrome & Edge `URLBlocklist`. Text tweets load normally while **100% of images, GIFs, and videos on X are blocked system-wide**.
 * **Chrome & Edge Registry Policies:**
   * **`ForceGoogleSafeSearch`**: Forces Strict Google SafeSearch system-wide in Chrome.
   * **`SafeSitesFilterBehavior`**: Enforces Chrome's built-in SafeSites adult content filter for all web traffic.
@@ -68,7 +69,7 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 ├── Lock_TestDPC.bat                    # 1-Click USB ADB Script: Lock Test DPC & Protection
 ├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
 ├── build_merged_dpc.ps1                # PowerShell Script to compile Test DPC APK
-├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, Cloudflare DNS & VPN Lock)
+├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, Cloudflare DNS, X-Media Block & VPN Lock)
 ├── enable_windows_protection.reg       # Windows Registry (.reg) Policy Export
 └── README.md                           # Comprehensive Documentation
 ```
@@ -77,42 +78,48 @@ Policy modifications, app timer changes, or disabling protection **can only be p
 
 ## 🛠️ Complete Setup Guide
 
-### 1. Core Essential Chrome & Android Policies
+### 1. Windows Setup (Adult Content, SafeSearch, X Text-Only & VPN Lock)
+
+Open PowerShell as Administrator and run `enable_windows_protection.ps1` (or double-click `enable_windows_protection.reg`).
+
+**Applied System Policies:**
+* **CleanBrowsing Family DNS:** Sets system DNS to `185.228.168.168` and `185.228.169.168` (blocks adult domains system-wide).
+* **System Hosts Overrides:** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`), and blocks X/Twitter media (`pbs.twimg.com` and `video.twimg.com`) to `0.0.0.0`.
+* **Windows VPN & Proxy Lock:** Disables adding new VPN connections or proxy servers in Windows Settings.
+* **Disables Windows RasMan Service:** Prevents starting the Windows Remote Access VPN service.
+* **Chrome & Edge Registry Policies:**
+  * `IncognitoModeAvailability` = `1` *(Disables Incognito)*
+  * `InPrivateModeAvailability` = `1` *(Disables InPrivate)*
+  * `ForceGoogleSafeSearch` = `1` *(Forces Strict SafeSearch)*
+  * `SafeSitesFilterBehavior` = `1` *(Enforces Chrome adult site filter)*
+  * `URLBlocklist` = `["*fboxtv.org*", "*pbs.twimg.com*", "*video.twimg.com*"]` *(Turns X into a Text-Only platform)*
+
+---
+
+### 2. Core Essential Chrome & Android Policies
 
 When managing policies inside Test DPC (`Unlock_TestDPC.bat`), the primary enforced policies are:
 
 #### ⚙️ Managed Configurations (App Restrictions for Chrome)
 1. **`ForceGoogleSafeSearch` = `true` / `1`**: Forces Strict Google SafeSearch system-wide in Google Chrome (completely removes explicit search results and prevents unblurring).
 2. **`SafeSitesFilterBehavior` = `1`**: Enables Chrome's built-in SafeSites automatic adult content filter for all browsing traffic.
+3. **`URLBlocklist`**: `["*pbs.twimg.com*", "*video.twimg.com*"]` *(Blocks all images, GIFs, and videos on X/Twitter)*.
 
 #### 🔒 Critical User Restrictions (In Test DPC)
-1. **`Disallow config VPN` (`DISALLOW_CONFIG_VPN`)**: Completely disables adding, editing, or configuring VPN connections in Settings, preventing any proxy/VPN bypass attempts.
+1. **`Disallow config VPN` (`DISALLOW_CONFIG_VPN`)**: Completely disables adding, editing, or configuring VPN connections in Settings.
 2. **`Disallow uninstall apps` (`DISALLOW_UNINSTALL_APPS`)**: Prevents uninstalling protected applications from the phone UI.
 3. **`Disallow apps control` (`DISALLOW_APPS_CONTROL`)**: Prevents clearing app data, modifying app permissions, or force-stopping apps in Android Settings.
 4. **`Disallow install from unknown sources` (`DISALLOW_INSTALL_UNKNOWN_SOURCES`)**: Blocks installing APK files from outside the Google Play Store.
 
 ---
 
-### 2. Private DNS Configuration (Cloudflare Family)
+### 3. Private DNS Configuration (Cloudflare Family)
 
 * **Preferred Private DNS:** `family.cloudflare-dns.com` (Cloudflare Family DNS).
-* *Note:* When the Chrome policies (`ForceGoogleSafeSearch` and `SafeSitesFilterBehavior`) are enforced directly inside Chrome, Private DNS serves as an optional secondary network-layer backup.
 
 On your phone, go to **Settings > Network & Internet > Private DNS**:
 * Select **Private DNS provider hostname** and enter:
   `family.cloudflare-dns.com`
-
----
-
-### 3. Android Device Owner Provisioning
-
-1. Build or install the merged **Test DPC** APK (`TestDPC-normal-debug.apk`) on your Android phone.
-2. Remove all secondary user profiles and Google accounts from phone settings temporarily during provisioning.
-3. Connect phone to PC via USB ADB and provision Test DPC as Device Owner:
-   ```cmd
-   adb shell dpm set-device-owner com.afwsamples.testdpc/.DeviceAdminReceiver
-   ```
-4. Re-add your Google accounts.
 
 ---
 
