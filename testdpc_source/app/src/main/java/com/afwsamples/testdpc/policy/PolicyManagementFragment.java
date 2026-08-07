@@ -90,6 +90,7 @@ import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
 import com.afwsamples.testdpc.NotoriousAppBlocker;
 import com.afwsamples.testdpc.ExperimentalAiScanner;
+import com.afwsamples.testdpc.HeavyAiVisionEngine;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceManager;
 import androidx.preference.SwitchPreference;
@@ -503,6 +504,8 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     private static final String BLOCKED_PACKAGE_LIST_KEY = "blocked_package_list";
     private static final String EXPERIMENTAL_AI_SHIELD_KEY = "experimental_ai_shield";
     private static final String EXPERIMENTAL_AI_THRESHOLD_KEY = "experimental_ai_threshold";
+    private static final String HEAVY_AI_ENGINE_KEY = "heavy_ai_engine";
+    private static final String HEAVY_AI_THRESHOLD_KEY = "heavy_ai_threshold";
 
     private DpcSwitchPreference mLockdownAdminConfiguredNetworksPreference;
     private DpcSwitchPreference mAutoBlockBrowsersPreference;
@@ -510,6 +513,8 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     private DpcPreference mBlockedPackageListPreference;
     private DpcSwitchPreference mExperimentalAiShieldPreference;
     private DpcPreference mExperimentalAiThresholdPreference;
+    private DpcSwitchPreference mHeavyAiEnginePreference;
+    private DpcPreference mHeavyAiThresholdPreference;
 
     private GetAccessibilityServicesTask mGetAccessibilityServicesTask = null;
     private GetInputMethodsTask mGetInputMethodsTask = null;
@@ -571,6 +576,18 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         if (mExperimentalAiThresholdPreference != null) {
             mExperimentalAiThresholdPreference.setOnPreferenceClickListener(this);
             mExperimentalAiThresholdPreference.setSummary("Current Threshold: " + ExperimentalAiScanner.getThresholdPercent(getActivity()) + "% (Click to change sensitivity)");
+        }
+
+        mHeavyAiEnginePreference = (DpcSwitchPreference) findPreference(HEAVY_AI_ENGINE_KEY);
+        if (mHeavyAiEnginePreference != null) {
+            mHeavyAiEnginePreference.setChecked(HeavyAiVisionEngine.isEnabled(getActivity()));
+            mHeavyAiEnginePreference.setOnPreferenceChangeListener(this);
+        }
+
+        mHeavyAiThresholdPreference = (DpcPreference) findPreference(HEAVY_AI_THRESHOLD_KEY);
+        if (mHeavyAiThresholdPreference != null) {
+            mHeavyAiThresholdPreference.setOnPreferenceClickListener(this);
+            mHeavyAiThresholdPreference.setSummary("Current Threshold: " + HeavyAiVisionEngine.getThresholdPercent(getActivity()) + "% (Click to change Heavy AI sensitivity)");
         }
 
         EditTextPreference overrideKeySelectionPreference =
@@ -937,6 +954,9 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 return true;
             case EXPERIMENTAL_AI_THRESHOLD_KEY:
                 showAiThresholdDialog();
+                return true;
+            case HEAVY_AI_THRESHOLD_KEY:
+                showHeavyAiThresholdDialog();
                 return true;
             case MANAGE_LOCK_TASK_LIST_KEY:
                 showManageLockTaskListPrompt(R.string.lock_task_title,
@@ -1454,6 +1474,11 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 boolean aiEnabled = (Boolean) newValue;
                 ExperimentalAiScanner.setEnabled(getActivity(), aiEnabled);
                 Toast.makeText(getActivity(), "Experimental AI Shield " + (aiEnabled ? "Enabled" : "Disabled"), Toast.LENGTH_SHORT).show();
+                return true;
+            case HEAVY_AI_ENGINE_KEY:
+                boolean heavyEnabled = (Boolean) newValue;
+                HeavyAiVisionEngine.setEnabled(getActivity(), heavyEnabled);
+                Toast.makeText(getActivity(), "Heavy AI Tensor Engine " + (heavyEnabled ? "Activated (Google TPU Accelerated)" : "Deactivated"), Toast.LENGTH_SHORT).show();
                 return true;
             case OVERRIDE_KEY_SELECTION_KEY:
                 preference.setSummary((String) newValue);
@@ -4257,6 +4282,61 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                         ExperimentalAiScanner.setThresholdPercent(context, chosenPercent);
                         mExperimentalAiThresholdPreference.setSummary("Current Threshold: " + chosenPercent + "% (Click to change sensitivity)");
                         Toast.makeText(context, "AI Sensitivity set to " + chosenPercent + "%", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void showHeavyAiThresholdDialog() {
+        final Context context = getActivity();
+        if (context == null) return;
+
+        final String[] options = new String[]{
+                "Strict Protection (20% - Blocks revealing outfits, swimwear & dance media)",
+                "High Sensitivity (25% - Recommended Tensor TPU threshold)",
+                "Medium Sensitivity (35% - Balanced)",
+                "Relaxed (45% - Explicit Nudity only)",
+                "Custom Percentage..."
+        };
+
+        new AlertDialog.Builder(context)
+                .setTitle("Heavy AI Sensitivity Threshold")
+                .setItems(options, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        int chosenPercent = 25;
+                        if (which == 0) chosenPercent = 20;
+                        else if (which == 1) chosenPercent = 25;
+                        else if (which == 2) chosenPercent = 35;
+                        else if (which == 3) chosenPercent = 45;
+                        else if (which == 4) {
+                            final EditText input = new EditText(context);
+                            input.setInputType(InputType.TYPE_CLASS_NUMBER);
+                            input.setText(String.valueOf(HeavyAiVisionEngine.getThresholdPercent(context)));
+                            new AlertDialog.Builder(context)
+                                    .setTitle("Set Custom Heavy AI Threshold")
+                                    .setMessage("Enter threshold percentage (10% to 80%):")
+                                    .setView(input)
+                                    .setPositiveButton("Save", new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface d, int w) {
+                                            try {
+                                                int val = Integer.parseInt(input.getText().toString().trim());
+                                                HeavyAiVisionEngine.setThresholdPercent(context, val);
+                                                mHeavyAiThresholdPreference.setSummary("Current Threshold: " + HeavyAiVisionEngine.getThresholdPercent(context) + "% (Click to change Heavy AI sensitivity)");
+                                                Toast.makeText(context, "Heavy AI Threshold set to " + val + "%", Toast.LENGTH_SHORT).show();
+                                            } catch (Exception ignored) {}
+                                        }
+                                    })
+                                    .setNegativeButton("Cancel", null)
+                                    .show();
+                            return;
+                        }
+
+                        HeavyAiVisionEngine.setThresholdPercent(context, chosenPercent);
+                        mHeavyAiThresholdPreference.setSummary("Current Threshold: " + chosenPercent + "% (Click to change Heavy AI sensitivity)");
+                        Toast.makeText(context, "Heavy AI Sensitivity set to " + chosenPercent + "%", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("Cancel", null)
