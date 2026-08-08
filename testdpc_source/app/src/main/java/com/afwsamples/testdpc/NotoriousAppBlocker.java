@@ -22,7 +22,8 @@ public class NotoriousAppBlocker {
             "com.tumblr",                // Tumblr
             "org.telegram.messenger",    // Telegram
             "org.telegram.messenger.web",// Telegram Web
-            "org.telegram.plus"          // Telegram Plus
+            "org.telegram.plus",         // Telegram Plus
+            "com.google.android.youtube" // Official YouTube App (Force use of YouTube ReVanced)
     };
 
     public static SharedPreferences getPrefs(Context context) {
