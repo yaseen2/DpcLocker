@@ -16,7 +16,7 @@ foreach ($adapter in $adapters) {
     Write-Host "   [+] Set Cloudflare Family DNS (1.1.1.3 / 1.0.0.3) on: $($adapter.Name)" -ForegroundColor Green
 }
 
-# 2. Clean Up Old Discord Entries from Hosts File & Purge Stale URLBlocklist / Extension Registry Keys
+# 2. Clean Up Old Discord Entries from Hosts File & Purge Stale URLBlocklist Registry Keys
 Write-Host "`n2. Cleaning Up Allowed Domains & Purging Stale Registry Keys..." -ForegroundColor Yellow
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 if (Test-Path $hostsPath) {
@@ -26,10 +26,8 @@ if (Test-Path $hostsPath) {
 }
 
 Remove-Item -Path "HKLM:\SOFTWARE\Policies\Google\Chrome\URLBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -Path "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "   [+] Purged old registry extension & blocklist restriction keys" -ForegroundColor Green
+Write-Host "   [+] Purged old registry blocklist restriction keys" -ForegroundColor Green
 
 # 3. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Proxies - Discord & Web Store Allowed)
 Write-Host "`n3. Updating System Hosts File for SafeSearch & Notorious Domains..." -ForegroundColor Yellow
@@ -91,11 +89,11 @@ if ($newEntriesToAdd.Count -gt 0) {
     Write-Host "   [+] All hosts entries are already present." -ForegroundColor Green
 }
 
-# 4. Apply Registry Policies (Chrome, Edge, ForceYouTubeRestrict=0, Proxy Direct Lock, YouTube Shorts Block)
-Write-Host "`n4. Applying Registry Policies (Browser Policies & YouTube Shorts Blocked)..." -ForegroundColor Yellow
+# 4. Apply Registry Policies (Chrome, Edge, Proxy Direct Lock, Unhook Force-Install & YouTube Shorts Block)
+Write-Host "`n4. Applying Registry Policies (Browser Policies, Unhook Force-Install & YouTube Shorts Blocked)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
-Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies (YouTube Shorts Blocked)" -ForegroundColor Green
+Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies (Unhook & Shorts Blocked)" -ForegroundColor Green
 
 # 5. Stop and Disable Windows RasMan Service (Built-in VPN)
 Write-Host "`n5. Disabling Windows VPN Service (RasMan)..." -ForegroundColor Yellow

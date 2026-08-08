@@ -1,7 +1,7 @@
 Windows Registry Editor Version 5.00
 
 ; ========================================================
-; GOOGLE CHROME - ADULT CONTENT, INCOGNITO, DOH DISABLE, PROXY DIRECT LOCK & NOTORIOUS DOMAIN BLOCK
+; GOOGLE CHROME - ADULT CONTENT, INCOGNITO, DOH DISABLE, PROXY DIRECT LOCK & FORCE-INSTALL UNHOOK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
 "IncognitoModeAvailability"=dword:00000001
@@ -11,26 +11,31 @@ Windows Registry Editor Version 5.00
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
 
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist]
+"1"="khncbfacgiphjaedlcngbpeoehbdplbd;https://clients2.google.com/service/update2/crx"
+
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\URLBlocklist]
 "1"="*fboxtv.org*"
 "2"="*x.com*"
 "3"="*twitter.com*"
 "4"="*twimg.com*"
-"5"="*reddit.com*"
-"6"="*redditmedia.com*"
-"7"="*redd.it*"
-"8"="*tumblr.com*"
-"9"="*telegram.org*"
-"10"="*telegram.me*"
-"11"="*t.me*"
-"12"="*croxyproxy.com*"
-"13"="*proxysite.com*"
-"14"="*hide.me*"
-"15"="*blockaway.net*"
-"16"="*youtube.com/shorts*"
+"5"="*redd.it*"
+"6"="*tumblr.com*"
+"7"="*telegram.org*"
+"8"="*t.me*"
+"9"="*croxyproxy.com*"
+"10"="*proxysite.com*"
+"11"="*hide.me*"
+"12"="*blockaway.net*"
+"13"="youtube.com/shorts"
+"14"="www.youtube.com/shorts"
+"15"="https://www.youtube.com/shorts/*"
+"16"="https://youtube.com/shorts/*"
+"17"="*://*.youtube.com/shorts/*"
+"18"="*://youtube.com/shorts/*"
 
 ; ========================================================
-; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE, DOH DISABLE, PROXY DIRECT LOCK & NOTORIOUS DOMAIN BLOCK
+; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE, DOH DISABLE, PROXY DIRECT LOCK & FORCE-INSTALL UNHOOK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
@@ -39,28 +44,33 @@ Windows Registry Editor Version 5.00
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
 
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist]
+"1"="khncbfacgiphjaedlcngbpeoehbdplbd;https://clients2.google.com/service/update2/crx"
+
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist]
 "1"="*fboxtv.org*"
 "2"="*x.com*"
 "3"="*twitter.com*"
 "4"="*twimg.com*"
-"5"="*reddit.com*"
-"6"="*redditmedia.com*"
-"7"="*redd.it*"
-"8"="*tumblr.com*"
-"9"="*telegram.org*"
-"10"="*telegram.me*"
-"11"="*t.me*"
-"12"="*croxyproxy.com*"
-"13"="*proxysite.com*"
-"14"="*hide.me*"
-"15"="*blockaway.net*"
-"16"="*youtube.com/shorts*"
+"5"="*redd.it*"
+"6"="*tumblr.com*"
+"7"="*telegram.org*"
+"8"="*t.me*"
+"9"="*croxyproxy.com*"
+"10"="*proxysite.com*"
+"11"="*hide.me*"
+"12"="*blockaway.net*"
+"13"="youtube.com/shorts"
+"14"="www.youtube.com/shorts"
+"15"="https://www.youtube.com/shorts/*"
+"16"="https://youtube.com/shorts/*"
+"17"="*://*.youtube.com/shorts/*"
+"18"="*://youtube.com/shorts/*"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES
 ; ========================================================
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\Network Connections]
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Network Connections]
 "NC_NewConnectionWizard"=dword:00000001
 "NC_DeleteAllUserConnection"=dword:00000001
 

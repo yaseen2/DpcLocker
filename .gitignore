@@ -8,3 +8,6 @@ TestDPC.apk
 # Temporary OS files
 .DS_Store
 Thumbs.db
+
+gmscore_latest.apk
+*.apk
