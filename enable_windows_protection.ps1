@@ -27,6 +27,8 @@ if (Test-Path $hostsPath) {
 
 Remove-Item -Path "HKLM:\SOFTWARE\Policies\Google\Chrome\URLBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "HKCU:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "HKCU:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "   [+] Purged old registry blocklist restriction keys" -ForegroundColor Green
 
 # 3. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Proxies - Discord & Web Store Allowed)
