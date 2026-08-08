@@ -89,6 +89,7 @@ import androidx.core.content.FileProvider;
 import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
 import com.afwsamples.testdpc.NotoriousAppBlocker;
+import com.afwsamples.testdpc.AiAppAuditor;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceManager;
 import androidx.preference.SwitchPreference;
@@ -266,6 +267,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     private static final String APP_RESTRICTIONS_MANAGING_PACKAGE_KEY
             = "app_restrictions_managing_package";
     private static final String BLOCK_UNINSTALLATION_BY_PKG_KEY = "block_uninstallation_by_pkg";
+    private static final String AI_APP_AUDITOR_KEY = "ai_app_auditor_key";
     private static final String BLOCK_UNINSTALLATION_LIST_KEY = "block_uninstallation_list";
     private static final String CAPTURE_IMAGE_KEY = "capture_image";
     private static final String CAPTURE_VIDEO_KEY = "capture_video";
@@ -917,6 +919,9 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 return true;
             case BLOCKED_PACKAGE_LIST_KEY:
                 showBlockedPackageListDialog();
+                return true;
+            case AI_APP_AUDITOR_KEY:
+                showGeminiApiKeyDialog();
                 return true;
             case MANAGE_LOCK_TASK_LIST_KEY:
                 showManageLockTaskListPrompt(R.string.lock_task_title,
@@ -4181,5 +4186,37 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         });
         builder.setNegativeButton("Close", null);
         builder.show();
+    }
+
+    private void showGeminiApiKeyDialog() {
+        final Context context = getActivity();
+        if (context == null) return;
+
+        final EditText input = new EditText(context);
+        input.setHint("Paste Gemini API Key here");
+        input.setText(AiAppAuditor.getGeminiApiKey(context));
+
+        new AlertDialog.Builder(context)
+                .setTitle("Configure Gemini AI App Auditor")
+                .setMessage("Enter your Gemini API key (from Google AI Studio). The AI Auditor inspects newly installed apps in real-time and auto-freezes video downloaders and adult browsers:")
+                .setView(input)
+                .setPositiveButton("Save API Key", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int w) {
+                        String key = input.getText().toString().trim();
+                        AiAppAuditor.setGeminiApiKey(context, key);
+                        AiAppAuditor.setEnabled(context, true);
+                        Toast.makeText(context, "Gemini API Key saved & AI Auditor Enabled!", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNeutralButton("Disable Auditor", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int w) {
+                        AiAppAuditor.setEnabled(context, false);
+                        Toast.makeText(context, "AI App Auditor Disabled", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 }

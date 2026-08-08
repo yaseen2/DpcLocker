@@ -52,12 +52,14 @@ public class BrowserBlocker {
                             checkAndSuspendPackage(context, packageName);
                             AppTimerManager.checkAndEnforceLimits(context);
                             NotoriousAppBlocker.checkAndSuspendNotoriousPackage(context, packageName);
+                            AiAppAuditor.checkAndAuditPackage(context, packageName);
                         }
 
                         @Override
                         public void onPackageChanged(String packageName, UserHandle user) {
                             Log.i(TAG, "LauncherApps onPackageChanged: " + packageName);
                             checkAndSuspendPackage(context, packageName);
+                            AiAppAuditor.checkAndAuditPackage(context, packageName);
                         }
 
                         @Override
