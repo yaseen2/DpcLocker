@@ -32,6 +32,14 @@ public class AiAppAuditor {
 
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 
+    // Endpoints to try in order if one returns 404
+    private static final String[] GEMINI_MODELS = new String[]{
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-2.5-flash",
+            "gemini-1.5-flash-8b"
+    };
+
     private static SharedPreferences getPrefs(Context context) {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
@@ -142,123 +150,146 @@ public class AiAppAuditor {
             return;
         }
 
+        // Structural Fallback Guard: Check if package contains explicit adult/downloader indicators
+        String lowerPkg = packageName.toLowerCase();
+        String lowerLabel = appLabel.toLowerCase();
+        boolean isExplicitDownloader = lowerPkg.contains("downloader") || lowerPkg.contains("xnxx") || lowerPkg.contains("xvideo") ||
+                lowerPkg.contains("vmate") || lowerPkg.contains("snaptube") || lowerLabel.contains("downloader") || lowerLabel.contains("video downloader");
+
+        boolean aiSuccess = false;
         String apiKey = getGeminiApiKey(context);
-        if (apiKey == null || apiKey.isEmpty()) {
-            Log.w(TAG, "No Gemini API key configured. Skipping online AI classification for: " + packageName);
-            return;
-        }
 
-        try {
-            JSONObject metadataJson = new JSONObject();
-            metadataJson.put("package_name", packageName);
-            metadataJson.put("app_label", appLabel);
-            metadataJson.put("app_category", appCategory);
+        if (apiKey != null && !apiKey.isEmpty()) {
+            for (String modelName : GEMINI_MODELS) {
+                try {
+                    JSONObject metadataJson = new JSONObject();
+                    metadataJson.put("package_name", packageName);
+                    metadataJson.put("app_label", appLabel);
+                    metadataJson.put("app_category", appCategory);
 
-            JSONArray permArray = new JSONArray();
-            for (String perm : requestedPermissions) {
-                permArray.put(perm);
-            }
-            metadataJson.put("requested_permissions", permArray);
+                    JSONArray permArray = new JSONArray();
+                    for (String perm : requestedPermissions) {
+                        permArray.put(perm);
+                    }
+                    metadataJson.put("requested_permissions", permArray);
 
-            JSONArray actArray = new JSONArray();
-            int actLimit = Math.min(declaredActivities.size(), 20); // Limit to top 20 activities
-            for (int i = 0; i < actLimit; i++) {
-                actArray.put(declaredActivities.get(i));
-            }
-            metadataJson.put("declared_activities", actArray);
+                    JSONArray actArray = new JSONArray();
+                    int actLimit = Math.min(declaredActivities.size(), 25);
+                    for (int i = 0; i < actLimit; i++) {
+                        actArray.put(declaredActivities.get(i));
+                    }
+                    metadataJson.put("declared_activities", actArray);
 
-            String requestUrlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey;
+                    String requestUrlString = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
 
-            JSONObject systemInstruction = new JSONObject();
-            JSONObject sysParts = new JSONObject();
-            sysParts.put("text", 
-                "SYSTEM ROLE:\n" +
-                "You are an expert Security Classifier for an Android Device Owner Security System. Your job is to classify newly installed Android applications to protect the user from hidden adult browsers, video downloaders, and unmanaged web search tools.\n\n" +
-                "IMPACT OF YOUR DECISION:\n" +
-                "- If you return \"is_risky\": true, the Android system will IMMEDIATELY FREEZE the app, rendering it un-openable.\n" +
-                "- A FALSE POSITIVE (freezing a clean app like WhatsApp, Banking, Maps, Utilities, Games, Productivity tools) ruins the user's phone experience.\n" +
-                "- A FALSE NEGATIVE (allowing a hidden video downloader or adult browser) exposes the user to unwanted adult content.\n\n" +
-                "STRICT CLASSIFICATION RULES:\n" +
-                "1. MARK AS RISKY (\"is_risky\": true):\n" +
-                "   - Apps whose primary or secondary feature is downloading videos from web/social media (e.g. Video Downloader, Snaptube, TubeMate, Vmate, Video Saver, All Downloader).\n" +
-                "   - Unmanaged third-party web browsers or private browsers with built-in search engines (e.g. Opera Mini, UC Browser, DuckDuckGo, Brave, X Browser).\n" +
-                "   - Apps with built-in web search bars or video fetchers designed to access web media.\n\n" +
-                "2. MARK AS SAFE (\"is_risky\": false):\n" +
-                "   - Messaging & Communication apps (WhatsApp, Telegram, Signal, Messenger, Discord, Zoom, Teams).\n" +
-                "   - Financial, Banking, Shopping, and Payment apps.\n" +
-                "   - Productivity, Office, Utilities, Calculators, File Managers, PDF Readers, Weather apps.\n" +
-                "   - Games (Action, Puzzle, Casual, Arcade, Strategy games).\n" +
-                "   - Streaming services from legitimate major providers (Netflix, Spotify, Prime Video, YouTube ReVanced).\n" +
-                "   - Official system tools and Google apps."
-            );
-            systemInstruction.put("parts", new JSONArray().put(sysParts));
+                    JSONObject systemInstruction = new JSONObject();
+                    JSONObject sysParts = new JSONObject();
+                    sysParts.put("text",
+                        "SYSTEM ROLE:\n" +
+                        "You are an expert Security Classifier for an Android Device Owner Security System. Your job is to classify newly installed Android applications to protect the user from hidden adult browsers, video downloaders, and unmanaged web search tools.\n\n" +
+                        "IMPACT OF YOUR DECISION:\n" +
+                        "- If you return \"is_risky\": true, the Android system will IMMEDIATELY FREEZE the app, rendering it un-openable.\n" +
+                        "- A FALSE POSITIVE (freezing a clean app like WhatsApp, Banking, Maps, Utilities, Games, Productivity tools) ruins the user's phone experience.\n" +
+                        "- A FALSE NEGATIVE (allowing a hidden video downloader or adult browser) exposes the user to unwanted adult content.\n\n" +
+                        "STRICT CLASSIFICATION RULES:\n" +
+                        "1. MARK AS RISKY (\"is_risky\": true):\n" +
+                        "   - Apps whose primary or secondary feature is downloading videos from web/social media (e.g. Video Downloader, Snaptube, TubeMate, Vmate, Video Saver, All Downloader, XNXX, Hot Video Downloader).\n" +
+                        "   - Unmanaged third-party web browsers or private browsers with built-in search engines (e.g. Opera Mini, UC Browser, DuckDuckGo, Brave, X Browser).\n" +
+                        "   - Apps with built-in web search bars or video fetchers designed to access web media.\n\n" +
+                        "2. MARK AS SAFE (\"is_risky\": false):\n" +
+                        "   - Messaging & Communication apps (WhatsApp, Telegram, Signal, Messenger, Discord, Zoom, Teams).\n" +
+                        "   - Financial, Banking, Shopping, and Payment apps.\n" +
+                        "   - Productivity, Office, Utilities, Calculators, File Managers, PDF Readers, Weather apps.\n" +
+                        "   - Games (Action, Puzzle, Casual, Arcade, Strategy games).\n" +
+                        "   - Streaming services from legitimate major providers (Netflix, Spotify, Prime Video, YouTube ReVanced).\n" +
+                        "   - Official system tools and Google apps."
+                    );
+                    systemInstruction.put("parts", new JSONArray().put(sysParts));
 
-            JSONObject contentObj = new JSONObject();
-            JSONObject userPart = new JSONObject();
-            userPart.put("text", "Classify the following Android package metadata:\n" + metadataJson.toString(2));
-            contentObj.put("parts", new JSONArray().put(userPart));
+                    JSONObject contentObj = new JSONObject();
+                    JSONObject userPart = new JSONObject();
+                    userPart.put("text", "Classify the following Android package metadata:\n" + metadataJson.toString(2));
+                    contentObj.put("parts", new JSONArray().put(userPart));
 
-            JSONObject genConfig = new JSONObject();
-            genConfig.put("response_mime_type", "application/json");
+                    JSONObject genConfig = new JSONObject();
+                    genConfig.put("response_mime_type", "application/json");
 
-            JSONObject payload = new JSONObject();
-            payload.put("system_instruction", systemInstruction);
-            payload.put("contents", new JSONArray().put(contentObj));
-            payload.put("generationConfig", genConfig);
+                    JSONObject payload = new JSONObject();
+                    payload.put("system_instruction", systemInstruction);
+                    payload.put("contents", new JSONArray().put(contentObj));
+                    payload.put("generationConfig", genConfig);
 
-            URL url = new URL(requestUrlString);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(8000);
+                    URL url = new URL(requestUrlString);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                    conn.setDoOutput(true);
+                    conn.setConnectTimeout(8000);
+                    conn.setReadTimeout(8000);
 
-            try (OutputStream os = conn.getOutputStream()) {
-                byte[] input = payload.toString().getBytes(StandardCharsets.UTF_8);
-                os.write(input, 0, input.length);
-            }
+                    try (OutputStream os = conn.getOutputStream()) {
+                        byte[] input = payload.toString().getBytes(StandardCharsets.UTF_8);
+                        os.write(input, 0, input.length);
+                    }
 
-            int responseCode = conn.getResponseCode();
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
-                StringBuilder response = new StringBuilder();
-                String responseLine;
-                while ((responseLine = br.readLine()) != null) {
-                    response.append(responseLine.trim());
-                }
+                    int responseCode = conn.getResponseCode();
+                    if (responseCode == HttpURLConnection.HTTP_OK) {
+                        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                        StringBuilder response = new StringBuilder();
+                        String responseLine;
+                        while ((responseLine = br.readLine()) != null) {
+                            response.append(responseLine.trim());
+                        }
 
-                JSONObject responseJson = new JSONObject(response.toString());
-                JSONArray candidates = responseJson.optJSONArray("candidates");
-                if (candidates != null && candidates.length() > 0) {
-                    JSONObject firstCand = candidates.getJSONObject(0);
-                    JSONObject content = firstCand.optJSONObject("content");
-                    if (content != null) {
-                        JSONArray parts = content.optJSONArray("parts");
-                        if (parts != null && parts.length() > 0) {
-                            String jsonText = parts.getJSONObject(0).optString("text");
-                            JSONObject aiResult = new JSONObject(jsonText);
-                            boolean isRisky = aiResult.optBoolean("is_risky", false);
-                            String reason = aiResult.optString("reason", "No reason provided");
+                        JSONObject responseJson = new JSONObject(response.toString());
+                        JSONArray candidates = responseJson.optJSONArray("candidates");
+                        if (candidates != null && candidates.length() > 0) {
+                            JSONObject firstCand = candidates.getJSONObject(0);
+                            JSONObject content = firstCand.optJSONObject("content");
+                            if (content != null) {
+                                JSONArray parts = content.optJSONArray("parts");
+                                if (parts != null && parts.length() > 0) {
+                                    String jsonText = parts.getJSONObject(0).optString("text");
+                                    JSONObject aiResult = new JSONObject(jsonText);
+                                    boolean isRisky = aiResult.optBoolean("is_risky", false);
+                                    String reason = aiResult.optString("reason", "No reason provided");
 
-                            Log.i(TAG, "Gemini AI Audit Result for [" + packageName + "]: is_risky=" + isRisky + ", reason: " + reason);
+                                    Log.i(TAG, "Gemini Model [" + modelName + "] Audit Result for [" + packageName + "]: is_risky=" + isRisky + ", reason: " + reason);
 
-                            if (isRisky) {
-                                DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
-                                if (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName())) {
-                                    dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{packageName}, true);
-                                    Log.i(TAG, "SUCCESSFULLY AI AUTO-SUSPENDED RISKY PACKAGE: " + packageName + " (Reason: " + reason + ")");
+                                    aiSuccess = true;
+                                    if (isRisky) {
+                                        suspendPackage(context, packageName, "Gemini AI (" + modelName + "): " + reason);
+                                    }
+                                    break; // Success, stop trying other models
                                 }
                             }
                         }
+                    } else {
+                        Log.w(TAG, "Gemini API Model [" + modelName + "] returned HTTP Code: " + responseCode);
                     }
+                    conn.disconnect();
+                } catch (Exception e) {
+                    Log.w(TAG, "Model [" + modelName + "] failed for package " + packageName, e);
                 }
-            } else {
-                Log.e(TAG, "Gemini API HTTP Error Code: " + responseCode);
             }
-            conn.disconnect();
+        }
+
+        // Fallback Protection: If AI API returned HTTP 404 or failed, enforce structural fallback
+        if (!aiSuccess && isExplicitDownloader) {
+            Log.i(TAG, "Enforcing Structural Fallback Guard for explicit downloader: " + packageName);
+            suspendPackage(context, packageName, "Structural Fallback Guard (Explicit Video Downloader)");
+        }
+    }
+
+    private static void suspendPackage(Context context, String packageName, String reason) {
+        try {
+            DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            if (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName())) {
+                dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{packageName}, true);
+                Log.i(TAG, "SUCCESSFULLY AUTO-SUSPENDED RISKY PACKAGE: " + packageName + " | Reason: " + reason);
+            }
         } catch (Exception e) {
-            Log.e(TAG, "Failed to call Gemini API for package " + packageName, e);
+            Log.e(TAG, "Error suspending package: " + packageName, e);
         }
     }
 }
