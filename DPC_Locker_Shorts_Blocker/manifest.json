@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "DPC Locker - YouTube Shorts Blocker",
+  "version": "1.0",
+  "description": "Zero-trust DOM & SPA Navigation Interceptor to block YouTube Shorts.",
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}
