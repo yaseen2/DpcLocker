@@ -42,6 +42,12 @@
             android:summary="View and manage blocked notorious apps (X, Reddit, Tumblr, Telegram, etc.)"
             testdpc:admin="deviceOwner"
             testdpc:minSdkVersion="L" />
+        <com.afwsamples.testdpc.common.preference.DpcPreference
+            android:key="ai_app_auditor_key"
+            android:title="Configure Gemini AI App Auditor"
+            android:summary="Configure Gemini API key to inspect new app installs in real-time and auto-freeze video downloaders &amp; adult browsers."
+            testdpc:admin="deviceOwner"
+            testdpc:minSdkVersion="L" />
     </PreferenceCategory>
 
     <com.afwsamples.testdpc.common.preference.DpcPreference

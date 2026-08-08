@@ -507,6 +507,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     private DpcSwitchPreference mAutoBlockBrowsersPreference;
     private DpcPreference mAppUsageTimersPreference;
     private DpcPreference mBlockedPackageListPreference;
+    private DpcPreference mAiAppAuditorPreference;
 
     private GetAccessibilityServicesTask mGetAccessibilityServicesTask = null;
     private GetInputMethodsTask mGetInputMethodsTask = null;
@@ -556,6 +557,11 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         mBlockedPackageListPreference = (DpcPreference) findPreference(BLOCKED_PACKAGE_LIST_KEY);
         if (mBlockedPackageListPreference != null) {
             mBlockedPackageListPreference.setOnPreferenceClickListener(this);
+        }
+
+        mAiAppAuditorPreference = (DpcPreference) findPreference(AI_APP_AUDITOR_KEY);
+        if (mAiAppAuditorPreference != null) {
+            mAiAppAuditorPreference.setOnPreferenceClickListener(this);
         }
 
         EditTextPreference overrideKeySelectionPreference =
