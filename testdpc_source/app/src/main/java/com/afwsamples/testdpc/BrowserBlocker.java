@@ -102,7 +102,37 @@ public class BrowserBlocker {
 
         PackageManager pm = context.getPackageManager();
 
-        // Must handle generic http/https web view intent with launcher intent
+        // 1. Check package name for browser or video downloader keywords
+        String lowerPkg = packageName.toLowerCase();
+        if (lowerPkg.contains("vmate") ||
+            lowerPkg.contains("snaptube") ||
+            lowerPkg.contains("videosaver") ||
+            lowerPkg.contains("webbrowser") ||
+            (lowerPkg.contains("downloader") && (lowerPkg.contains("video") || lowerPkg.contains("browser") || lowerPkg.contains("tube") || lowerPkg.contains("media") || lowerPkg.contains("xvideo")))) {
+            Log.i(TAG, "Package " + packageName + " detected as Video Downloader / Browser via package name");
+            return true;
+        }
+
+        // 2. Check App Label (Title) for Video Downloader / Browser keywords
+        try {
+            ApplicationInfo appInfo = pm.getApplicationInfo(packageName, 0);
+            CharSequence labelCharSeq = pm.getApplicationLabel(appInfo);
+            if (labelCharSeq != null) {
+                String lowerLabel = labelCharSeq.toString().toLowerCase();
+                if (lowerLabel.contains("video downloader") ||
+                    lowerLabel.contains("downloader & browser") ||
+                    lowerLabel.contains("private browser") ||
+                    lowerLabel.contains("web browser") ||
+                    lowerLabel.contains("browser downloader") ||
+                    lowerLabel.contains("hd downloader")) {
+                    Log.i(TAG, "Package " + packageName + " detected as Video Downloader / Browser via app label: " + lowerLabel);
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 3. Must handle generic http/https web view intent with launcher intent
         boolean handlesWebIntent = false;
         try {
             Intent webIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"));
