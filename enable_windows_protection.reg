@@ -24,12 +24,6 @@ Windows Registry Editor Version 5.00
 "10"="*proxysite.com*"
 "11"="*hide.me*"
 "12"="*blockaway.net*"
-"13"="youtube.com/shorts"
-"14"="www.youtube.com/shorts"
-"15"="https://www.youtube.com/shorts/*"
-"16"="https://youtube.com/shorts/*"
-"17"="*://*.youtube.com/shorts/*"
-"18"="*://youtube.com/shorts/*"
 
 ; ========================================================
 ; MICROSOFT EDGE - ADULT CONTENT, INPRIVATE, DOH DISABLE, PROXY DIRECT LOCK
@@ -54,12 +48,6 @@ Windows Registry Editor Version 5.00
 "10"="*proxysite.com*"
 "11"="*hide.me*"
 "12"="*blockaway.net*"
-"13"="youtube.com/shorts"
-"14"="www.youtube.com/shorts"
-"15"="https://www.youtube.com/shorts/*"
-"16"="https://youtube.com/shorts/*"
-"17"="*://*.youtube.com/shorts/*"
-"18"="*://youtube.com/shorts/*"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES

@@ -16,7 +16,7 @@ foreach ($adapter in $adapters) {
     Write-Host "   [+] Set Cloudflare Family DNS (1.1.1.3 / 1.0.0.3) on: $($adapter.Name)" -ForegroundColor Green
 }
 
-# 2. Clean Up Old Discord Entries from Hosts File & Purge ExtensionForcelist Registry Keys
+# 2. Clean Up Old Discord Entries from Hosts File & Purge Stale Registry Keys
 Write-Host "`n2. Cleaning Up Allowed Domains & Purging ExtensionForcelist Keys..." -ForegroundColor Yellow
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 if (Test-Path $hostsPath) {
@@ -31,7 +31,7 @@ Remove-Item -Path "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForceli
 Remove-Item -Path "HKCU:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "HKCU:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "   [+] Purged old registry extension forcelist keys" -ForegroundColor Green
+Write-Host "   [+] Purged old registry extension forcelist & blocklist keys" -ForegroundColor Green
 
 # 3. Update Hosts File for SafeSearch & Blocked Domains (X, Reddit, Tumblr, Telegram, Proxies - Discord & Web Store Allowed)
 Write-Host "`n3. Updating System Hosts File for SafeSearch & Notorious Domains..." -ForegroundColor Yellow
@@ -93,7 +93,7 @@ if ($newEntriesToAdd.Count -gt 0) {
     Write-Host "   [+] All hosts entries are already present." -ForegroundColor Green
 }
 
-# 4. Apply Registry Policies (Chrome, Edge, Proxy Direct Lock & YouTube Shorts Block)
+# 4. Apply Registry Policies (Chrome, Edge & Proxy Direct Lock)
 Write-Host "`n4. Applying Registry Policies..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
