@@ -53,7 +53,9 @@ public class ChromePolicyManager {
                 "croxyproxy.com",
                 "proxysite.com",
                 "hide.me",
-                "blockaway.net"
+                "blockaway.net",
+                "youtube.com/shorts*",
+                "www.youtube.com/shorts*"
             };
             chromeBundle.putStringArray("URLBlocklist", urlBlocklist);
             chromeBundle.putStringArray("URLBlacklist", urlBlocklist);

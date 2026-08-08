@@ -91,11 +91,11 @@ if ($newEntriesToAdd.Count -gt 0) {
     Write-Host "   [+] All hosts entries are already present." -ForegroundColor Green
 }
 
-# 4. Apply Registry Policies (Chrome, Edge, ForceYouTubeRestrict=0, Proxy Direct Lock, VPN & Notorious Domains Block)
-Write-Host "`n4. Applying Registry Policies (Browser Policies, YouTube Comments Unlocked & Proxy Direct Lock)..." -ForegroundColor Yellow
+# 4. Apply Registry Policies (Chrome, Edge, ForceYouTubeRestrict=0, Proxy Direct Lock, YouTube Shorts Block)
+Write-Host "`n4. Applying Registry Policies (Browser Policies & YouTube Shorts Blocked)..." -ForegroundColor Yellow
 $regPath = "d:\Ai studio\DpcLocker + Windows incognito Blocker\enable_windows_protection.reg"
 reg import "$regPath"
-Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies (YouTube Comments Enabled)" -ForegroundColor Green
+Write-Host "   [+] Applied Chrome, Edge & Windows Registry Policies (YouTube Shorts Blocked)" -ForegroundColor Green
 
 # 5. Stop and Disable Windows RasMan Service (Built-in VPN)
 Write-Host "`n5. Disabling Windows VPN Service (RasMan)..." -ForegroundColor Yellow
