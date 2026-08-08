@@ -19,8 +19,11 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -29,14 +32,15 @@ public class AiAppAuditor {
     private static final String PREFS_NAME = "ai_app_auditor_prefs";
     private static final String KEY_ENABLED = "ai_auditor_enabled";
     private static final String KEY_GEMINI_API_KEY = "gemini_api_key";
+    private static final String KEY_AUDIT_LOGS = "ai_audit_logs_history";
 
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    // Endpoints to try in order if one returns 404
+    // Endpoints tried in order
     private static final String[] GEMINI_MODELS = new String[]{
+            "gemini-2.5-flash",
             "gemini-2.0-flash",
             "gemini-1.5-flash",
-            "gemini-2.5-flash",
             "gemini-1.5-flash-8b"
     };
 
@@ -60,6 +64,29 @@ public class AiAppAuditor {
     public static void setGeminiApiKey(Context context, String apiKey) {
         getPrefs(context).edit().putString(KEY_GEMINI_API_KEY, apiKey != null ? apiKey.trim() : "").apply();
         Log.i(TAG, "Gemini API key updated.");
+    }
+
+    public static String getAuditLogs(Context context) {
+        String logs = getPrefs(context).getString(KEY_AUDIT_LOGS, "");
+        if (logs.isEmpty()) {
+            return "No AI App Audit events recorded yet.";
+        }
+        return logs;
+    }
+
+    private static synchronized void appendAuditLog(Context context, String logEntry) {
+        String timeStamp = new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date());
+        String fullEntry = "[" + timeStamp + "] " + logEntry;
+        String existing = getPrefs(context).getString(KEY_AUDIT_LOGS, "");
+        String updated = fullEntry + "\n" + existing;
+        // Keep max 50 lines
+        String[] lines = updated.split("\n");
+        StringBuilder sb = new StringBuilder();
+        int max = Math.min(lines.length, 50);
+        for (int i = 0; i < max; i++) {
+            sb.append(lines[i]).append("\n");
+        }
+        getPrefs(context).edit().putString(KEY_AUDIT_LOGS, sb.toString().trim()).apply();
     }
 
     public static void checkAndAuditPackage(final Context context, final String packageName) {
@@ -86,6 +113,7 @@ public class AiAppAuditor {
             packageName.startsWith("com.google.android.") ||
             packageName.startsWith("com.android.")) {
             Log.i(TAG, "Package " + packageName + " is in hardcoded trusted whitelist. Skipping AI audit.");
+            appendAuditLog(context, packageName + " -> WHITELISTED (System/Trusted)");
             return;
         }
 
@@ -150,11 +178,26 @@ public class AiAppAuditor {
             return;
         }
 
-        // Structural Fallback Guard: Check if package contains explicit adult/downloader indicators
+        // Structural Component Inspection: Check permissions and activity patterns
+        boolean hasInternet = requestedPermissions.contains("android.permission.INTERNET");
+        boolean hasStorage = requestedPermissions.contains("android.permission.WRITE_EXTERNAL_STORAGE") || 
+                             requestedPermissions.contains("android.permission.READ_EXTERNAL_STORAGE") ||
+                             requestedPermissions.contains("android.permission.MANAGE_EXTERNAL_STORAGE");
+
+        boolean hasWebViewOrDownloaderActivity = false;
+        for (String act : declaredActivities) {
+            String lowerAct = act.toLowerCase();
+            if (lowerAct.contains("webview") || lowerAct.contains("download") || lowerAct.contains("browser") || lowerAct.contains("fetch")) {
+                hasWebViewOrDownloaderActivity = true;
+                break;
+            }
+        }
+
         String lowerPkg = packageName.toLowerCase();
         String lowerLabel = appLabel.toLowerCase();
         boolean isExplicitDownloader = lowerPkg.contains("downloader") || lowerPkg.contains("xnxx") || lowerPkg.contains("xvideo") ||
-                lowerPkg.contains("vmate") || lowerPkg.contains("snaptube") || lowerLabel.contains("downloader") || lowerLabel.contains("video downloader");
+                lowerPkg.contains("vmate") || lowerPkg.contains("snaptube") || lowerLabel.contains("downloader") || lowerLabel.contains("video downloader") ||
+                (hasInternet && hasStorage && hasWebViewOrDownloaderActivity);
 
         boolean aiSuccess = false;
         String apiKey = getGeminiApiKey(context);
@@ -255,12 +298,15 @@ public class AiAppAuditor {
                                     String reason = aiResult.optString("reason", "No reason provided");
 
                                     Log.i(TAG, "Gemini Model [" + modelName + "] Audit Result for [" + packageName + "]: is_risky=" + isRisky + ", reason: " + reason);
-
                                     aiSuccess = true;
+
                                     if (isRisky) {
+                                        appendAuditLog(context, packageName + " -> AUTO-SUSPENDED by Gemini AI (" + modelName + ")");
                                         suspendPackage(context, packageName, "Gemini AI (" + modelName + "): " + reason);
+                                    } else {
+                                        appendAuditLog(context, packageName + " -> PASSED SAFE by Gemini AI (" + modelName + ")");
                                     }
-                                    break; // Success, stop trying other models
+                                    break;
                                 }
                             }
                         }
@@ -274,10 +320,15 @@ public class AiAppAuditor {
             }
         }
 
-        // Fallback Protection: If AI API returned HTTP 404 or failed, enforce structural fallback
-        if (!aiSuccess && isExplicitDownloader) {
-            Log.i(TAG, "Enforcing Structural Fallback Guard for explicit downloader: " + packageName);
-            suspendPackage(context, packageName, "Structural Fallback Guard (Explicit Video Downloader)");
+        // Structural Fallback Guard: If AI API failed or returned 404/error, evaluate manifest component structure
+        if (!aiSuccess) {
+            if (isExplicitDownloader) {
+                Log.i(TAG, "Enforcing Structural Fallback Guard for package: " + packageName);
+                appendAuditLog(context, packageName + " -> AUTO-SUSPENDED by Structural Fallback Guard");
+                suspendPackage(context, packageName, "Structural Fallback Guard (Internet + Storage + Media/Downloader Components)");
+            } else {
+                appendAuditLog(context, packageName + " -> PASSED SAFE (Fallback Structural Analysis)");
+            }
         }
     }
 

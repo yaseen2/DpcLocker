@@ -4215,14 +4215,18 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                         Toast.makeText(context, "Gemini API Key saved & AI Auditor Enabled!", Toast.LENGTH_SHORT).show();
                     }
                 })
-                .setNeutralButton("Disable Auditor", new DialogInterface.OnClickListener() {
+                .setNeutralButton("View Audit Logs", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface d, int w) {
-                        AiAppAuditor.setEnabled(context, false);
-                        Toast.makeText(context, "AI App Auditor Disabled", Toast.LENGTH_SHORT).show();
+                        String logs = AiAppAuditor.getAuditLogs(context);
+                        new AlertDialog.Builder(context)
+                                .setTitle("AI App Security Audit Logs")
+                                .setMessage(logs)
+                                .setPositiveButton("OK", null)
+                                .show();
                     }
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("Close", null)
                 .show();
     }
 }
