@@ -248,30 +248,41 @@ public class ImpulseGuardService extends AccessibilityService {
             final String typedText = extractedText.trim();
             if (!typedText.equalsIgnoreCase("Search or type URL") && !typedText.equalsIgnoreCase("Search Google or type URL") &&
                     !typedText.startsWith("http://") && !typedText.startsWith("https://") && !typedText.startsWith("www.")) {
-                
-                if (mPendingAuditRunnable != null) {
-                    mHandler.removeCallbacks(mPendingAuditRunnable);
-                }
 
-                mPendingAuditRunnable = new Runnable() {
-                    @Override
-                    public void run() {
-                        String lastTextForPkg = mLastEvaluatedTextMap.get(packageName);
-                        if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(typedText)) {
-                            mLastEvaluatedTextMap.put(packageName, typedText);
-                            Log.d(TAG, "Captured search/input text in [" + packageName + "]: \"" + typedText + "\"");
-
-                            mBgExecutor.execute(new Runnable() {
-                                @Override
-                                public void run() {
-                                    evaluateAndEnforceImpulseGuard(packageName, typedText);
-                                }
-                            });
+                // 0ms Fast Path: If local cache ALREADY knows this query is risky, execute INSTANTLY!
+                Boolean localCached = GeminiGuardEngine.getCachedVerdict(this, typedText);
+                if (localCached != null && localCached) {
+                    mBgExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            evaluateAndEnforceImpulseGuard(packageName, typedText);
                         }
+                    });
+                } else {
+                    if (mPendingAuditRunnable != null) {
+                        mHandler.removeCallbacks(mPendingAuditRunnable);
                     }
-                };
 
-                mHandler.postDelayed(mPendingAuditRunnable, 800);
+                    mPendingAuditRunnable = new Runnable() {
+                        @Override
+                        public void run() {
+                            String lastTextForPkg = mLastEvaluatedTextMap.get(packageName);
+                            if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(typedText)) {
+                                mLastEvaluatedTextMap.put(packageName, typedText);
+                                Log.d(TAG, "Captured search/input text in [" + packageName + "]: \"" + typedText + "\"");
+
+                                mBgExecutor.execute(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        evaluateAndEnforceImpulseGuard(packageName, typedText);
+                                    }
+                                });
+                            }
+                        }
+                    };
+
+                    mHandler.postDelayed(mPendingAuditRunnable, 150);
+                }
             }
         }
 
