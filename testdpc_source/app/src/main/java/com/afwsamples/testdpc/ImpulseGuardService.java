@@ -410,28 +410,6 @@ public class ImpulseGuardService extends AccessibilityService {
     }
 
     private String extractActiveText(AccessibilityEvent event) {
-        if (event == null) {
-            return null;
-        }
-
-        AccessibilityNodeInfo source = event.getSource();
-        if (source != null) {
-            int eventType = event.getEventType();
-            if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-                // User clicked an item on screen (e.g. search suggestion list item)
-                String clickedText = findClickedNodeText(source);
-                if (clickedText != null) {
-                    return clickedText;
-                }
-            } else {
-                // Standard typing / layout event -> Inspect ONLY editable search inputs (EditText)
-                String textFromNode = findEditableSearchNodeText(source);
-                if (textFromNode != null) {
-                    return textFromNode;
-                }
-            }
-        }
-
         if (event.getText() != null && !event.getText().isEmpty()) {
             StringBuilder sb = new StringBuilder();
             for (CharSequence seq : event.getText()) {
@@ -444,10 +422,17 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         }
 
+        AccessibilityNodeInfo source = event.getSource();
+        if (source != null) {
+            String textFromNode = findSearchNodeText(source);
+            if (textFromNode != null) {
+                return textFromNode;
+            }
+        }
         return null;
     }
 
-    private String findEditableSearchNodeText(AccessibilityNodeInfo node) {
+    private String findSearchNodeText(AccessibilityNodeInfo node) {
         if (node == null) {
             return null;
         }
@@ -462,42 +447,7 @@ public class ImpulseGuardService extends AccessibilityService {
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
-                String childText = findEditableSearchNodeText(child);
-                if (childText != null) {
-                    return childText;
-                }
-            }
-        }
-        return null;
-    }
-
-    private String findClickedNodeText(AccessibilityNodeInfo node) {
-        if (node == null) {
-            return null;
-        }
-
-        CharSequence text = node.getText();
-        if (text != null && text.length() >= 3) {
-            String str = text.toString().trim();
-            if (!str.equalsIgnoreCase("Search") && !str.equalsIgnoreCase("Cancel") && !str.equalsIgnoreCase("Back") &&
-                    !str.equalsIgnoreCase("Home") && !str.equalsIgnoreCase("Reels") && !str.equalsIgnoreCase("Profile") &&
-                    !str.startsWith("http://") && !str.startsWith("https://")) {
-                return str;
-            }
-        }
-
-        CharSequence contentDesc = node.getContentDescription();
-        if (contentDesc != null && contentDesc.length() >= 3) {
-            String str = contentDesc.toString().trim();
-            if (!str.equalsIgnoreCase("Search") && !str.equalsIgnoreCase("Cancel")) {
-                return str;
-            }
-        }
-
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child != null) {
-                String childText = findClickedNodeText(child);
+                String childText = findSearchNodeText(child);
                 if (childText != null) {
                     return childText;
                 }
@@ -563,11 +513,24 @@ public class ImpulseGuardService extends AccessibilityService {
             return;
         }
 
-        // Expiration Locking: If package is ALREADY suspended, do not reset or extend the timer!
+        // Expiration Locking: If package is ALREADY suspended in OS, do not reset or extend the timer!
         SharedPreferences prefs = getSharedPreferences(PREF_SUSPENSIONS, Context.MODE_PRIVATE);
-        if (prefs.contains(packageName)) {
-            Log.d(TAG, "Package [" + packageName + "] is ALREADY suspended. Preserving active timer.");
+        final DevicePolicyManager dpmCheck = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
+        boolean isActuallySuspendedInOS = false;
+        if (dpmCheck != null && dpmCheck.isDeviceOwnerApp(getPackageName())) {
+            try {
+                isActuallySuspendedInOS = dpmCheck.isPackageSuspended(DeviceAdminReceiver.getComponentName(this), packageName);
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (prefs.contains(packageName) && isActuallySuspendedInOS) {
+            Log.d(TAG, "Package [" + packageName + "] is ALREADY suspended in OS. Preserving active timer.");
             return;
+        }
+
+        if (!isActuallySuspendedInOS) {
+            prefs.edit().remove(packageName).apply();
         }
 
         PenaltyManager.PenaltyInfo penalty = PenaltyManager.recordViolationAndGetPenalty(this, packageName);
