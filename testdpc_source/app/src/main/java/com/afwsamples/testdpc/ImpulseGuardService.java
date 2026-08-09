@@ -420,12 +420,27 @@ public class ImpulseGuardService extends AccessibilityService {
                 lower.contains("opera") || lower.contains("search") || lower.contains("duckduckgo");
     }
 
+    private boolean isMeaningfulSearchText(String str) {
+        if (str == null || str.length() < 3) return false;
+        String lower = str.toLowerCase(Locale.US);
+        if (lower.equals("search with meta ai") || lower.equals("search google or type url") ||
+                lower.equals("search or type url") || lower.equals("search youtube") ||
+                lower.equals("search") || lower.equals("application icon") ||
+                lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("www.")) {
+            return false;
+        }
+        return true;
+    }
+
     private String extractActiveText(AccessibilityEvent event) {
         if (event.getText() != null && !event.getText().isEmpty()) {
             StringBuilder sb = new StringBuilder();
             for (CharSequence seq : event.getText()) {
                 if (seq != null) {
-                    sb.append(seq).append(" ");
+                    String str = seq.toString().trim();
+                    if (isMeaningfulSearchText(str)) {
+                        sb.append(str).append(" ");
+                    }
                 }
             }
             if (sb.length() > 0) {
@@ -448,10 +463,11 @@ public class ImpulseGuardService extends AccessibilityService {
             return null;
         }
 
-        if (node.isEditable() || (node.getClassName() != null && node.getClassName().toString().contains("EditText"))) {
-            CharSequence text = node.getText();
-            if (text != null && text.length() > 0) {
-                return text.toString();
+        CharSequence text = node.getText();
+        if (text != null && text.length() >= 3) {
+            String str = text.toString().trim();
+            if (isMeaningfulSearchText(str)) {
+                return str;
             }
         }
 
