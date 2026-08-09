@@ -522,25 +522,22 @@ public class GeminiGuardEngine {
                 String category = "SAFE_SCREEN_CONTENT";
                 String reason = "gemini_parsed_screen";
 
-                String lowerText = generatedText.toLowerCase(Locale.US);
+                String cleanJson = generatedText.replaceAll("```json", "").replaceAll("```", "").trim();
 
-                if (lowerText.contains("\"is_risky\": true") || lowerText.contains("\"is_risky\":true") || lowerText.contains("\"is_risky\":  true")) {
-                    isRisky = true;
+                try {
+                    JSONObject parsedObj = new JSONObject(cleanJson);
+                    isRisky = parsedObj.optBoolean("is_risky", false);
+                } catch (Exception e) {
+                    String lowerText = generatedText.toLowerCase(Locale.US);
+                    if (lowerText.contains("is_risky\": true") || lowerText.contains("is_risky\":true") || lowerResponseContainsRefusal(lowerText)) {
+                        isRisky = true;
+                    }
+                }
+
+                if (isRisky) {
                     confidence = 0.95;
                     category = "ADULT_SCREEN_CONTENT";
                     reason = "gemini_explicit_adult_screen";
-                } else if (lowerText.contains("\"is_risky\": false") || lowerText.contains("\"is_risky\":false") || lowerResponseContainsRefusal(lowerText)) {
-                    if (lowerResponseContainsRefusal(lowerText)) {
-                        isRisky = true;
-                        confidence = 0.95;
-                        category = "ADULT_SCREEN_CONTENT_REFUSAL";
-                        reason = "gemini_refusal_text_screen";
-                    } else {
-                        isRisky = false;
-                        confidence = 0.05;
-                        category = "SAFE_SCREEN_CONTENT";
-                        reason = "gemini_explicit_safe_screen";
-                    }
                 }
 
                 if (isRisky) {

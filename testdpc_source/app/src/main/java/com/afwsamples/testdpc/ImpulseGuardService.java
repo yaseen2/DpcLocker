@@ -300,7 +300,7 @@ public class ImpulseGuardService extends AccessibilityService {
                     }
                 };
 
-                mHandler.postDelayed(mPendingScreenAuditRunnable, 1500);
+                mHandler.postDelayed(mPendingScreenAuditRunnable, 300);
             }
         }
     }
@@ -463,7 +463,7 @@ public class ImpulseGuardService extends AccessibilityService {
                     public void run() {
                         triggerPostSearchScreenAudit(packageName);
                     }
-                }, 1200);
+                }, 400);
             }
         }
     }
