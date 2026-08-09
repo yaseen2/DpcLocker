@@ -455,6 +455,34 @@ public class ImpulseGuardService extends AccessibilityService {
                     enforcePackageSuspension(packageName, typedText);
                 }
             });
+        } else {
+            // Sequential Phase 2: If Search Query is ALLOWED, schedule Post-Search Screen Audit after 1200ms
+            if (GeminiGuardEngine.isScreenGuardEnabled(this)) {
+                mHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        triggerPostSearchScreenAudit(packageName);
+                    }
+                }, 1200);
+            }
+        }
+    }
+
+    private void triggerPostSearchScreenAudit(final String packageName) {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            final String screenText = extractFullScreenText(root);
+            if (screenText != null && screenText.length() >= 15) {
+                Log.d(TAG, "Sequential Phase 2 Post-Search Screen Audit for [" + packageName + "]: " + screenText.substring(0, Math.min(80, screenText.length())) + "...");
+                mBgExecutor.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        evaluateAndEnforceScreenGuard(packageName, screenText);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in triggerPostSearchScreenAudit", e);
         }
     }
 
