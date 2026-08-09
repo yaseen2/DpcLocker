@@ -18,6 +18,8 @@ package com.afwsamples.testdpc.policy;
 
 import com.afwsamples.testdpc.GeminiGuardEngine;
 import com.afwsamples.testdpc.ImpulseGuardService;
+import com.afwsamples.testdpc.PenaltyManager;
+import android.text.InputType;
 import android.view.ViewGroup;
 import java.util.Locale;
 import android.widget.Button;
@@ -4418,9 +4420,65 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         });
         layout.addView(unsuspendBtn);
 
+        TextView penaltyTitle = new TextView(context);
+        penaltyTitle.setText("\n🚨 Escalating Daily Penalty Ladder (Minutes):");
+        penaltyTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        layout.addView(penaltyTitle);
+
+        LinearLayout penaltyRow1 = new LinearLayout(context);
+        penaltyRow1.setOrientation(LinearLayout.HORIZONTAL);
+        TextView pLabel1 = new TextView(context);
+        pLabel1.setText("1st Violation: ");
+        penaltyRow1.addView(pLabel1);
+        final EditText pInput1 = new EditText(context);
+        pInput1.setInputType(InputType.TYPE_CLASS_NUMBER);
+        pInput1.setText(String.valueOf(PenaltyManager.getCustomPenaltyMinutes(context, 1)));
+        pInput1.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        penaltyRow1.addView(pInput1);
+        layout.addView(penaltyRow1);
+
+        LinearLayout penaltyRow2 = new LinearLayout(context);
+        penaltyRow2.setOrientation(LinearLayout.HORIZONTAL);
+        TextView pLabel2 = new TextView(context);
+        pLabel2.setText("2nd Violation: ");
+        penaltyRow2.addView(pLabel2);
+        final EditText pInput2 = new EditText(context);
+        pInput2.setInputType(InputType.TYPE_CLASS_NUMBER);
+        pInput2.setText(String.valueOf(PenaltyManager.getCustomPenaltyMinutes(context, 2)));
+        pInput2.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        penaltyRow2.addView(pInput2);
+        layout.addView(penaltyRow2);
+
+        LinearLayout penaltyRow3 = new LinearLayout(context);
+        penaltyRow3.setOrientation(LinearLayout.HORIZONTAL);
+        TextView pLabel3 = new TextView(context);
+        pLabel3.setText("3rd Violation: ");
+        penaltyRow3.addView(pLabel3);
+        final EditText pInput3 = new EditText(context);
+        pInput3.setInputType(InputType.TYPE_CLASS_NUMBER);
+        pInput3.setText(String.valueOf(PenaltyManager.getCustomPenaltyMinutes(context, 3)));
+        pInput3.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        penaltyRow3.addView(pInput3);
+        layout.addView(penaltyRow3);
+
+        LinearLayout penaltyRow4 = new LinearLayout(context);
+        penaltyRow4.setOrientation(LinearLayout.HORIZONTAL);
+        TextView pLabel4 = new TextView(context);
+        pLabel4.setText("4th+ Violation: ");
+        penaltyRow4.addView(pLabel4);
+        final EditText pInput4 = new EditText(context);
+        pInput4.setInputType(InputType.TYPE_CLASS_NUMBER);
+        pInput4.setText(String.valueOf(PenaltyManager.getCustomPenaltyMinutes(context, 4)));
+        pInput4.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        penaltyRow4.addView(pInput4);
+        layout.addView(penaltyRow4);
+
+        ScrollView scrollView = new ScrollView(context);
+        scrollView.addView(layout);
+
         new AlertDialog.Builder(context)
                 .setTitle("Gemini 3.6 Flash AI Content Guard 🔒")
-                .setView(layout)
+                .setView(scrollView)
                 .setPositiveButton("Save Settings", (d, w) -> {
                     boolean enabled = enableSwitch.isChecked();
                     boolean screenEnabled = screenEnableSwitch.isChecked();
@@ -4428,6 +4486,16 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                     GeminiGuardEngine.setEnabled(context, enabled);
                     GeminiGuardEngine.setScreenGuardEnabled(context, screenEnabled);
                     GeminiGuardEngine.setApiKey(context, key);
+
+                    try {
+                        int v1 = Integer.parseInt(pInput1.getText().toString().trim());
+                        int v2 = Integer.parseInt(pInput2.getText().toString().trim());
+                        int v3 = Integer.parseInt(pInput3.getText().toString().trim());
+                        int v4 = Integer.parseInt(pInput4.getText().toString().trim());
+                        PenaltyManager.setCustomPenaltyMinutes(context, v1, v2, v3, v4);
+                    } catch (Exception ignored) {
+                    }
+
                     Toast.makeText(context, "Gemini AI Guard settings saved!", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("Cancel", null)

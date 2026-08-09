@@ -17,6 +17,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.Toast;
 import androidx.core.app.NotificationCompat;
 
 import java.util.Arrays;
@@ -49,6 +50,7 @@ public class ImpulseGuardService extends AccessibilityService {
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService mBgExecutor = Executors.newSingleThreadExecutor();
     private final ConcurrentHashMap<String, String> mLastEvaluatedTextMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> mLastPenalizedQueryMap = new ConcurrentHashMap<>();
 
     private Runnable mPendingAuditRunnable;
     private Runnable mPendingScreenAuditRunnable;
@@ -121,10 +123,10 @@ public class ImpulseGuardService extends AccessibilityService {
         context.getSharedPreferences(PREF_NEVER_ASK_APPS, Context.MODE_PRIVATE).edit().putBoolean(packageName, true).apply();
     }
 
-    private void recordPackageSuspension(String packageName) {
+    private void recordPackageSuspension(String packageName, long expiryTimestamp) {
         getSharedPreferences(PREF_SUSPENSIONS, Context.MODE_PRIVATE)
                 .edit()
-                .putLong(packageName, System.currentTimeMillis())
+                .putLong(packageName, expiryTimestamp)
                 .apply();
     }
 
@@ -170,13 +172,18 @@ public class ImpulseGuardService extends AccessibilityService {
             for (Map.Entry<String, ?> entry : allEntries.entrySet()) {
                 String pkg = entry.getKey();
                 Object val = entry.getValue();
-                long suspendTime = (val instanceof Long) ? (Long) val : 0L;
+                long expiryTimestamp = (val instanceof Long) ? (Long) val : 0L;
 
-                if (!isEngineActive || (now - suspendTime >= SUSPENSION_DURATION_MS)) {
+                // Legacy fallback if stored value was start timestamp instead of expiry timestamp
+                if (expiryTimestamp > 0 && expiryTimestamp < (now - 120000L)) {
+                    expiryTimestamp = expiryTimestamp + 60000L;
+                }
+
+                if (!isEngineActive || (now >= expiryTimestamp)) {
                     try {
                         dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(this), new String[]{pkg}, false);
-                        Log.i(TAG, "AUTO-UNSUSPENDED PACKAGE [" + pkg + "] after 60s impulse duration.");
-                        GeminiGuardEngine.appendLog(this, "[" + pkg + "] Auto-unsuspended after 60-second timer.");
+                        Log.i(TAG, "AUTO-UNSUSPENDED PACKAGE [" + pkg + "] after penalty duration expired.");
+                        GeminiGuardEngine.appendLog(this, "[" + pkg + "] Auto-unsuspended after penalty expiration.");
                     } catch (Exception e) {
                         Log.e(TAG, "Error unsuspending package " + pkg, e);
                     }
@@ -211,6 +218,11 @@ public class ImpulseGuardService extends AccessibilityService {
         }
 
         final String packageName = packageNameChar.toString();
+
+        int eventType = event.getEventType();
+        if (eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED || eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            mLastPenalizedQueryMap.remove(packageName);
+        }
 
         // 1. Password & Sensitive Input Field Privacy Masking
         if (isPasswordOrSensitiveNode(event)) {
@@ -264,7 +276,6 @@ public class ImpulseGuardService extends AccessibilityService {
         }
 
         // 5. Anti-Bypass Full Screen Text Scan on Render / Scroll / Switch
-        int eventType = event.getEventType();
         if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
@@ -450,6 +461,12 @@ public class ImpulseGuardService extends AccessibilityService {
             return;
         }
 
+        String lastPenalized = mLastPenalizedQueryMap.get(packageName);
+        if (lastPenalized != null && typedText != null && lastPenalized.equalsIgnoreCase(typedText.trim())) {
+            Log.d(TAG, "Skipping re-evaluation of static leftover search query for [" + packageName + "]: \"" + typedText + "\"");
+            return;
+        }
+
         GeminiGuardEngine.EvaluationResult result = GeminiGuardEngine.evaluateTextDetailed(this, packageName, typedText);
 
         if (result.isRisky) {
@@ -499,27 +516,35 @@ public class ImpulseGuardService extends AccessibilityService {
         // Expiration Locking: If package is ALREADY suspended, do not reset or extend the timer!
         SharedPreferences prefs = getSharedPreferences(PREF_SUSPENSIONS, Context.MODE_PRIVATE);
         if (prefs.contains(packageName)) {
-            Log.d(TAG, "Package [" + packageName + "] is ALREADY suspended. Preserving original 60s timer.");
+            Log.d(TAG, "Package [" + packageName + "] is ALREADY suspended. Preserving active timer.");
             return;
         }
 
-        Log.w(TAG, "SUSPENDING TARGET PACKAGE [" + packageName + "] FOR 60 SECONDS TO BREAK IMPULSE! Query: \"" + typedText + "\"");
+        PenaltyManager.PenaltyInfo penalty = PenaltyManager.recordViolationAndGetPenalty(this, packageName);
+        if (typedText != null) {
+            mLastPenalizedQueryMap.put(packageName, typedText.trim());
+        }
+
+        long now = System.currentTimeMillis();
+        long expiryTimestamp = now + penalty.durationMs;
+
+        Log.w(TAG, "SUSPENDING TARGET PACKAGE [" + packageName + "] FOR " + penalty.durationMinutes + " MINUTE(S) (VIOLATION #" + penalty.violationCount + ")! Query: \"" + typedText + "\"");
 
         try {
             final DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
             if (dpm != null && dpm.isDeviceOwnerApp(getPackageName())) {
                 // 1. Suspend the target app immediately
                 dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(this), new String[]{packageName}, true);
-                recordPackageSuspension(packageName);
-                showSuspensionNotification(packageName);
+                recordPackageSuspension(packageName, expiryTimestamp);
+                showSuspensionNotification(packageName, penalty.violationCount, penalty.durationMinutes);
 
-                // 2. Schedule automatic 60-second unsuspend check
+                // 2. Schedule automatic unsuspend check
                 mHandler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
                         checkAndCleanExpiredSuspensions();
                     }
-                }, SUSPENSION_DURATION_MS);
+                }, penalty.durationMs);
             }
         } catch (Exception e) {
             Log.e(TAG, "Failed to suspend package: " + packageName, e);
@@ -562,17 +587,28 @@ public class ImpulseGuardService extends AccessibilityService {
         }
     }
 
-    private void showSuspensionNotification(String packageName) {
+    private void showSuspensionNotification(String packageName, int violationCount, int durationMinutes) {
         try {
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) {
+                String appLabel = packageName;
+                try {
+                    PackageManager pm = getPackageManager();
+                    ApplicationInfo ai = pm.getApplicationInfo(packageName, 0);
+                    appLabel = pm.getApplicationLabel(ai).toString();
+                } catch (Exception ignored) {}
+
+                String title = "Gemini AI Guard Violation #" + violationCount + " 🔒";
+                String text = appLabel + " suspended for " + durationMinutes + " minute(s) to break impulse.";
+
                 NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                         .setSmallIcon(android.R.drawable.ic_lock_lock)
-                        .setContentTitle("Impulse Guard Protection Active 🔒")
-                        .setContentText("Suspended " + packageName + " for 60 seconds to break relapse impulse.")
+                        .setContentTitle(title)
+                        .setContentText(text)
                         .setPriority(NotificationCompat.PRIORITY_HIGH)
                         .setAutoCancel(true);
                 nm.notify(NOTIF_ID, builder.build());
+                Toast.makeText(this, text, Toast.LENGTH_LONG).show();
             }
         } catch (Exception ignored) {
         }
