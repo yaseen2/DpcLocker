@@ -400,30 +400,22 @@ public class GeminiGuardEngine {
         }
 
         String trimmedScreenText = screenText.trim();
-        String hashKey = String.valueOf(trimmedScreenText.hashCode());
+        String hashKey = packageName + "_screen_" + Math.abs(trimmedScreenText.hashCode());
 
-        // 1. 0ms RAM Cache Check
+        // 1. 0ms Cache Check: ONLY cache RISKY screens to prevent false safe caching!
         Boolean ramVerdict = sRamCache.get(hashKey);
-        if (ramVerdict != null) {
-            Log.d(TAG, "0ms RAM Cache HIT for Screen Text -> " + ramVerdict);
-            return new EvaluationResult(ramVerdict, ramVerdict ? 0.95 : 0.05, ramVerdict ? "ADULT_SCREEN_CONTENT" : "SAFE_SCREEN_CONTENT", "0ms_ram_cache", 0, "{\"ram_cached\": true}", "ram_cache");
+        if (ramVerdict != null && ramVerdict.booleanValue()) {
+            Log.d(TAG, "0ms RAM Cache HIT (RISKY) for Screen Text -> true");
+            return new EvaluationResult(true, 0.95, "ADULT_SCREEN_CONTENT", "0ms_ram_cache", 0, "{\"ram_cached\": true}", "ram_cache");
         }
 
-        // 2. 0ms Disk Cache Check
-        Boolean diskVerdict = getCachedVerdict(context, hashKey);
-        if (diskVerdict != null) {
-            sRamCache.put(hashKey, diskVerdict);
-            Log.d(TAG, "0ms Disk Cache HIT for Screen Text -> " + diskVerdict);
-            return new EvaluationResult(diskVerdict, diskVerdict ? 0.95 : 0.05, diskVerdict ? "ADULT_SCREEN_CONTENT" : "SAFE_SCREEN_CONTENT", "0ms_disk_cache", 0, "{\"disk_cached\": true}", "disk_cache");
-        }
-
-        // 3. Check API Key & Network
+        // 2. Check API Key & Network
         String apiKey = getApiKey(context);
         if (apiKey.isEmpty() || !isNetworkConnected(context)) {
             return new EvaluationResult(false, 0.0, "safe", "api_key_missing_or_offline", 0, "{}", "none");
         }
 
-        // 4. Single-Flight Lock
+        // 3. Single-Flight Lock
         if (!isRequestInFlight.compareAndSet(false, true)) {
             Log.d(TAG, "Single-flight lock active. Skipping screen text evaluation.");
             return new EvaluationResult(false, 0.0, "gpu_busy", "request_in_flight", 0, "{}", "none");
@@ -442,8 +434,10 @@ public class GeminiGuardEngine {
             }
 
             if (finalResult != null) {
-                sRamCache.put(hashKey, finalResult.isRisky);
-                putCachedVerdict(context, hashKey, finalResult.isRisky);
+                if (finalResult.isRisky) {
+                    sRamCache.put(hashKey, true);
+                    putCachedVerdict(context, hashKey, true);
+                }
                 return finalResult;
             }
 
