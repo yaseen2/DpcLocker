@@ -48,6 +48,12 @@
             android:summary="Configure Gemini API key to inspect new app installs in real-time and auto-freeze video downloaders &amp; adult browsers."
             testdpc:admin="deviceOwner"
             testdpc:minSdkVersion="L" />
+        <com.afwsamples.testdpc.common.preference.DpcPreference
+            android:key="gemini_ai_guard_key"
+            android:title="@string/gemini_ai_guard_title"
+            android:summary="@string/gemini_ai_guard_summary"
+            testdpc:admin="deviceOwner"
+            testdpc:minSdkVersion="L" />
     </PreferenceCategory>
 
     <com.afwsamples.testdpc.common.preference.DpcPreference

@@ -1173,4 +1173,8 @@
         This screen will be shown if the user sets device up with a managed account, and we believe that the user may want to set up a managed profile rather than a managed device.[CHAR LIMIT=100] -->
     <string name="selection_divider_text">or</string>
 
+    <string name="impulse_guard_accessibility_description">Impulse Guard Accessibility Service captures search queries in web browsers and inspects adult intent via Google Gemini 3.6 Flash AI Cloud Engine.</string>
+    <string name="gemini_ai_guard_title">Gemini 3.6 Flash AI Guard Settings 🔒</string>
+    <string name="gemini_ai_guard_summary">Configure free Gemini API Key, fallback ladder, app whitelisting, and 60-second impulse suspension.</string>
+
 </resources>

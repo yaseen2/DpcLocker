@@ -16,6 +16,13 @@
 
 package com.afwsamples.testdpc.policy;
 
+import com.afwsamples.testdpc.GeminiGuardEngine;
+import com.afwsamples.testdpc.ImpulseGuardService;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.Switch;
+import android.widget.TextView;
+
 import static android.os.UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES;
 import static com.afwsamples.testdpc.common.Util.Q_VERSION_CODE;
 import static com.afwsamples.testdpc.common.preference.DpcPreferenceHelper.NO_CUSTOM_CONSTRIANT;
@@ -268,6 +275,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
             = "app_restrictions_managing_package";
     private static final String BLOCK_UNINSTALLATION_BY_PKG_KEY = "block_uninstallation_by_pkg";
     private static final String AI_APP_AUDITOR_KEY = "ai_app_auditor_key";
+    private static final String GEMINI_AI_GUARD_KEY = "gemini_ai_guard_key";
     private static final String BLOCK_UNINSTALLATION_LIST_KEY = "block_uninstallation_list";
     private static final String CAPTURE_IMAGE_KEY = "capture_image";
     private static final String CAPTURE_VIDEO_KEY = "capture_video";
@@ -682,6 +690,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         findPreference(REMOVE_ACCOUNT_KEY).setOnPreferenceClickListener(this);
         findPreference(BLOCK_UNINSTALLATION_BY_PKG_KEY).setOnPreferenceClickListener(this);
         findPreference(BLOCK_UNINSTALLATION_LIST_KEY).setOnPreferenceClickListener(this);
+        findPreference(GEMINI_AI_GUARD_KEY).setOnPreferenceClickListener(this);
         findPreference(APP_FEEDBACK_NOTIFICATIONS).setOnPreferenceChangeListener(this);
         mEnableAppFeedbackNotificationsPreference =
             (DpcSwitchPreference) findPreference(APP_FEEDBACK_NOTIFICATIONS);
@@ -928,6 +937,9 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 return true;
             case AI_APP_AUDITOR_KEY:
                 showGeminiApiKeyDialog();
+                return true;
+            case GEMINI_AI_GUARD_KEY:
+                showGeminiAiGuardSettingsDialog();
                 return true;
             case MANAGE_LOCK_TASK_LIST_KEY:
                 showManageLockTaskListPrompt(R.string.lock_task_title,
@@ -4227,6 +4239,132 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                     }
                 })
                 .setNegativeButton("Close", null)
+                .show();
+    }
+
+    private void showGeminiAiGuardSettingsDialog() {
+        final Context context = getActivity();
+        if (context == null) return;
+
+        LinearLayout layout = new LinearLayout(context);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(40, 30, 40, 20);
+
+        final Switch enableSwitch = new Switch(context);
+        enableSwitch.setText("Enable Gemini 3.6 Flash Guard");
+        enableSwitch.setChecked(GeminiGuardEngine.isEnabled(context));
+        layout.addView(enableSwitch);
+
+        final TextView keyLabel = new TextView(context);
+        keyLabel.setText("\nGemini API Key (Free tier via Google AI Studio):");
+        layout.addView(keyLabel);
+
+        final EditText keyInput = new EditText(context);
+        keyInput.setHint("Paste Gemini API key here");
+        keyInput.setText(GeminiGuardEngine.getApiKey(context));
+        layout.addView(keyInput);
+
+        final TextView testStatusText = new TextView(context);
+        testStatusText.setText("\nStatus: " + (GeminiGuardEngine.getApiKey(context).isEmpty() ? "Key not set" : "Key configured"));
+        testStatusText.setTextSize(13);
+        layout.addView(testStatusText);
+
+        Button testBtn = new Button(context);
+        testBtn.setText("🔑 Test API Key Connection");
+        testBtn.setOnClickListener(v -> {
+            testStatusText.setText("Testing connection to Gemini 3.6 Flash...");
+            String newKey = keyInput.getText().toString().trim();
+            GeminiGuardEngine.setApiKey(context, newKey);
+            GeminiGuardEngine.testApiKeyAsync(context, (success, message) -> {
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> testStatusText.setText(message));
+                }
+            });
+        });
+        layout.addView(testBtn);
+
+        Button pickerBtn = new Button(context);
+        pickerBtn.setText("📲 Manage Monitored Apps List");
+        pickerBtn.setOnClickListener(v -> showMonitoredAppPickerDialog());
+        layout.addView(pickerBtn);
+
+        Button logsBtn = new Button(context);
+        logsBtn.setText("📋 View Event Logs & Cache Stats");
+        logsBtn.setOnClickListener(v -> {
+            String logs = GeminiGuardEngine.getLogs(context);
+            new AlertDialog.Builder(context)
+                    .setTitle("Gemini AI Guard Logs")
+                    .setMessage(logs)
+                    .setNeutralButton("Clear Cache", (d, w) -> GeminiGuardEngine.clearCache(context))
+                    .setNegativeButton("Clear Logs", (d, w) -> GeminiGuardEngine.clearLogs(context))
+                    .setPositiveButton("OK", null)
+                    .show();
+        });
+        layout.addView(logsBtn);
+
+        Button unsuspendBtn = new Button(context);
+        unsuspendBtn.setText("🔓 Unsuspend All Apps Now");
+        unsuspendBtn.setOnClickListener(v -> {
+            ImpulseGuardService.unsuspendAllImpulseSuspendedPackages(context);
+            Toast.makeText(context, "All apps unsuspended!", Toast.LENGTH_SHORT).show();
+        });
+        layout.addView(unsuspendBtn);
+
+        new AlertDialog.Builder(context)
+                .setTitle("Gemini 3.6 Flash AI Content Guard 🔒")
+                .setView(layout)
+                .setPositiveButton("Save Settings", (d, w) -> {
+                    boolean enabled = enableSwitch.isChecked();
+                    String key = keyInput.getText().toString().trim();
+                    GeminiGuardEngine.setEnabled(context, enabled);
+                    GeminiGuardEngine.setApiKey(context, key);
+                    Toast.makeText(context, "Gemini AI Guard settings saved!", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void showMonitoredAppPickerDialog() {
+        final Context context = getActivity();
+        if (context == null) return;
+
+        PackageManager pm = context.getPackageManager();
+        List<ApplicationInfo> installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+
+        final java.util.List<ApplicationInfo> userApps = new java.util.ArrayList<>();
+        for (ApplicationInfo ai : installedApps) {
+            if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) == 0 || ai.packageName.contains("chrome") || ai.packageName.contains("browser")) {
+                userApps.add(ai);
+            }
+        }
+
+        userApps.sort((a, b) -> pm.getApplicationLabel(a).toString().compareToIgnoreCase(pm.getApplicationLabel(b).toString()));
+
+        final String[] appNames = new String[userApps.size()];
+        final String[] pkgNames = new String[userApps.size()];
+        final boolean[] checkedItems = new boolean[userApps.size()];
+
+        Set<String> currentlyMonitored = ImpulseGuardService.getMonitoredApps(context);
+
+        for (int i = 0; i < userApps.size(); i++) {
+            ApplicationInfo ai = userApps.get(i);
+            pkgNames[i] = ai.packageName;
+            appNames[i] = pm.getApplicationLabel(ai).toString() + " (" + ai.packageName + ")";
+            checkedItems[i] = currentlyMonitored.contains(ai.packageName);
+        }
+
+        new AlertDialog.Builder(context)
+                .setTitle("Select Apps to Monitor with Gemini AI Guard")
+                .setMultiChoiceItems(appNames, checkedItems, (dialog, which, isChecked) -> {
+                    checkedItems[which] = isChecked;
+                })
+                .setPositiveButton("Save Monitored Apps", (dialog, which) -> {
+                    for (int i = 0; i < pkgNames.length; i++) {
+                        ImpulseGuardService.setMonitoredApp(context, pkgNames[i], checkedItems[i]);
+                    }
+                    Toast.makeText(context, "Monitored Apps list updated!", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
                 .show();
     }
 }
