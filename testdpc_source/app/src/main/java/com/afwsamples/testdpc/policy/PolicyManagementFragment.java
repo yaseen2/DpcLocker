@@ -4255,6 +4255,11 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         enableSwitch.setChecked(GeminiGuardEngine.isEnabled(context));
         layout.addView(enableSwitch);
 
+        final Switch screenEnableSwitch = new Switch(context);
+        screenEnableSwitch.setText("Enable Full-Screen Text AI Guard");
+        screenEnableSwitch.setChecked(GeminiGuardEngine.isScreenGuardEnabled(context));
+        layout.addView(screenEnableSwitch);
+
         final TextView keyLabel = new TextView(context);
         keyLabel.setText("\nGemini API Key (Free tier via Google AI Studio):");
         layout.addView(keyLabel);
@@ -4315,8 +4320,10 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 .setView(layout)
                 .setPositiveButton("Save Settings", (d, w) -> {
                     boolean enabled = enableSwitch.isChecked();
+                    boolean screenEnabled = screenEnableSwitch.isChecked();
                     String key = keyInput.getText().toString().trim();
                     GeminiGuardEngine.setEnabled(context, enabled);
+                    GeminiGuardEngine.setScreenGuardEnabled(context, screenEnabled);
                     GeminiGuardEngine.setApiKey(context, key);
                     Toast.makeText(context, "Gemini AI Guard settings saved!", Toast.LENGTH_SHORT).show();
                 })

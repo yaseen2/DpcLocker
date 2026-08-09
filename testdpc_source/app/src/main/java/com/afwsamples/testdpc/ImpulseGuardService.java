@@ -51,6 +51,7 @@ public class ImpulseGuardService extends AccessibilityService {
     private final ConcurrentHashMap<String, String> mLastEvaluatedTextMap = new ConcurrentHashMap<>();
 
     private Runnable mPendingAuditRunnable;
+    private Runnable mPendingScreenAuditRunnable;
 
     // Built-In Never-Ask System & Productivity Whitelist
     private static final Set<String> SYSTEM_WHITELIST = new HashSet<>(Arrays.asList(
@@ -231,44 +232,140 @@ public class ImpulseGuardService extends AccessibilityService {
         }
 
         String extractedText = extractActiveText(event);
-        if (extractedText == null || extractedText.trim().length() < 3) {
-            return;
-        }
+        if (extractedText != null && extractedText.trim().length() >= 3) {
+            final String typedText = extractedText.trim();
+            if (!typedText.equalsIgnoreCase("Search or type URL") && !typedText.equalsIgnoreCase("Search Google or type URL") &&
+                    !typedText.startsWith("http://") && !typedText.startsWith("https://") && !typedText.startsWith("www.")) {
+                
+                if (mPendingAuditRunnable != null) {
+                    mHandler.removeCallbacks(mPendingAuditRunnable);
+                }
 
-        final String typedText = extractedText.trim();
+                mPendingAuditRunnable = new Runnable() {
+                    @Override
+                    public void run() {
+                        String lastTextForPkg = mLastEvaluatedTextMap.get(packageName);
+                        if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(typedText)) {
+                            mLastEvaluatedTextMap.put(packageName, typedText);
+                            Log.d(TAG, "Captured search/input text in [" + packageName + "]: \"" + typedText + "\"");
 
-        // 4. Noise & Placeholder Filter
-        if (typedText.equalsIgnoreCase("Search or type URL") || typedText.equalsIgnoreCase("Search Google or type URL") ||
-                typedText.startsWith("http://") || typedText.startsWith("https://") || typedText.startsWith("www.")) {
-            return;
-        }
-
-        // Cancel any pending debounced audit for smooth typing
-        if (mPendingAuditRunnable != null) {
-            mHandler.removeCallbacks(mPendingAuditRunnable);
-        }
-
-        mPendingAuditRunnable = new Runnable() {
-            @Override
-            public void run() {
-                String lastTextForPkg = mLastEvaluatedTextMap.get(packageName);
-                if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(typedText)) {
-                    mLastEvaluatedTextMap.put(packageName, typedText);
-                    Log.d(TAG, "Captured search/input text in [" + packageName + "]: \"" + typedText + "\"");
-
-                    // Run Gemini 3.6 Flash evaluation asynchronously on background executor
-                    mBgExecutor.execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            evaluateAndEnforceImpulseGuard(packageName, typedText);
+                            mBgExecutor.execute(new Runnable() {
+                                @Override
+                                public void run() {
+                                    evaluateAndEnforceImpulseGuard(packageName, typedText);
+                                }
+                            });
                         }
-                    });
+                    }
+                };
+
+                mHandler.postDelayed(mPendingAuditRunnable, 800);
+            }
+        }
+
+        // 5. Anti-Bypass Full Screen Text Scan on Render / Scroll / Switch
+        int eventType = event.getEventType();
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+                eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+
+            if (GeminiGuardEngine.isScreenGuardEnabled(this)) {
+                if (mPendingScreenAuditRunnable != null) {
+                    mHandler.removeCallbacks(mPendingScreenAuditRunnable);
+                }
+
+                mPendingScreenAuditRunnable = new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            AccessibilityNodeInfo root = getRootInActiveWindow();
+                            final String screenText = extractFullScreenText(root);
+                            if (screenText != null && screenText.length() >= 15) {
+                                String lastScreen = mLastEvaluatedTextMap.get(packageName + "_screen");
+                                if (lastScreen == null || !lastScreen.equals(screenText)) {
+                                    mLastEvaluatedTextMap.put(packageName + "_screen", screenText);
+                                    Log.d(TAG, "Captured Full Screen Text in [" + packageName + "]: " + screenText.substring(0, Math.min(100, screenText.length())) + "...");
+
+                                    mBgExecutor.execute(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            evaluateAndEnforceScreenGuard(packageName, screenText);
+                                        }
+                                    });
+                                }
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error in screen text extraction", e);
+                        }
+                    }
+                };
+
+                mHandler.postDelayed(mPendingScreenAuditRunnable, 1500);
+            }
+        }
+    }
+
+    private String extractFullScreenText(AccessibilityNodeInfo root) {
+        if (root == null) return null;
+
+        StringBuilder sb = new StringBuilder();
+        collectNodeTextRecursive(root, sb, new HashSet<Integer>());
+
+        String result = sb.toString().replaceAll("\\s+", " ").trim();
+        if (result.length() > 1500) {
+            result = result.substring(0, 1500);
+        }
+        return result;
+    }
+
+    private void collectNodeTextRecursive(AccessibilityNodeInfo node, StringBuilder sb, Set<Integer> visited) {
+        if (node == null || visited.size() > 300) return;
+
+        int id = node.hashCode();
+        if (visited.contains(id)) return;
+        visited.add(id);
+
+        try {
+            if (node.isPassword()) return;
+
+            CharSequence className = node.getClassName();
+            if (className != null && className.toString().toLowerCase(Locale.US).contains("password")) {
+                return;
+            }
+
+            CharSequence text = node.getText();
+            if (text != null && text.length() > 2) {
+                String str = text.toString().trim();
+                if (!str.equalsIgnoreCase("Search or type URL") && !str.startsWith("http://") && !str.startsWith("https://")) {
+                    sb.append(str).append(" ");
                 }
             }
-        };
 
-        // 800ms Debounce Delay
-        mHandler.postDelayed(mPendingAuditRunnable, 800);
+            for (int i = 0; i < node.getChildCount(); i++) {
+                AccessibilityNodeInfo child = node.getChild(i);
+                if (child != null) {
+                    collectNodeTextRecursive(child, sb, visited);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void evaluateAndEnforceScreenGuard(final String packageName, String screenText) {
+        if (packageName == null || SYSTEM_WHITELIST.contains(packageName) || packageName.startsWith("com.afwsamples.testdpc")) {
+            return;
+        }
+
+        GeminiGuardEngine.EvaluationResult result = GeminiGuardEngine.evaluateScreenTextDetailed(this, packageName, screenText);
+
+        if (result.isRisky) {
+            mHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    enforcePackageSuspension(packageName, "ADULT_SCREEN_CONTENT");
+                }
+            });
+        }
     }
 
     private boolean isPasswordOrSensitiveNode(AccessibilityEvent event) {

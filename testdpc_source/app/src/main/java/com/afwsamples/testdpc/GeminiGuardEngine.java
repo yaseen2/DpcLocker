@@ -27,6 +27,7 @@ public class GeminiGuardEngine {
     private static final String TAG = "GeminiGuardEngine";
     private static final String PREFS_NAME = "gemini_guard_engine_prefs";
     private static final String KEY_ENABLED = "gemini_guard_enabled";
+    private static final String KEY_SCREEN_GUARD_ENABLED = "gemini_screen_guard_enabled";
     private static final String KEY_API_KEY = "gemini_api_key";
     private static final String KEY_CACHE_PREFIX = "cache_verdict_";
     private static final String KEY_LOGS = "gemini_guard_logs";
@@ -35,6 +36,7 @@ public class GeminiGuardEngine {
     private static final String FALLBACK_MODEL_1 = "gemini-3.5-flash";
     private static final String FALLBACK_MODEL_2 = "gemini-2.5-flash";
 
+    private static final android.util.LruCache<String, Boolean> sRamCache = new android.util.LruCache<>(250);
     private static final AtomicBoolean isRequestInFlight = new AtomicBoolean(false);
     private static final ExecutorService sBgExecutor = Executors.newSingleThreadExecutor();
 
@@ -376,6 +378,183 @@ public class GeminiGuardEngine {
 
         } catch (Exception e) {
             Log.e(TAG, "Error executing Gemini request for model: " + modelName, e);
+            return null;
+        }
+    }
+
+    public static boolean isScreenGuardEnabled(Context context) {
+        return getPrefs(context).getBoolean(KEY_SCREEN_GUARD_ENABLED, true);
+    }
+
+    public static void setScreenGuardEnabled(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(KEY_SCREEN_GUARD_ENABLED, enabled).apply();
+        Log.i(TAG, "Gemini Screen Guard enabled set to: " + enabled);
+    }
+
+    public static EvaluationResult evaluateScreenTextDetailed(Context context, String packageName, String screenText) {
+        long startTime = System.currentTimeMillis();
+
+        if (!isScreenGuardEnabled(context) || screenText == null || screenText.trim().length() < 15) {
+            return new EvaluationResult(false, 1.0, "safe", "screen_text_too_short", 0, "{}", "none");
+        }
+
+        String trimmedScreenText = screenText.trim();
+        String hashKey = String.valueOf(trimmedScreenText.hashCode());
+
+        // 1. 0ms RAM Cache Check
+        Boolean ramVerdict = sRamCache.get(hashKey);
+        if (ramVerdict != null) {
+            Log.d(TAG, "0ms RAM Cache HIT for Screen Text -> " + ramVerdict);
+            return new EvaluationResult(ramVerdict, ramVerdict ? 0.95 : 0.05, ramVerdict ? "ADULT_SCREEN_CONTENT" : "SAFE_SCREEN_CONTENT", "0ms_ram_cache", 0, "{\"ram_cached\": true}", "ram_cache");
+        }
+
+        // 2. 0ms Disk Cache Check
+        Boolean diskVerdict = getCachedVerdict(context, hashKey);
+        if (diskVerdict != null) {
+            sRamCache.put(hashKey, diskVerdict);
+            Log.d(TAG, "0ms Disk Cache HIT for Screen Text -> " + diskVerdict);
+            return new EvaluationResult(diskVerdict, diskVerdict ? 0.95 : 0.05, diskVerdict ? "ADULT_SCREEN_CONTENT" : "SAFE_SCREEN_CONTENT", "0ms_disk_cache", 0, "{\"disk_cached\": true}", "disk_cache");
+        }
+
+        // 3. Check API Key & Network
+        String apiKey = getApiKey(context);
+        if (apiKey.isEmpty() || !isNetworkConnected(context)) {
+            return new EvaluationResult(false, 0.0, "safe", "api_key_missing_or_offline", 0, "{}", "none");
+        }
+
+        // 4. Single-Flight Lock
+        if (!isRequestInFlight.compareAndSet(false, true)) {
+            Log.d(TAG, "Single-flight lock active. Skipping screen text evaluation.");
+            return new EvaluationResult(false, 0.0, "gpu_busy", "request_in_flight", 0, "{}", "none");
+        }
+
+        try {
+            String[] modelsToTry = new String[]{PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2};
+            EvaluationResult finalResult = null;
+
+            for (String modelName : modelsToTry) {
+                EvaluationResult res = executeGeminiScreenRequest(context, modelName, apiKey, packageName, trimmedScreenText, startTime);
+                if (res != null) {
+                    finalResult = res;
+                    break;
+                }
+            }
+
+            if (finalResult != null) {
+                sRamCache.put(hashKey, finalResult.isRisky);
+                putCachedVerdict(context, hashKey, finalResult.isRisky);
+                return finalResult;
+            }
+
+            return new EvaluationResult(false, 0.0, "safe", "gemini_all_models_failed", System.currentTimeMillis() - startTime, "{}", "none");
+
+        } finally {
+            isRequestInFlight.set(false);
+        }
+    }
+
+    private static EvaluationResult executeGeminiScreenRequest(Context context, String modelName, String apiKey, String packageName, String screenText, long startTime) {
+        String endpointUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
+
+        try {
+            JSONObject payload = new JSONObject();
+            JSONArray contents = new JSONArray();
+            JSONObject contentObj = new JSONObject();
+            JSONArray parts = new JSONArray();
+            JSONObject partObj = new JSONObject();
+
+            String prompt = "Classify if the following plain text visible on an Android screen contains explicit adult, pornographic, erotic, or NSFW material.\n\n" +
+                    "Visible Screen Text: \"" + screenText + "\"\n\n" +
+                    "Respond ONLY with a valid JSON object: {\"is_risky\": true} or {\"is_risky\": false}";
+
+            partObj.put("text", prompt);
+            parts.put(partObj);
+            contentObj.put("parts", parts);
+            contents.put(contentObj);
+            payload.put("contents", contents);
+
+            URL url = new URL(endpointUrl);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+            conn.setDoOutput(true);
+
+            try (OutputStream os = conn.getOutputStream()) {
+                byte[] input = payload.toString().getBytes(StandardCharsets.UTF_8);
+                os.write(input, 0, input.length);
+            }
+
+            int code = conn.getResponseCode();
+            long latency = System.currentTimeMillis() - startTime;
+
+            if (code == 200) {
+                StringBuilder responseBuilder = new StringBuilder();
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        responseBuilder.append(line.trim());
+                    }
+                }
+
+                String rawResponseBody = responseBuilder.toString();
+                JSONObject jsonResponse = new JSONObject(rawResponseBody);
+                JSONArray candidates = jsonResponse.optJSONArray("candidates");
+                String generatedText = "";
+
+                if (candidates != null && candidates.length() > 0) {
+                    JSONObject candidate = candidates.getJSONObject(0);
+                    JSONObject candidateContent = candidate.optJSONObject("content");
+                    if (candidateContent != null) {
+                        JSONArray candidateParts = candidateContent.optJSONArray("parts");
+                        if (candidateParts != null && candidateParts.length() > 0) {
+                            generatedText = candidateParts.getJSONObject(0).optString("text", "");
+                        }
+                    }
+                }
+
+                Log.i(TAG, "Gemini Screen [" + modelName + "] Output (" + latency + "ms) for [" + packageName + "]: " + generatedText);
+
+                boolean isRisky = false;
+                double confidence = 0.05;
+                String category = "SAFE_SCREEN_CONTENT";
+                String reason = "gemini_parsed_screen";
+
+                String lowerText = generatedText.toLowerCase(Locale.US);
+
+                if (lowerText.contains("\"is_risky\": true") || lowerText.contains("\"is_risky\":true") || lowerText.contains("\"is_risky\":  true")) {
+                    isRisky = true;
+                    confidence = 0.95;
+                    category = "ADULT_SCREEN_CONTENT";
+                    reason = "gemini_explicit_adult_screen";
+                } else if (lowerText.contains("\"is_risky\": false") || lowerText.contains("\"is_risky\":false") || lowerResponseContainsRefusal(lowerText)) {
+                    if (lowerResponseContainsRefusal(lowerText)) {
+                        isRisky = true;
+                        confidence = 0.95;
+                        category = "ADULT_SCREEN_CONTENT_REFUSAL";
+                        reason = "gemini_refusal_text_screen";
+                    } else {
+                        isRisky = false;
+                        confidence = 0.05;
+                        category = "SAFE_SCREEN_CONTENT";
+                        reason = "gemini_explicit_safe_screen";
+                    }
+                }
+
+                if (isRisky) {
+                    Log.w(TAG, "Gemini AI Guard detected ADULT SCREEN CONTENT (" + latency + "ms) in [" + packageName + "]");
+                    appendLog(context, "[" + packageName + "] Gemini AI Screen Content (" + modelName + " • " + latency + "ms): ADULT DETECTED ON SCREEN -> SUSPEND TARGET APP (60s)");
+                }
+
+                return new EvaluationResult(isRisky, confidence, category, reason, latency, generatedText, modelName);
+
+            } else {
+                return null;
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error executing Gemini screen request for model: " + modelName, e);
             return null;
         }
     }
