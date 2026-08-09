@@ -258,10 +258,12 @@
         <com.afwsamples.testdpc.common.preference.DpcPreference
             android:key="block_installation_by_pkg"
             android:title="@string/block_installation_by_package_name"
+            testdpc:admin="any"
             testdpc:minSdkVersion="L" />
         <com.afwsamples.testdpc.common.preference.DpcPreference
             android:key="block_installation_list"
             android:title="@string/block_installation_list"
+            testdpc:admin="any"
             testdpc:minSdkVersion="L" />
     </PreferenceCategory>
 
