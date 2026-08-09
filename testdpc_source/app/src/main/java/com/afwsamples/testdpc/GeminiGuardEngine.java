@@ -31,9 +31,9 @@ public class GeminiGuardEngine {
     private static final String KEY_CACHE_PREFIX = "cache_verdict_";
     private static final String KEY_LOGS = "gemini_guard_logs";
 
-    private static final String PRIMARY_MODEL = "gemini-2.0-flash";
-    private static final String FALLBACK_MODEL_1 = "gemini-1.5-flash";
-    private static final String FALLBACK_MODEL_2 = "gemini-1.5-flash-8b";
+    private static final String PRIMARY_MODEL = "gemini-3.6-flash";
+    private static final String FALLBACK_MODEL_1 = "gemini-3.5-flash";
+    private static final String FALLBACK_MODEL_2 = "gemini-2.5-flash";
 
     private static final AtomicBoolean isRequestInFlight = new AtomicBoolean(false);
     private static final ExecutorService sBgExecutor = Executors.newSingleThreadExecutor();
@@ -155,45 +155,54 @@ public class GeminiGuardEngine {
                     return;
                 }
 
-                long start = System.currentTimeMillis();
-                String endpointUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + PRIMARY_MODEL + ":generateContent?key=" + apiKey;
+                String[] testModels = new String[]{PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2, "gemini-1.5-flash"};
+                String lastErrorMsg = "Connection timeout";
 
-                try {
-                    JSONObject payload = new JSONObject();
-                    JSONArray contents = new JSONArray();
-                    JSONObject contentObj = new JSONObject();
-                    JSONArray parts = new JSONArray();
-                    JSONObject partObj = new JSONObject();
-                    partObj.put("text", "Respond ONLY with valid JSON: {\"status\": \"ok\"}");
-                    parts.put(partObj);
-                    contentObj.put("parts", parts);
-                    contents.put(contentObj);
-                    payload.put("contents", contents);
+                for (String modelName : testModels) {
+                    long start = System.currentTimeMillis();
+                    String endpointUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
 
-                    URL url = new URL(endpointUrl);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("POST");
-                    conn.setRequestProperty("Content-Type", "application/json");
-                    conn.setConnectTimeout(10000);
-                    conn.setReadTimeout(10000);
-                    conn.setDoOutput(true);
+                    try {
+                        JSONObject payload = new JSONObject();
+                        JSONArray contents = new JSONArray();
+                        JSONObject contentObj = new JSONObject();
+                        JSONArray parts = new JSONArray();
+                        JSONObject partObj = new JSONObject();
+                        partObj.put("text", "Respond ONLY with valid JSON: {\"status\": \"ok\"}");
+                        parts.put(partObj);
+                        contentObj.put("parts", parts);
+                        contents.put(contentObj);
+                        payload.put("contents", contents);
 
-                    try (OutputStream os = conn.getOutputStream()) {
-                        byte[] input = payload.toString().getBytes(StandardCharsets.UTF_8);
-                        os.write(input, 0, input.length);
+                        URL url = new URL(endpointUrl);
+                        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                        conn.setRequestMethod("POST");
+                        conn.setRequestProperty("Content-Type", "application/json");
+                        conn.setConnectTimeout(8000);
+                        conn.setReadTimeout(8000);
+                        conn.setDoOutput(true);
+
+                        try (OutputStream os = conn.getOutputStream()) {
+                            byte[] input = payload.toString().getBytes(StandardCharsets.UTF_8);
+                            os.write(input, 0, input.length);
+                        }
+
+                        int code = conn.getResponseCode();
+                        long latency = System.currentTimeMillis() - start;
+
+                        if (code == 200) {
+                            if (callback != null) callback.onResult(true, "✅ API Key Connected (" + modelName + " • " + latency + "ms)");
+                            return;
+                        } else {
+                            lastErrorMsg = "HTTP " + code;
+                        }
+                    } catch (Exception e) {
+                        lastErrorMsg = e.getMessage() != null ? e.getMessage() : "Timeout/Network Error";
                     }
+                }
 
-                    int code = conn.getResponseCode();
-                    long latency = System.currentTimeMillis() - start;
-
-                    if (code == 200) {
-                        if (callback != null) callback.onResult(true, "✅ API Key Connected (" + PRIMARY_MODEL + " • " + latency + "ms)");
-                    } else {
-                        // Fallback check
-                        if (callback != null) callback.onResult(false, "❌ API Error (HTTP " + code + ")");
-                    }
-                } catch (Exception e) {
-                    if (callback != null) callback.onResult(false, "❌ Connection Error: " + e.getMessage());
+                if (callback != null) {
+                    callback.onResult(false, "❌ Connection Error: " + lastErrorMsg);
                 }
             }
         });
