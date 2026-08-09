@@ -21,6 +21,11 @@ public class NotoriousAppBlocker {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
     }
 
+    public static void clearBlocklist(Context context) {
+        getPrefs(context).edit().clear().apply();
+        Log.i(TAG, "NotoriousAppBlocker SharedPreferences cleared completely!");
+    }
+
     public static Set<String> getBlockedPackages(Context context) {
         SharedPreferences prefs = getPrefs(context);
         return prefs.getStringSet(KEY_BLOCKED_PACKAGES, new HashSet<String>());

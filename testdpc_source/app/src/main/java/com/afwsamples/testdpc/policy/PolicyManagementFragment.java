@@ -4415,6 +4415,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         Button unsuspendBtn = new Button(context);
         unsuspendBtn.setText("🔓 Unsuspend All Apps Now");
         unsuspendBtn.setOnClickListener(v -> {
+            NotoriousAppBlocker.clearBlocklist(context);
             ImpulseGuardService.unsuspendAllImpulseSuspendedPackages(context);
             Toast.makeText(context, "All apps unsuspended!", Toast.LENGTH_SHORT).show();
         });

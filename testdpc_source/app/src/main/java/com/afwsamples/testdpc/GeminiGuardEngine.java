@@ -16,8 +16,11 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -102,8 +105,17 @@ public class GeminiGuardEngine {
         return false;
     }
 
+    private static final Set<String> COMMON_UI_KEYWORDS = new HashSet<>(Arrays.asList(
+            "ask", "search", "home", "recent", "share", "profile", "settings", "explore", "menu", "tab", "tabs", "view", "edit", "clear", "back", "next", "close", "open", "find anything"
+    ));
+
     public static Boolean getCachedVerdict(Context context, String query) {
-        String key = KEY_CACHE_PREFIX + query.trim().toLowerCase(Locale.US);
+        if (query == null) return null;
+        String clean = query.trim().toLowerCase(Locale.US);
+        if (COMMON_UI_KEYWORDS.contains(clean)) {
+            return false;
+        }
+        String key = KEY_CACHE_PREFIX + clean;
         if (getPrefs(context).contains(key)) {
             return getPrefs(context).getBoolean(key, false);
         }
@@ -111,7 +123,12 @@ public class GeminiGuardEngine {
     }
 
     public static void putCachedVerdict(Context context, String query, boolean isRisky) {
-        String key = KEY_CACHE_PREFIX + query.trim().toLowerCase(Locale.US);
+        if (query == null) return;
+        String clean = query.trim().toLowerCase(Locale.US);
+        if (COMMON_UI_KEYWORDS.contains(clean)) {
+            return;
+        }
+        String key = KEY_CACHE_PREFIX + clean;
         getPrefs(context).edit().putBoolean(key, isRisky).apply();
     }
 
