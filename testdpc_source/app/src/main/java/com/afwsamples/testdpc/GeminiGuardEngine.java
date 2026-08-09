@@ -31,9 +31,9 @@ public class GeminiGuardEngine {
     private static final String KEY_CACHE_PREFIX = "cache_verdict_";
     private static final String KEY_LOGS = "gemini_guard_logs";
 
-    private static final String PRIMARY_MODEL = "gemini-3.6-flash";
-    private static final String FALLBACK_MODEL_1 = "gemini-3.5-flash";
-    private static final String FALLBACK_MODEL_2 = "gemini-2.5-flash";
+    private static final String PRIMARY_MODEL = "gemini-2.0-flash";
+    private static final String FALLBACK_MODEL_1 = "gemini-1.5-flash";
+    private static final String FALLBACK_MODEL_2 = "gemini-1.5-flash-8b";
 
     private static final AtomicBoolean isRequestInFlight = new AtomicBoolean(false);
     private static final ExecutorService sBgExecutor = Executors.newSingleThreadExecutor();
@@ -174,8 +174,8 @@ public class GeminiGuardEngine {
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("POST");
                     conn.setRequestProperty("Content-Type", "application/json");
-                    conn.setConnectTimeout(5000);
-                    conn.setReadTimeout(5000);
+                    conn.setConnectTimeout(10000);
+                    conn.setReadTimeout(10000);
                     conn.setDoOutput(true);
 
                     try (OutputStream os = conn.getOutputStream()) {
@@ -285,8 +285,8 @@ public class GeminiGuardEngine {
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
-            conn.setConnectTimeout(4000);
-            conn.setReadTimeout(4000);
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
             conn.setDoOutput(true);
 
             try (OutputStream os = conn.getOutputStream()) {
