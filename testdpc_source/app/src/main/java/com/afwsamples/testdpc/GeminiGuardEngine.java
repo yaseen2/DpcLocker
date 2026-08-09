@@ -32,11 +32,12 @@ public class GeminiGuardEngine {
     private static final String KEY_CACHE_PREFIX = "cache_verdict_";
     private static final String KEY_LOGS = "gemini_guard_logs";
 
-    private static final String PRIMARY_MODEL = "gemini-3.6-flash";
-    private static final String FALLBACK_MODEL_1 = "gemini-3.5-flash";
-    private static final String FALLBACK_MODEL_2 = "gemini-2.5-flash";
+    private static final String PRIMARY_MODEL = "gemini-3.5-flash-lite";
+    private static final String FALLBACK_MODEL_1 = "gemini-3.1-flash-lite";
+    private static final String FALLBACK_MODEL_2 = "gemini-2.5-flash-lite";
+    private static final String FALLBACK_MODEL_3 = "gemini-1.5-flash-8b";
 
-    private static final android.util.LruCache<String, Boolean> sRamCache = new android.util.LruCache<>(250);
+    private static final android.util.LruCache<String, Boolean> sRamCache = new android.util.LruCache<>(500);
     private static final AtomicBoolean isRequestInFlight = new AtomicBoolean(false);
     private static final ExecutorService sBgExecutor = Executors.newSingleThreadExecutor();
 
@@ -157,7 +158,7 @@ public class GeminiGuardEngine {
                     return;
                 }
 
-                String[] testModels = new String[]{PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2, "gemini-1.5-flash"};
+                String[] testModels = new String[]{PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2, FALLBACK_MODEL_3, "gemini-1.5-flash-8b"};
                 String lastErrorMsg = "Connection timeout";
 
                 for (String modelName : testModels) {
@@ -247,7 +248,7 @@ public class GeminiGuardEngine {
 
         try {
             // Model Fallback Ladder: Primary -> Fallback 1 -> Fallback 2
-            String[] modelsToTry = new String[]{PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2};
+            String[] modelsToTry = new String[]{PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2, FALLBACK_MODEL_3};
             EvaluationResult finalResult = null;
 
             for (String modelName : modelsToTry) {
@@ -429,7 +430,7 @@ public class GeminiGuardEngine {
         }
 
         try {
-            String[] modelsToTry = new String[]{PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2};
+            String[] modelsToTry = new String[]{PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2, FALLBACK_MODEL_3};
             EvaluationResult finalResult = null;
 
             for (String modelName : modelsToTry) {
