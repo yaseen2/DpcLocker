@@ -26,11 +26,15 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CheckBox;
 
+import android.content.SharedPreferences;
+
 import com.afwsamples.testdpc.R;
 import com.afwsamples.testdpc.common.ToggleComponentsArrayAdapter;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Displays a list of installed apps with icons and checkboxes to block installation/usage.
@@ -48,7 +52,14 @@ public class BlockInstallationInfoArrayAdapter extends ToggleComponentsArrayAdap
 
     @Override
     public boolean isComponentEnabled(ResolveInfo resolveInfo) {
-        return mDevicePolicyManager.isApplicationHidden(mAdminComponent, resolveInfo.resolvePackageName);
+        try {
+            boolean isSuspended = mDevicePolicyManager.isPackageSuspended(mAdminComponent, resolveInfo.resolvePackageName);
+            if (isSuspended) return true;
+        } catch (Exception ignored) {
+        }
+        SharedPreferences prefs = getContext().getSharedPreferences("proactive_package_blocklist", Context.MODE_PRIVATE);
+        Set<String> set = prefs.getStringSet("blocked_packages_set", null);
+        return set != null && set.contains(resolveInfo.resolvePackageName.toLowerCase());
     }
 
     @Override
@@ -65,8 +76,16 @@ public class BlockInstallationInfoArrayAdapter extends ToggleComponentsArrayAdap
                     mIsComponentCheckedList.set(position, isBlocked);
                     String pkgName = getItem(position).resolvePackageName;
                     try {
-                        mDevicePolicyManager.setApplicationHidden(mAdminComponent, pkgName, isBlocked);
                         mDevicePolicyManager.setPackagesSuspended(mAdminComponent, new String[]{pkgName}, isBlocked);
+                        
+                        SharedPreferences prefs = getContext().getSharedPreferences("proactive_package_blocklist", Context.MODE_PRIVATE);
+                        Set<String> set = new HashSet<>(prefs.getStringSet("blocked_packages_set", new HashSet<String>()));
+                        if (isBlocked) {
+                            set.add(pkgName.toLowerCase());
+                        } else {
+                            set.remove(pkgName.toLowerCase());
+                        }
+                        prefs.edit().putStringSet("blocked_packages_set", set).apply();
                     } catch (Exception ignored) {
                     }
                 }

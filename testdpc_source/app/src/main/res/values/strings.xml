@@ -762,6 +762,7 @@
     <string name="block_uninstallation_title">Block uninstallation</string>
     <string name="block_uninstallation_by_pkg">Block uninstallation by package name</string>
     <string name="block_uninstallation_list">Block uninstallation list</string>
+    <string name="blocked_package_list_title">Blocked apps &amp; package blocklist</string>
     <string name="uninstallation_blocked">%s uninstallation has been blocked.
     </string>
     <string name="uninstallation_allowed">%s uninstallation has been allowed.

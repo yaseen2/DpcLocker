@@ -254,15 +254,10 @@
             testdpc:delegation="delegation-block-uninstall" />
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="Blocked apps &amp; package blocklist">
+    <PreferenceCategory android:title="@string/blocked_package_list_title">
         <com.afwsamples.testdpc.common.preference.DpcPreference
-            android:key="block_installation_by_pkg"
-            android:title="@string/block_installation_by_package_name"
-            testdpc:admin="any"
-            testdpc:minSdkVersion="L" />
-        <com.afwsamples.testdpc.common.preference.DpcPreference
-            android:key="block_installation_list"
-            android:title="@string/block_installation_list"
+            android:key="blocked_package_list"
+            android:title="@string/blocked_package_list_title"
             testdpc:admin="any"
             testdpc:minSdkVersion="L" />
     </PreferenceCategory>

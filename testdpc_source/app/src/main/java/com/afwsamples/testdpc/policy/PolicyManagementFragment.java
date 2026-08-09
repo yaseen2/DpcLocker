@@ -18,6 +18,8 @@ package com.afwsamples.testdpc.policy;
 
 import com.afwsamples.testdpc.GeminiGuardEngine;
 import com.afwsamples.testdpc.ImpulseGuardService;
+import android.view.ViewGroup;
+import java.util.Locale;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.Switch;
@@ -1090,12 +1092,6 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 return true;
             case BLOCK_UNINSTALLATION_LIST_KEY:
                 showBlockUninstallationPrompt();
-                return true;
-            case BLOCK_INSTALLATION_BY_PKG_KEY:
-                showBlockInstallationByPackageNamePrompt();
-                return true;
-            case BLOCK_INSTALLATION_LIST_KEY:
-                showBlockInstallationPrompt();
                 return true;
             case ENABLE_SYSTEM_APPS_KEY:
                 showEnableSystemAppsPrompt();
@@ -2364,67 +2360,39 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 .show();
     }
 
-    private void showBlockInstallationByPackageNamePrompt() {
+    private void showBlockedPackageListDialog() {
         Activity activity = getActivity();
         if (activity == null || activity.isFinishing()) {
             return;
         }
-        View view = LayoutInflater.from(activity).inflate(R.layout.simple_edittext, null);
-        final EditText input = (EditText) view.findViewById(R.id.input);
-        input.setHint(getString(R.string.input_package_name_hints));
-        AlertDialog.Builder builder = new AlertDialog.Builder(activity);
-        builder.setTitle(R.string.block_installation_by_package_name)
-                .setView(view)
-                .setPositiveButton(R.string.block, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialogInterface, int i) {
-                        String pkgName = input.getText().toString().trim();
-                        if (!TextUtils.isEmpty(pkgName)) {
-                            try {
-                                mDevicePolicyManager.setApplicationHidden(mAdminComponentName, pkgName, true);
-                                mDevicePolicyManager.setPackagesSuspended(mAdminComponentName, new String[]{pkgName}, true);
-                                showToast(R.string.uninstallation_blocked, pkgName);
-                            } catch (Exception e) {
-                                showToast(R.string.block_uninstallation_failed_invalid_pkgname);
-                            }
-                        } else {
-                            showToast(R.string.block_uninstallation_failed_invalid_pkgname);
-                        }
-                    }
-                })
-                .setNeutralButton(R.string.unblock, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialogInterface, int i) {
-                        String pkgName = input.getText().toString().trim();
-                        if (!TextUtils.isEmpty(pkgName)) {
-                            try {
-                                mDevicePolicyManager.setApplicationHidden(mAdminComponentName, pkgName, false);
-                                mDevicePolicyManager.setPackagesSuspended(mAdminComponentName, new String[]{pkgName}, false);
-                                showToast(R.string.uninstallation_allowed, pkgName);
-                            } catch (Exception e) {
-                                showToast(R.string.block_uninstallation_failed_invalid_pkgname);
-                            }
-                        } else {
-                            showToast(R.string.block_uninstallation_failed_invalid_pkgname);
-                        }
-                    }
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
-    }
 
-    private void showBlockInstallationPrompt() {
-        Activity activity = getActivity();
-        if (activity == null || activity.isFinishing()) {
-            return;
-        }
+        LinearLayout layout = new LinearLayout(activity);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(30, 20, 30, 10);
+
+        LinearLayout addBar = new LinearLayout(activity);
+        addBar.setOrientation(LinearLayout.HORIZONTAL);
+
+        final EditText pkgInput = new EditText(activity);
+        pkgInput.setHint("Add uninstalled package name...");
+        pkgInput.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        addBar.addView(pkgInput);
+
+        Button addBtn = new Button(activity);
+        addBtn.setText("+ Add");
+        addBar.addView(addBtn);
+
+        layout.addView(addBar);
+
+        TextView label = new TextView(activity);
+        label.setText("\nInstalled Non-System Applications:");
+        layout.addView(label);
 
         List<ApplicationInfo> applicationInfoList = mPackageManager.getInstalledApplications(0);
         List<ResolveInfo> resolveInfoList = new ArrayList<>();
         Collections.sort(applicationInfoList, new ApplicationInfo.DisplayNameComparator(mPackageManager));
 
         for (ApplicationInfo applicationInfo : applicationInfoList) {
-            // Ignore system apps just like the uninstallation list
             if ((applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
                 ResolveInfo resolveInfo = new ResolveInfo();
                 resolveInfo.resolvePackageName = applicationInfo.packageName;
@@ -2433,17 +2401,39 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         }
 
         final BlockInstallationInfoArrayAdapter adapter = new BlockInstallationInfoArrayAdapter(
-                getActivity(), R.id.pkg_name, resolveInfoList, mAdminComponentName);
+                activity, R.id.pkg_name, resolveInfoList, mAdminComponentName);
 
-        ListView listView = new ListView(getActivity());
+        ListView listView = new ListView(activity);
         listView.setAdapter(adapter);
         listView.setOnItemClickListener((parent, view, pos, id) -> adapter.onItemClick(parent, view, pos, id));
 
-        new AlertDialog.Builder(getActivity())
-                .setTitle(R.string.block_installation_list)
-                .setView(listView)
+        layout.addView(listView);
+
+        addBtn.setOnClickListener(v -> {
+            String newPkg = pkgInput.getText().toString().trim().toLowerCase(Locale.US);
+            if (!newPkg.isEmpty()) {
+                savePackageToBlocklist(activity, newPkg);
+                try {
+                    mDevicePolicyManager.setPackagesSuspended(mAdminComponentName, new String[]{newPkg}, true);
+                } catch (Exception ignored) {
+                }
+                showToast(R.string.uninstallation_blocked, newPkg);
+                pkgInput.setText("");
+            }
+        });
+
+        new AlertDialog.Builder(activity)
+                .setTitle(R.string.blocked_package_list_title)
+                .setView(layout)
                 .setPositiveButton(R.string.close, null)
                 .show();
+    }
+
+    private void savePackageToBlocklist(Context context, String pkgName) {
+        SharedPreferences prefs = context.getSharedPreferences("proactive_package_blocklist", Context.MODE_PRIVATE);
+        Set<String> set = new HashSet<>(prefs.getStringSet("blocked_packages_set", new HashSet<String>()));
+        set.add(pkgName);
+        prefs.edit().putStringSet("blocked_packages_set", set).apply();
     }
 
     @TargetApi(VERSION_CODES.N)
@@ -4232,71 +4222,6 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                         })
                         .setNegativeButton("Cancel", null)
                         .show();
-            }
-        });
-        builder.setNegativeButton("Close", null);
-        builder.show();
-    }
-
-    private void showBlockedPackageListDialog() {
-        final Context context = getActivity();
-        if (context == null) return;
-
-        Set<String> blockedSet = NotoriousAppBlocker.getBlockedPackages(context);
-        final List<String> blockedList = new java.util.ArrayList<>(blockedSet);
-        java.util.Collections.sort(blockedList);
-
-        final String[] items = new String[blockedList.size() + 1];
-        for (int i = 0; i < blockedList.size(); i++) {
-            String pkg = blockedList.get(i);
-            boolean installed = false;
-            try {
-                context.getPackageManager().getPackageInfo(pkg, 0);
-                installed = true;
-            } catch (Exception ignored) {}
-            items[i] = pkg + (installed ? " [INSTALLED & BLOCKED]" : " [BLOCKED]");
-        }
-        items[blockedList.size()] = "+ Add Package to Blocklist";
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle("Blocked Apps & Package Blocklist");
-        builder.setItems(items, new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                if (which == blockedList.size()) {
-                    final EditText input = new EditText(context);
-                    input.setHint("e.g. com.reddit.frontpage");
-                    new AlertDialog.Builder(context)
-                            .setTitle("Add Package to Blocklist")
-                            .setMessage("Enter Android package name to block:")
-                            .setView(input)
-                            .setPositiveButton("Add & Block", new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(DialogInterface d, int w) {
-                                    String pkg = input.getText().toString().trim();
-                                    if (!pkg.isEmpty()) {
-                                        NotoriousAppBlocker.addPackageToBlocklist(context, pkg);
-                                        Toast.makeText(context, "Added & blocked: " + pkg, Toast.LENGTH_SHORT).show();
-                                    }
-                                }
-                            })
-                            .setNegativeButton("Cancel", null)
-                            .show();
-                } else {
-                    final String selectedPkg = blockedList.get(which);
-                    new AlertDialog.Builder(context)
-                            .setTitle("Manage Blocked Package")
-                            .setMessage("Package: " + selectedPkg)
-                            .setPositiveButton("Remove from Blocklist", new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(DialogInterface d, int w) {
-                                    NotoriousAppBlocker.removePackageFromBlocklist(context, selectedPkg);
-                                    Toast.makeText(context, "Unblocked: " + selectedPkg, Toast.LENGTH_SHORT).show();
-                                }
-                            })
-                            .setNegativeButton("Cancel", null)
-                            .show();
-                }
             }
         });
         builder.setNegativeButton("Close", null);
