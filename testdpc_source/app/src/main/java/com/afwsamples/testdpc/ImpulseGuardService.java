@@ -410,6 +410,28 @@ public class ImpulseGuardService extends AccessibilityService {
     }
 
     private String extractActiveText(AccessibilityEvent event) {
+        if (event == null) {
+            return null;
+        }
+
+        AccessibilityNodeInfo source = event.getSource();
+        if (source != null) {
+            int eventType = event.getEventType();
+            if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                // User clicked an item on screen (e.g. search suggestion list item)
+                String clickedText = findClickedNodeText(source);
+                if (clickedText != null) {
+                    return clickedText;
+                }
+            } else {
+                // Standard typing / layout event -> Inspect ONLY editable search inputs (EditText)
+                String textFromNode = findEditableSearchNodeText(source);
+                if (textFromNode != null) {
+                    return textFromNode;
+                }
+            }
+        }
+
         if (event.getText() != null && !event.getText().isEmpty()) {
             StringBuilder sb = new StringBuilder();
             for (CharSequence seq : event.getText()) {
@@ -422,17 +444,10 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         }
 
-        AccessibilityNodeInfo source = event.getSource();
-        if (source != null) {
-            String textFromNode = findSearchNodeText(source);
-            if (textFromNode != null) {
-                return textFromNode;
-            }
-        }
         return null;
     }
 
-    private String findSearchNodeText(AccessibilityNodeInfo node) {
+    private String findEditableSearchNodeText(AccessibilityNodeInfo node) {
         if (node == null) {
             return null;
         }
@@ -444,7 +459,23 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         }
 
-        // Also inspect clicked suggestion items and non-editable TextView nodes
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                String childText = findEditableSearchNodeText(child);
+                if (childText != null) {
+                    return childText;
+                }
+            }
+        }
+        return null;
+    }
+
+    private String findClickedNodeText(AccessibilityNodeInfo node) {
+        if (node == null) {
+            return null;
+        }
+
         CharSequence text = node.getText();
         if (text != null && text.length() >= 3) {
             String str = text.toString().trim();
@@ -455,10 +486,18 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         }
 
+        CharSequence contentDesc = node.getContentDescription();
+        if (contentDesc != null && contentDesc.length() >= 3) {
+            String str = contentDesc.toString().trim();
+            if (!str.equalsIgnoreCase("Search") && !str.equalsIgnoreCase("Cancel")) {
+                return str;
+            }
+        }
+
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
-                String childText = findSearchNodeText(child);
+                String childText = findClickedNodeText(child);
                 if (childText != null) {
                     return childText;
                 }
