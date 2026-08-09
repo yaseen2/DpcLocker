@@ -2424,9 +2424,12 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         Collections.sort(applicationInfoList, new ApplicationInfo.DisplayNameComparator(mPackageManager));
 
         for (ApplicationInfo applicationInfo : applicationInfoList) {
-            ResolveInfo resolveInfo = new ResolveInfo();
-            resolveInfo.resolvePackageName = applicationInfo.packageName;
-            resolveInfoList.add(resolveInfo);
+            // Ignore system apps just like the uninstallation list
+            if ((applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
+                ResolveInfo resolveInfo = new ResolveInfo();
+                resolveInfo.resolvePackageName = applicationInfo.packageName;
+                resolveInfoList.add(resolveInfo);
+            }
         }
 
         final BlockInstallationInfoArrayAdapter adapter = new BlockInstallationInfoArrayAdapter(
