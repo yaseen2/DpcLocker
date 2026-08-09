@@ -125,6 +125,7 @@ import com.afwsamples.testdpc.common.preference.DpcPreferenceBase;
 import com.afwsamples.testdpc.common.preference.DpcPreferenceHelper;
 import com.afwsamples.testdpc.common.preference.DpcSwitchPreference;
 import com.afwsamples.testdpc.comp.BindDeviceAdminFragment;
+import com.afwsamples.testdpc.policy.blockinstallation.BlockInstallationInfoArrayAdapter;
 import com.afwsamples.testdpc.policy.blockuninstallation.BlockUninstallationInfoArrayAdapter;
 import com.afwsamples.testdpc.policy.certificate.DelegatedCertInstallerFragment;
 import com.afwsamples.testdpc.policy.keyguard.LockScreenPolicyFragment;
@@ -274,9 +275,11 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     private static final String APP_RESTRICTIONS_MANAGING_PACKAGE_KEY
             = "app_restrictions_managing_package";
     private static final String BLOCK_UNINSTALLATION_BY_PKG_KEY = "block_uninstallation_by_pkg";
+    private static final String BLOCK_UNINSTALLATION_LIST_KEY = "block_uninstallation_list";
+    private static final String BLOCK_INSTALLATION_BY_PKG_KEY = "block_installation_by_pkg";
+    private static final String BLOCK_INSTALLATION_LIST_KEY = "block_installation_list";
     private static final String AI_APP_AUDITOR_KEY = "ai_app_auditor_key";
     private static final String GEMINI_AI_GUARD_KEY = "gemini_ai_guard_key";
-    private static final String BLOCK_UNINSTALLATION_LIST_KEY = "block_uninstallation_list";
     private static final String CAPTURE_IMAGE_KEY = "capture_image";
     private static final String CAPTURE_VIDEO_KEY = "capture_video";
     private static final String CHECK_LOCK_TASK_PERMITTED_KEY = "check_lock_task_permitted";
@@ -690,6 +693,12 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         findPreference(REMOVE_ACCOUNT_KEY).setOnPreferenceClickListener(this);
         findPreference(BLOCK_UNINSTALLATION_BY_PKG_KEY).setOnPreferenceClickListener(this);
         findPreference(BLOCK_UNINSTALLATION_LIST_KEY).setOnPreferenceClickListener(this);
+        if (findPreference(BLOCK_INSTALLATION_BY_PKG_KEY) != null) {
+            findPreference(BLOCK_INSTALLATION_BY_PKG_KEY).setOnPreferenceClickListener(this);
+        }
+        if (findPreference(BLOCK_INSTALLATION_LIST_KEY) != null) {
+            findPreference(BLOCK_INSTALLATION_LIST_KEY).setOnPreferenceClickListener(this);
+        }
         findPreference(GEMINI_AI_GUARD_KEY).setOnPreferenceClickListener(this);
         findPreference(APP_FEEDBACK_NOTIFICATIONS).setOnPreferenceChangeListener(this);
         mEnableAppFeedbackNotificationsPreference =
@@ -1081,6 +1090,12 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 return true;
             case BLOCK_UNINSTALLATION_LIST_KEY:
                 showBlockUninstallationPrompt();
+                return true;
+            case BLOCK_INSTALLATION_BY_PKG_KEY:
+                showBlockInstallationByPackageNamePrompt();
+                return true;
+            case BLOCK_INSTALLATION_LIST_KEY:
+                showBlockInstallationPrompt();
                 return true;
             case ENABLE_SYSTEM_APPS_KEY:
                 showEnableSystemAppsPrompt();
@@ -2346,6 +2361,85 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                     }
                 })
                 .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void showBlockInstallationByPackageNamePrompt() {
+        Activity activity = getActivity();
+        if (activity == null || activity.isFinishing()) {
+            return;
+        }
+        View view = LayoutInflater.from(activity).inflate(R.layout.simple_edittext, null);
+        final EditText input = (EditText) view.findViewById(R.id.input);
+        input.setHint(getString(R.string.input_package_name_hints));
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+        builder.setTitle(R.string.block_installation_by_package_name)
+                .setView(view)
+                .setPositiveButton(R.string.block, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int i) {
+                        String pkgName = input.getText().toString().trim();
+                        if (!TextUtils.isEmpty(pkgName)) {
+                            try {
+                                mDevicePolicyManager.setApplicationHidden(mAdminComponentName, pkgName, true);
+                                mDevicePolicyManager.setPackagesSuspended(mAdminComponentName, new String[]{pkgName}, true);
+                                showToast(R.string.uninstallation_blocked, pkgName);
+                            } catch (Exception e) {
+                                showToast(R.string.block_uninstallation_failed_invalid_pkgname);
+                            }
+                        } else {
+                            showToast(R.string.block_uninstallation_failed_invalid_pkgname);
+                        }
+                    }
+                })
+                .setNeutralButton(R.string.unblock, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int i) {
+                        String pkgName = input.getText().toString().trim();
+                        if (!TextUtils.isEmpty(pkgName)) {
+                            try {
+                                mDevicePolicyManager.setApplicationHidden(mAdminComponentName, pkgName, false);
+                                mDevicePolicyManager.setPackagesSuspended(mAdminComponentName, new String[]{pkgName}, false);
+                                showToast(R.string.uninstallation_allowed, pkgName);
+                            } catch (Exception e) {
+                                showToast(R.string.block_uninstallation_failed_invalid_pkgname);
+                            }
+                        } else {
+                            showToast(R.string.block_uninstallation_failed_invalid_pkgname);
+                        }
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void showBlockInstallationPrompt() {
+        Activity activity = getActivity();
+        if (activity == null || activity.isFinishing()) {
+            return;
+        }
+
+        List<ApplicationInfo> applicationInfoList = mPackageManager.getInstalledApplications(0);
+        List<ResolveInfo> resolveInfoList = new ArrayList<>();
+        Collections.sort(applicationInfoList, new ApplicationInfo.DisplayNameComparator(mPackageManager));
+
+        for (ApplicationInfo applicationInfo : applicationInfoList) {
+            ResolveInfo resolveInfo = new ResolveInfo();
+            resolveInfo.resolvePackageName = applicationInfo.packageName;
+            resolveInfoList.add(resolveInfo);
+        }
+
+        final BlockInstallationInfoArrayAdapter adapter = new BlockInstallationInfoArrayAdapter(
+                getActivity(), R.id.pkg_name, resolveInfoList, mAdminComponentName);
+
+        ListView listView = new ListView(getActivity());
+        listView.setAdapter(adapter);
+        listView.setOnItemClickListener((parent, view, pos, id) -> adapter.onItemClick(parent, view, pos, id));
+
+        new AlertDialog.Builder(getActivity())
+                .setTitle(R.string.block_installation_list)
+                .setView(listView)
+                .setPositiveButton(R.string.close, null)
                 .show();
     }
 

@@ -254,6 +254,17 @@
             testdpc:delegation="delegation-block-uninstall" />
     </PreferenceCategory>
 
+    <PreferenceCategory android:title="Blocked apps &amp; package blocklist">
+        <com.afwsamples.testdpc.common.preference.DpcPreference
+            android:key="block_installation_by_pkg"
+            android:title="@string/block_installation_by_package_name"
+            testdpc:minSdkVersion="L" />
+        <com.afwsamples.testdpc.common.preference.DpcPreference
+            android:key="block_installation_list"
+            android:title="@string/block_installation_list"
+            testdpc:minSdkVersion="L" />
+    </PreferenceCategory>
+
     <PreferenceCategory android:title="@string/camera_title">
         <com.afwsamples.testdpc.common.preference.DpcSwitchPreference
             android:key="disable_camera"
