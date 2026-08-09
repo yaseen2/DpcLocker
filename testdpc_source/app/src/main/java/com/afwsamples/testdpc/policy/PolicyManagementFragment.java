@@ -22,6 +22,7 @@ import android.view.ViewGroup;
 import java.util.Locale;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -2366,15 +2367,18 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
             return;
         }
 
+        ScrollView scrollView = new ScrollView(activity);
         LinearLayout layout = new LinearLayout(activity);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(30, 20, 30, 10);
+        layout.setPadding(30, 20, 30, 20);
+        scrollView.addView(layout);
 
+        // Top Add Bar
         LinearLayout addBar = new LinearLayout(activity);
         addBar.setOrientation(LinearLayout.HORIZONTAL);
 
         final EditText pkgInput = new EditText(activity);
-        pkgInput.setHint("Add uninstalled package name...");
+        pkgInput.setHint("Add package name (e.g. com.tiktok.app)...");
         pkgInput.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
         addBar.addView(pkgInput);
 
@@ -2384,9 +2388,74 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
 
         layout.addView(addBar);
 
-        TextView label = new TextView(activity);
-        label.setText("\nInstalled Non-System Applications:");
-        layout.addView(label);
+        // Section 1: Manually Added Uninstalled Packages Container
+        TextView customTitle = new TextView(activity);
+        customTitle.setText("\n📋 Proactively Blocked Packages (Uninstalled):");
+        customTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        layout.addView(customTitle);
+
+        LinearLayout customPackagesContainer = new LinearLayout(activity);
+        customPackagesContainer.setOrientation(LinearLayout.VERTICAL);
+        customPackagesContainer.setPadding(10, 10, 10, 10);
+        layout.addView(customPackagesContainer);
+
+        Runnable refreshCustomPackages = new Runnable() {
+            @Override
+            public void run() {
+                customPackagesContainer.removeAllViews();
+                SharedPreferences prefs = activity.getSharedPreferences("proactive_package_blocklist", Context.MODE_PRIVATE);
+                Set<String> set = prefs.getStringSet("blocked_packages_set", new HashSet<String>());
+
+                Set<String> installedPkgs = new HashSet<>();
+                List<ApplicationInfo> apps = mPackageManager.getInstalledApplications(0);
+                for (ApplicationInfo ai : apps) {
+                    installedPkgs.add(ai.packageName.toLowerCase(Locale.US));
+                }
+
+                int count = 0;
+                for (final String pkg : set) {
+                    if (!installedPkgs.contains(pkg.toLowerCase(Locale.US))) {
+                        count++;
+                        LinearLayout row = new LinearLayout(activity);
+                        row.setOrientation(LinearLayout.HORIZONTAL);
+                        row.setPadding(0, 8, 0, 8);
+
+                        TextView pkgTv = new TextView(activity);
+                        pkgTv.setText("🚫 " + pkg);
+                        pkgTv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+                        row.addView(pkgTv);
+
+                        Button removeBtn = new Button(activity);
+                        removeBtn.setText("Remove");
+                        removeBtn.setOnClickListener(v -> {
+                            removePackageFromBlocklist(activity, pkg);
+                            try {
+                                mDevicePolicyManager.setPackagesSuspended(mAdminComponentName, new String[]{pkg}, false);
+                            } catch (Exception ignored) {}
+                            run(); // Refresh list
+                        });
+                        row.addView(removeBtn);
+
+                        customPackagesContainer.addView(row);
+                    }
+                }
+
+                if (count == 0) {
+                    TextView emptyTv = new TextView(activity);
+                    emptyTv.setText("No uninstalled packages manually added.");
+                    emptyTv.setTextColor(0xFF888888);
+                    customPackagesContainer.addView(emptyTv);
+                }
+            }
+        };
+
+        refreshCustomPackages.run();
+
+        // Section 2: Installed Apps
+        TextView installedTitle = new TextView(activity);
+        installedTitle.setText("\n📱 Installed Non-System Applications:");
+        installedTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        layout.addView(installedTitle);
 
         List<ApplicationInfo> applicationInfoList = mPackageManager.getInstalledApplications(0);
         List<ResolveInfo> resolveInfoList = new ArrayList<>();
@@ -2403,11 +2472,15 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         final BlockInstallationInfoArrayAdapter adapter = new BlockInstallationInfoArrayAdapter(
                 activity, R.id.pkg_name, resolveInfoList, mAdminComponentName);
 
-        ListView listView = new ListView(activity);
-        listView.setAdapter(adapter);
-        listView.setOnItemClickListener((parent, view, pos, id) -> adapter.onItemClick(parent, view, pos, id));
-
-        layout.addView(listView);
+        LinearLayout listContainer = new LinearLayout(activity);
+        listContainer.setOrientation(LinearLayout.VERTICAL);
+        for (int i = 0; i < adapter.getCount(); i++) {
+            View itemView = adapter.getView(i, null, listContainer);
+            if (itemView != null) {
+                listContainer.addView(itemView);
+            }
+        }
+        layout.addView(listContainer);
 
         addBtn.setOnClickListener(v -> {
             String newPkg = pkgInput.getText().toString().trim().toLowerCase(Locale.US);
@@ -2419,12 +2492,13 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 }
                 showToast(R.string.uninstallation_blocked, newPkg);
                 pkgInput.setText("");
+                refreshCustomPackages.run();
             }
         });
 
         new AlertDialog.Builder(activity)
                 .setTitle(R.string.blocked_package_list_title)
-                .setView(layout)
+                .setView(scrollView)
                 .setPositiveButton(R.string.close, null)
                 .show();
     }
@@ -2433,6 +2507,13 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         SharedPreferences prefs = context.getSharedPreferences("proactive_package_blocklist", Context.MODE_PRIVATE);
         Set<String> set = new HashSet<>(prefs.getStringSet("blocked_packages_set", new HashSet<String>()));
         set.add(pkgName);
+        prefs.edit().putStringSet("blocked_packages_set", set).apply();
+    }
+
+    private void removePackageFromBlocklist(Context context, String pkgName) {
+        SharedPreferences prefs = context.getSharedPreferences("proactive_package_blocklist", Context.MODE_PRIVATE);
+        Set<String> set = new HashSet<>(prefs.getStringSet("blocked_packages_set", new HashSet<String>()));
+        set.remove(pkgName.toLowerCase(Locale.US));
         prefs.edit().putStringSet("blocked_packages_set", set).apply();
     }
 
