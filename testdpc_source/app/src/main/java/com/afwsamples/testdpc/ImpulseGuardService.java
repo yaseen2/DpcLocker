@@ -444,6 +444,17 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         }
 
+        // Also inspect clicked suggestion items and non-editable TextView nodes
+        CharSequence text = node.getText();
+        if (text != null && text.length() >= 3) {
+            String str = text.toString().trim();
+            if (!str.equalsIgnoreCase("Search") && !str.equalsIgnoreCase("Cancel") && !str.equalsIgnoreCase("Back") &&
+                    !str.equalsIgnoreCase("Home") && !str.equalsIgnoreCase("Reels") && !str.equalsIgnoreCase("Profile") &&
+                    !str.startsWith("http://") && !str.startsWith("https://")) {
+                return str;
+            }
+        }
+
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
