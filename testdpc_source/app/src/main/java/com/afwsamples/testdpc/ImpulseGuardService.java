@@ -312,16 +312,16 @@ public class ImpulseGuardService extends AccessibilityService {
         collectNodeTextRecursive(root, sb, new HashSet<Integer>());
 
         String result = sb.toString().replaceAll("\\s+", " ").trim();
-        if (result.length() > 1500) {
-            result = result.substring(0, 1500);
+        if (result.length() > 4000) {
+            result = result.substring(0, 4000);
         }
         return result;
     }
 
     private void collectNodeTextRecursive(AccessibilityNodeInfo node, StringBuilder sb, Set<Integer> visited) {
-        if (node == null || visited.size() > 300) return;
+        if (node == null) return;
 
-        int id = node.hashCode();
+        int id = System.identityHashCode(node);
         if (visited.contains(id)) return;
         visited.add(id);
 
@@ -334,6 +334,10 @@ public class ImpulseGuardService extends AccessibilityService {
             }
 
             CharSequence text = node.getText();
+            if (text == null || text.length() == 0) {
+                text = node.getContentDescription();
+            }
+
             if (text != null && text.length() > 2) {
                 String str = text.toString().trim();
                 if (!str.equalsIgnoreCase("Search or type URL") && !str.startsWith("http://") && !str.startsWith("https://")) {
