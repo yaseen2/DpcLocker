@@ -283,13 +283,7 @@ public class GeminiGuardEngine {
             JSONArray parts = new JSONArray();
             JSONObject partObj = new JSONObject();
 
-            String prompt = "You are a high-accuracy AI content safety filter for an Android device.\n" +
-                    "Classify if the search query represents CLEAR, UNAMBIGUOUS explicit adult, pornographic, erotic, or NSFW search intent.\n\n" +
-                    "CRITICAL SAFETY RULES TO PREVENT FALSE POSITIVES:\n" +
-                    "1. DO NOT flag incomplete partial words or innocent prefix fragments (e.g., 'cul' in Culcutta/Calcutta/culture, 'cum' in cumulative/cucumber, 'ass' in associate/assembly/asset, 'tit' in title/titanic, 'dick' in Dickens/Dickson, 'sex' in sextant/Essex).\n" +
-                    "2. DO NOT flag place names, medical terms, educational topics, or innocent general vocabulary.\n" +
-                    "3. ONLY flag if the query has CLEAR, UNAMBIGUOUS adult/pornographic intent.\n" +
-                    "4. When in doubt or if query is ambiguous/incomplete, respond {\"is_risky\": false}.\n\n" +
+            String prompt = "You are an AI content safety filter for an Android browser. Classify if the search query represents explicit adult, pornographic, erotic, or NSFW search intent.\n\n" +
                     "Search Query: \"" + trimmedText + "\"\n\n" +
                     "Respond ONLY with a valid JSON object: {\"is_risky\": true} or {\"is_risky\": false}";
 

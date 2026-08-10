@@ -249,7 +249,10 @@ public class ImpulseGuardService extends AccessibilityService {
             if (!typedText.equalsIgnoreCase("Search or type URL") && !typedText.equalsIgnoreCase("Search Google or type URL") &&
                     !typedText.startsWith("http://") && !typedText.startsWith("https://") && !typedText.startsWith("www.")) {
 
-                // 0ms Fast Path: If local cache ALREADY knows this query is risky, execute INSTANTLY!
+                // Instant trigger on Search Button / Suggestion Click (TYPE_VIEW_CLICKED)
+                boolean isDirectClick = (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED);
+
+                // 0ms Fast Path for Local Cache Risky Items
                 Boolean localCached = GeminiGuardEngine.getCachedVerdict(this, typedText);
                 if (localCached != null && localCached) {
                     mBgExecutor.execute(new Runnable() {
@@ -258,7 +261,16 @@ public class ImpulseGuardService extends AccessibilityService {
                             evaluateAndEnforceImpulseGuard(packageName, typedText);
                         }
                     });
+                } else if (isDirectClick) {
+                    // Instant evaluation when user taps Search / Suggestion
+                    mBgExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            evaluateAndEnforceImpulseGuard(packageName, typedText);
+                        }
+                    });
                 } else {
+                    // Typing Completion Trigger: Wait 1200ms idle pause after typing stops to ensure user finishes complete query
                     if (mPendingAuditRunnable != null) {
                         mHandler.removeCallbacks(mPendingAuditRunnable);
                     }
@@ -269,7 +281,7 @@ public class ImpulseGuardService extends AccessibilityService {
                             String lastTextForPkg = mLastEvaluatedTextMap.get(packageName);
                             if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(typedText)) {
                                 mLastEvaluatedTextMap.put(packageName, typedText);
-                                Log.d(TAG, "Captured search/input text in [" + packageName + "]: \"" + typedText + "\"");
+                                Log.d(TAG, "Captured complete search query in [" + packageName + "]: \"" + typedText + "\"");
 
                                 mBgExecutor.execute(new Runnable() {
                                     @Override
@@ -281,7 +293,7 @@ public class ImpulseGuardService extends AccessibilityService {
                         }
                     };
 
-                    mHandler.postDelayed(mPendingAuditRunnable, 150);
+                    mHandler.postDelayed(mPendingAuditRunnable, 1200);
                 }
             }
         }
