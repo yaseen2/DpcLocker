@@ -1,6 +1,14 @@
 Windows Registry Editor Version 5.00
 
 ; ========================================================
+; PURGE ALL FORCED EXTENSIONS FROM CHROME & EDGE
+; ========================================================
+[-HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist]
+[-HKEY_CURRENT_USER\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist]
+[-HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist]
+[-HKEY_CURRENT_USER\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist]
+
+; ========================================================
 ; GOOGLE CHROME - ADULT CONTENT, INCOGNITO, DOH DISABLE, PROXY DIRECT LOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
