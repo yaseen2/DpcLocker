@@ -178,26 +178,15 @@ public class AiAppAuditor {
             return;
         }
 
-        // Structural Component Inspection: Check permissions and activity patterns
-        boolean hasInternet = requestedPermissions.contains("android.permission.INTERNET");
-        boolean hasStorage = requestedPermissions.contains("android.permission.WRITE_EXTERNAL_STORAGE") || 
-                             requestedPermissions.contains("android.permission.READ_EXTERNAL_STORAGE") ||
-                             requestedPermissions.contains("android.permission.MANAGE_EXTERNAL_STORAGE");
+        String lowerPkg = packageName.toLowerCase(Locale.US);
+        String lowerLabel = appLabel.toLowerCase(Locale.US);
 
-        boolean hasWebViewOrDownloaderActivity = false;
-        for (String act : declaredActivities) {
-            String lowerAct = act.toLowerCase();
-            if (lowerAct.contains("webview") || lowerAct.contains("download") || lowerAct.contains("browser") || lowerAct.contains("fetch")) {
-                hasWebViewOrDownloaderActivity = true;
-                break;
-            }
-        }
-
-        String lowerPkg = packageName.toLowerCase();
-        String lowerLabel = appLabel.toLowerCase();
-        boolean isExplicitDownloader = lowerPkg.contains("downloader") || lowerPkg.contains("xnxx") || lowerPkg.contains("xvideo") ||
-                lowerPkg.contains("vmate") || lowerPkg.contains("snaptube") || lowerLabel.contains("downloader") || lowerLabel.contains("video downloader") ||
-                (hasInternet && hasStorage && hasWebViewOrDownloaderActivity);
+        // Strict explicit matching: only flag apps with unambiguous downloader or adult names
+        boolean isExplicitDownloader = lowerPkg.contains("snaptube") || lowerPkg.contains("vmate") ||
+                lowerPkg.contains("vidmate") || lowerPkg.contains("tubemate") ||
+                lowerPkg.contains("xnxx") || lowerPkg.contains("xvideo") || lowerPkg.contains("pornhub") ||
+                lowerLabel.contains("video downloader") || lowerLabel.contains("all video downloader") ||
+                lowerLabel.contains("snaptube") || lowerLabel.contains("vmate") || lowerLabel.contains("vidmate");
 
         boolean aiSuccess = false;
         String apiKey = getGeminiApiKey(context);

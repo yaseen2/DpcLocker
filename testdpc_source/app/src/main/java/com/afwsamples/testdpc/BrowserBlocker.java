@@ -86,39 +86,94 @@ public class BrowserBlocker {
         }
     }
 
+    // Comprehensive list of known dedicated third-party web browsers
+    private static final java.util.Set<String> KNOWN_WEB_BROWSERS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "org.mozilla.firefox",
+            "org.mozilla.firefox_beta",
+            "org.mozilla.focus",
+            "com.opera.browser",
+            "com.opera.mini.native",
+            "com.opera.gx",
+            "com.opera.touch",
+            "com.brave.browser",
+            "com.duckduckgo.mobile.android",
+            "com.microsoft.emmx",
+            "com.sec.android.app.sbrowser",
+            "com.sec.android.app.sbrowser.beta",
+            "com.kiwibrowser.browser",
+            "com.ucmobile.intl",
+            "com.UCMobile",
+            "mobi.mgeek.TunnyBrowser",
+            "com.cloudmosa.puffinFree",
+            "com.cloudmosa.puffin",
+            "com.vivaldi.browser",
+            "com.transsion.phoenix",
+            "com.aloha.browser",
+            "com.mx.browser",
+            "org.torproject.torbrowser",
+            "acr.browser.barebones",
+            "acr.browser.lightning",
+            "com.pure.mini.browser",
+            "com.xbrowser.play",
+            "com.ecosia.android",
+            "com.qwant.liberty",
+            "mark.via.gp",
+            "com.apusapps.browser"
+    ));
+
     public static boolean isNonChromeBrowser(Context context, String packageName) {
         if (packageName == null || packageName.isEmpty()) {
             return false;
         }
 
-        // Whitelist core system / essential applications
+        String lowerPkg = packageName.toLowerCase(java.util.Locale.US);
+
+        // 1. Whitelist core system, Google, and essential productivity/utility/ride-hailing/banking applications
         if ("com.android.chrome".equals(packageName) ||
             "com.google.android.googlequicksearchbox".equals(packageName) ||
             "com.android.vending".equals(packageName) ||
             "com.custom.dpclocker".equals(packageName) ||
             "com.afwsamples.testdpc".equals(packageName) ||
-            packageName.startsWith("com.google.android.") ||
-            packageName.startsWith("com.android.")) {
+            lowerPkg.startsWith("com.google.android.") ||
+            lowerPkg.startsWith("com.android.") ||
+            lowerPkg.contains("yango") ||
+            lowerPkg.contains("yandex") ||
+            lowerPkg.contains("careem") ||
+            lowerPkg.contains("uber") ||
+            lowerPkg.contains("bykea") ||
+            lowerPkg.contains("daraz") ||
+            lowerPkg.contains("olx") ||
+            lowerPkg.contains("pakwheels") ||
+            lowerPkg.contains("zameen") ||
+            lowerPkg.contains("whatsapp") ||
+            lowerPkg.contains("banking") ||
+            lowerPkg.contains("hbl") ||
+            lowerPkg.contains("meezan") ||
+            lowerPkg.contains("nayapay") ||
+            lowerPkg.contains("sadapay") ||
+            lowerPkg.contains("jazz") ||
+            lowerPkg.contains("telenor")) {
             return false;
         }
 
+        // 2. Direct match against known web browsers
+        if (KNOWN_WEB_BROWSERS.contains(packageName)) {
+            Log.i(TAG, "Package " + packageName + " matched KNOWN WEB BROWSER list.");
+            return true;
+        }
+
+        // 3. Check for dedicated CATEGORY_APP_BROWSER intent filter
         PackageManager pm = context.getPackageManager();
-
-        // Must handle generic http/https web view intent with launcher intent
-        boolean handlesWebIntent = false;
         try {
-            Intent webIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"));
-            webIntent.addCategory(Intent.CATEGORY_BROWSABLE);
-
-            List<ResolveInfo> resolveInfos = pm.queryIntentActivities(webIntent, PackageManager.MATCH_ALL);
-            if (resolveInfos != null) {
-                for (ResolveInfo info : resolveInfos) {
-                    if (info.activityInfo != null && packageName.equals(info.activityInfo.packageName)) {
-                        Intent launchIntent = pm.getLaunchIntentForPackage(packageName);
-                        if (launchIntent != null) {
-                            handlesWebIntent = true;
-                            Log.i(TAG, "Package " + packageName + " confirmed as generic Web Browser intent handler");
-                            break;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1) {
+                Intent browserCategoryIntent = new Intent(Intent.ACTION_MAIN);
+                browserCategoryIntent.addCategory(Intent.CATEGORY_APP_BROWSER);
+                List<ResolveInfo> browserApps = pm.queryIntentActivities(browserCategoryIntent, PackageManager.MATCH_ALL);
+                if (browserApps != null) {
+                    for (ResolveInfo info : browserApps) {
+                        if (info.activityInfo != null && packageName.equals(info.activityInfo.packageName)) {
+                            Log.i(TAG, "Package " + packageName + " confirmed as CATEGORY_APP_BROWSER");
+                            return true;
                         }
                     }
                 }
@@ -126,7 +181,7 @@ public class BrowserBlocker {
         } catch (Exception ignored) {
         }
 
-        return handlesWebIntent;
+        return false;
     }
 
     public static void checkAndSuspendPackage(Context context, String packageName) {
