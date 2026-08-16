@@ -28,6 +28,9 @@ set "C_ACCENT=!ESC![1;38;5;141m"   :: Purple / Violet Accent
 call :RESOLVE_ADB
 call :LOAD_CONFIG
 
+set "ACTIVE_TARGET_INDEX=1"
+set "ACTIVE_TARGET_MODE=SINGLE"
+
 :: Command-line argument dispatchers
 if /i "%1"=="unlock" goto UNLOCK_DPC_DIRECT
 if /i "%1"=="lock" goto LOCK_DPC_DIRECT
@@ -43,25 +46,36 @@ if /i "%1"=="policy" goto INSPECT_POLICY
 :: --------------------------------------------------------------------------------
 :MAIN_MENU
 cls
-call :DETECT_PRIMARY_TARGET
+call :ENUMERATE_DEVICES
 echo !C_BORDER_HI!===============================================================================!R!
-echo  !C_HDR!!B![#] DPCLOCKER MASTER SUITE !R!!C_SUB!:: !C_ACCENT!STANDALONE PROTECTION ENGINE v3.6!R!
+echo  !C_HDR!!B![#] DPCLOCKER MASTER SUITE !R!!C_SUB!:: !C_ACCENT!STANDALONE PROTECTION ENGINE v3.7!R!
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
 echo   !C_SUB!ADB Engine   :!R! !C_TXT!!ADB_TYPE!!R!
-echo   !C_SUB!Active Target:!R! !C_TARGET_COLOR!!TARGET_DISPLAY!!R!
+if "!ACTIVE_TARGET_MODE!"=="ALL" (
+    echo   !C_SUB!Active Target:!R! !C_WARN![ALL ATTACHED DEVICES (!DEV_TOTAL! TOTAL)]!R! !C_SUB![Press S to Switch]!R!
+) else if !DEV_TOTAL! EQU 0 (
+    echo   !C_SUB!Active Target:!R! !C_ERR!NO ACTIVE TARGET DETECTED!R!
+) else if !DEV_TOTAL! EQU 1 (
+    echo   !C_SUB!Active Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!] [ONLINE]!R!
+) else (
+    echo   !C_SUB!Active Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!]!R! !C_SUB![Dev !ACTIVE_TARGET_INDEX! of !DEV_TOTAL! - Press S to Switch]!R!
+)
 echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 "!ADB!" devices -l
 echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 echo.
 echo  !C_SEC![ANDROID POLICY ^& LOCK]!R!
-echo    !C_NUM![1]!R! !C_TXT!UNLOCK Test DPC             !C_SUB!(Allow device policy access on phone)!R!
-echo    !C_NUM![2]!R! !C_TXT!LOCK Test DPC               !C_SUB!(Block device policy access on phone)!R!
+echo    !C_NUM![1]!R! !C_TXT!UNLOCK Test DPC             !C_SUB!(Allow device policy access on target)!R!
+echo    !C_NUM![2]!R! !C_TXT!LOCK Test DPC               !C_SUB!(Block device policy access on target)!R!
 echo.
-echo  !C_SEC![WIRELESS ^& PAIRING]!R!
+echo  !C_SEC![DEVICE MANAGEMENT ^& WIRELESS]!R!
+if !DEV_TOTAL! GTR 1 (
+    echo    !C_NUM![S]!R! !C_WARN!Switch Target Device      !C_SUB!(Change active device or select ALL)!R!
+)
 echo    !C_NUM![3]!R! !C_TXT!Auto-Scan ^& Connect Wi-Fi   !C_SUB!(Dynamic mDNS Discovery ^& Port Detection)!R!
 echo    !C_NUM![4]!R! !C_TXT!1-Click Wireless Pair       !C_SUB!(Auto-detects phone ^& only asks for 6-digit code)!R!
-echo    !C_NUM![5]!R! !C_TXT!Select / Connect Device     !C_SUB!(List available Wi-Fi targets to connect)!R!
+echo    !C_NUM![5]!R! !C_TXT!Discovered Wi-Fi Targets    !C_SUB!(List/Connect specific devices on network)!R!
 echo    !C_NUM![6]!R! !C_TXT!Reset ADB Subsystem         !C_SUB!(Kill server, purge zombies, restart daemon)!R!
 echo.
 echo  !C_SEC![SETUP ^& DEPLOYMENT]!R!
@@ -79,6 +93,7 @@ set /p CHOICE=" !C_PROMPT![>] Select Option: !R!"
 
 if "%CHOICE%"=="1" goto UNLOCK_DPC
 if "%CHOICE%"=="2" goto LOCK_DPC
+if /i "%CHOICE%"=="S" goto SWITCH_DEVICE_MENU
 if "%CHOICE%"=="3" goto AUTO_CONNECT
 if "%CHOICE%"=="4" goto PAIR_DEVICE
 if "%CHOICE%"=="5" goto SELECT_CONNECT_DEVICE
@@ -94,6 +109,57 @@ ping 127.0.0.1 -n 2 > nul
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
+:: [S] SWITCH TARGET DEVICE MENU
+:: --------------------------------------------------------------------------------
+:SWITCH_DEVICE_MENU
+cls
+call :ENUMERATE_DEVICES
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: SELECT ACTIVE TARGET DEVICE!R!
+echo !C_BORDER_HI!===============================================================================!R!
+echo.
+if !DEV_TOTAL! EQU 0 (
+    echo  !C_ERR![!] No attached devices detected.!R!
+    pause
+    goto MAIN_MENU
+)
+
+echo  !C_SEC!Attached Android Devices:!R!
+for /L %%i in (1,1,!DEV_TOTAL!) do (
+    set "TAG="
+    if "%%i"=="!ACTIVE_TARGET_INDEX!" if not "!ACTIVE_TARGET_MODE!"=="ALL" set "TAG=!C_OK![CURRENT ACTIVE]!R!"
+    echo    !C_NUM![%%i]!R! !C_TXT!!DEV_MODEL_%%i!!R! !C_SUB!(!DEV_SERIAL_%%i!)!R! !TAG!
+)
+echo.
+echo    !C_NUM![A]!R! !C_WARN!TARGET ALL ATTACHED DEVICES SIMULTANEOUSLY!R!
+echo    !C_NUM![0]!R! !C_SUB!Back to Main Menu!R!
+echo.
+echo !C_BORDER_HI!===============================================================================!R!
+set /p SW_CHOICE=" !C_PROMPT![?] Select Target [1-!DEV_TOTAL!, A, 0]: !R!"
+
+if "%SW_CHOICE%"=="0" goto MAIN_MENU
+if /i "%SW_CHOICE%"=="A" (
+    set "ACTIVE_TARGET_MODE=ALL"
+    echo.
+    echo  !C_OK![+] Target Mode set to: ALL ATTACHED DEVICES!R!
+    ping 127.0.0.1 -n 2 > nul
+    goto MAIN_MENU
+)
+
+if %SW_CHOICE% GEQ 1 if %SW_CHOICE% LEQ !DEV_TOTAL! (
+    set "ACTIVE_TARGET_INDEX=%SW_CHOICE%"
+    set "ACTIVE_TARGET_MODE=SINGLE"
+    echo.
+    echo  !C_OK![+] Active Target set to: !DEV_MODEL_%SW_CHOICE%! [!DEV_SERIAL_%SW_CHOICE%!]!R!
+    ping 127.0.0.1 -n 2 > nul
+    goto MAIN_MENU
+)
+
+echo !C_ERR![!] Invalid selection.!R!
+ping 127.0.0.1 -n 2 > nul
+goto SWITCH_DEVICE_MENU
+
+:: --------------------------------------------------------------------------------
 :: [1] UNLOCK TEST DPC
 :: --------------------------------------------------------------------------------
 :UNLOCK_DPC
@@ -103,19 +169,36 @@ echo  !C_HDR!!B![*] DPCLOCKER :: UNLOCK TEST DPC!R!
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
-if "!TARGET_SERIAL!"=="" (
+if !DEV_TOTAL! EQU 0 (
     echo  !C_ERR![!] No active device found to unlock.!R!
     pause
     goto MAIN_MENU
 )
 
-echo  !C_SUB![*] Target:!R! !C_OK!!TARGET_SERIAL!!R!
+if "!ACTIVE_TARGET_MODE!"=="ALL" (
+    echo  !C_WARN![*] Unlocking ALL !DEV_TOTAL! attached devices...!R!
+    echo.
+    for /L %%i in (1,1,!DEV_TOTAL!) do (
+        echo  !C_SUB![*] Device %%i/!DEV_TOTAL!:!R! !C_TXT!!DEV_MODEL_%%i!!R! (!DEV_SERIAL_%%i!)
+        "!ADB!" -s !DEV_SERIAL_%%i! shell settings put global dpclocker_enabled 0
+        "!ADB!" -s !DEV_SERIAL_%%i! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity > nul 2>&1
+        echo  !C_OK!    [+] UNLOCKED ^& Launched Test DPC!R!
+    )
+    echo.
+    echo  !C_OK!===========================================================================!R!
+    echo   !C_OK!!B![OK] ALL !DEV_TOTAL! DEVICES UNLOCKED SUCCESSFULLY!!R!
+    echo  !C_OK!===========================================================================!R!
+    pause
+    goto MAIN_MENU
+)
+
+echo  !C_SUB![*] Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!]!R!
 echo  !C_SUB![*] Sending Payload:!R! !C_TXT!dpclocker_enabled = 0 (UNLOCKED)!R!
-"!ADB!" -s !TARGET_SERIAL! shell settings put global dpclocker_enabled 0
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell settings put global dpclocker_enabled 0
 if %ERRORLEVEL% EQU 0 (
     echo  !C_OK![+] SUCCESS: Setting applied (dpclocker_enabled = 0)!R!
     echo  !C_SUB![*] Launching Test DPC on phone...!R!
-    "!ADB!" -s !TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
+    "!ADB!" -s !CURRENT_TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
     echo.
     echo  !C_OK!===========================================================================!R!
     echo   !C_OK!!B![OK] TEST DPC IS NOW UNLOCKED AND OPEN ON YOUR PHONE SCREEN!!R!
@@ -134,16 +217,16 @@ echo !C_BORDER_HI!==============================================================
 echo  !C_HDR!!B![*] DPCLOCKER :: DIRECT UNLOCK!R!
 echo !C_BORDER_HI!===============================================================================!R!
 call :ENSURE_CONNECTION
-if "!TARGET_SERIAL!"=="" (
+if !DEV_TOTAL! EQU 0 (
     echo !C_ERR![!] No device detected.!R!
     pause
     exit /b 1
 )
-"!ADB!" -s !TARGET_SERIAL! shell settings put global dpclocker_enabled 0
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell settings put global dpclocker_enabled 0
 ping 127.0.0.1 -n 2 > nul
-"!ADB!" -s !TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
 echo.
-echo !C_OK![OK] Test DPC UNLOCKED and opened on phone (!TARGET_SERIAL!)!!R!
+echo !C_OK![OK] Test DPC UNLOCKED and opened on phone (!CURRENT_TARGET_SERIAL!)!!R!
 echo.
 pause
 exit /b 0
@@ -158,19 +241,36 @@ echo  !C_HDR!!B![*] DPCLOCKER :: LOCK TEST DPC!R!
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
-if "!TARGET_SERIAL!"=="" (
+if !DEV_TOTAL! EQU 0 (
     echo  !C_ERR![!] No active device found to lock.!R!
     pause
     goto MAIN_MENU
 )
 
-echo  !C_SUB![*] Target:!R! !C_OK!!TARGET_SERIAL!!R!
+if "!ACTIVE_TARGET_MODE!"=="ALL" (
+    echo  !C_WARN![*] Locking ALL !DEV_TOTAL! attached devices...!R!
+    echo.
+    for /L %%i in (1,1,!DEV_TOTAL!) do (
+        echo  !C_SUB![*] Device %%i/!DEV_TOTAL!:!R! !C_TXT!!DEV_MODEL_%%i!!R! (!DEV_SERIAL_%%i!)
+        "!ADB!" -s !DEV_SERIAL_%%i! shell settings put global dpclocker_enabled 1
+        "!ADB!" -s !DEV_SERIAL_%%i! shell am force-stop com.afwsamples.testdpc > nul 2>&1
+        echo  !C_ERR!    [+] LOCKED ^& Force-Stopped Test DPC!R!
+    )
+    echo.
+    echo  !C_ERR!===========================================================================!R!
+    echo   !C_ERR!!B![OK] ALL !DEV_TOTAL! DEVICES LOCKED SUCCESSFULLY!!R!
+    echo  !C_ERR!===========================================================================!R!
+    pause
+    goto MAIN_MENU
+)
+
+echo  !C_SUB![*] Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!]!R!
 echo  !C_SUB![*] Sending Payload:!R! !C_ERR!dpclocker_enabled = 1 (LOCKED)!R!
-"!ADB!" -s !TARGET_SERIAL! shell settings put global dpclocker_enabled 1
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell settings put global dpclocker_enabled 1
 if %ERRORLEVEL% EQU 0 (
     echo  !C_OK![+] SUCCESS: Setting applied (dpclocker_enabled = 1)!R!
     echo  !C_SUB![*] Force-stopping Test DPC activity...!R!
-    "!ADB!" -s !TARGET_SERIAL! shell am force-stop com.afwsamples.testdpc
+    "!ADB!" -s !CURRENT_TARGET_SERIAL! shell am force-stop com.afwsamples.testdpc
     echo.
     echo  !C_ERR!===========================================================================!R!
     echo   !C_ERR!!B![OK] TEST DPC IS NOW LOCKED! Any launch from phone will be blocked.!R!
@@ -189,16 +289,16 @@ echo !C_BORDER_HI!==============================================================
 echo  !C_HDR!!B![*] DPCLOCKER :: DIRECT LOCK!R!
 echo !C_BORDER_HI!===============================================================================!R!
 call :ENSURE_CONNECTION
-if "!TARGET_SERIAL!"=="" (
+if !DEV_TOTAL! EQU 0 (
     echo !C_ERR![!] No device detected.!R!
     pause
     exit /b 1
 )
-"!ADB!" -s !TARGET_SERIAL! shell settings put global dpclocker_enabled 1
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell settings put global dpclocker_enabled 1
 ping 127.0.0.1 -n 2 > nul
-"!ADB!" -s !TARGET_SERIAL! shell am force-stop com.afwsamples.testdpc
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell am force-stop com.afwsamples.testdpc
 echo.
-echo !C_ERR![OK] Test DPC is now LOCKED (!TARGET_SERIAL!)!!R!
+echo !C_ERR![OK] Test DPC is now LOCKED (!CURRENT_TARGET_SERIAL!)!!R!
 echo.
 pause
 exit /b 0
@@ -233,10 +333,10 @@ for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\
 if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 
 echo.
-call :DETECT_PRIMARY_TARGET
-if not "!TARGET_SERIAL!"=="" (
+call :ENUMERATE_DEVICES
+if !DEV_TOTAL! GTR 0 (
     echo  !C_OK!===========================================================================!R!
-    echo   !C_OK!!B![OK] WIRELESS CONNECTION ESTABLISHED: !TARGET_SERIAL!!R!
+    echo   !C_OK!!B![OK] WIRELESS CONNECTION ESTABLISHED (!DEV_TOTAL! DEVICE(S) ONLINE)!R!
     echo  !C_OK!===========================================================================!R!
 ) else (
     echo  !C_WARN!===========================================================================!R!
@@ -246,7 +346,7 @@ if not "!TARGET_SERIAL!"=="" (
     echo   !C_TXT!* If so, Android requires you to re-pair with a 6-digit code.!R!
     echo  !C_WARN!===========================================================================!R!
     echo.
-    set /p REPAIR=" !C_PROMPT![?] Would you like to pair with a 6-digit code now? (Y/N): !R!"
+    set /p REPAIR=" !C_PROMPT![?] Would you like to pair with a 6-digit code now? [Y/N]: !R!"
     if /i "!REPAIR!"=="Y" goto PAIR_DEVICE
 )
 echo.
@@ -317,12 +417,12 @@ if !PAIR_FOUND_COUNT! EQU 1 (
     goto PROMPT_CODE
 )
 
-echo  !C_SEC!Multiple devices discovered on Wi-Fi:!R!
+echo  !C_SEC!Multiple devices discovered broadcasting pairing mode on Wi-Fi:!R!
 if not "!PAIR_EP_1!"=="" echo    !C_NUM![1]!R! !C_TXT!!PAIR_NAME_1! [!PAIR_EP_1!]!R!
 if not "!PAIR_EP_2!"=="" echo    !C_NUM![2]!R! !C_TXT!!PAIR_NAME_2! [!PAIR_EP_2!]!R!
 if not "!PAIR_EP_3!"=="" echo    !C_NUM![3]!R! !C_TXT!!PAIR_NAME_3! [!PAIR_EP_3!]!R!
 echo.
-set /p DEV_SEL=" !C_PROMPT![?] Select your device [1-!PAIR_FOUND_COUNT!]: !R!"
+set /p DEV_SEL=" !C_PROMPT![?] Select device to pair [1-!PAIR_FOUND_COUNT!]: !R!"
 if "!DEV_SEL!"=="1" set "SELECTED_PAIR_EP=!PAIR_EP_1!"
 if "!DEV_SEL!"=="2" set "SELECTED_PAIR_EP=!PAIR_EP_2!"
 if "!DEV_SEL!"=="3" set "SELECTED_PAIR_EP=!PAIR_EP_3!"
@@ -359,10 +459,10 @@ for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\
 if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 
 echo.
-call :DETECT_PRIMARY_TARGET
-if not "!TARGET_SERIAL!"=="" (
+call :ENUMERATE_DEVICES
+if !DEV_TOTAL! GTR 0 (
     echo  !C_OK!===========================================================================!R!
-    echo   !C_OK!!B![OK] DEVICE PAIRED AND CONNECTED AUTOMATICALLY: !TARGET_SERIAL!!R!
+    echo   !C_OK!!B![OK] DEVICE PAIRED AND CONNECTED AUTOMATICALLY: !CURRENT_TARGET_SERIAL!!R!
     echo  !C_OK!===========================================================================!R!
 ) else (
     echo  !C_WARN![*] Pairing completed. Check your phone's main Wireless Port and connect.!R!
@@ -383,7 +483,7 @@ echo.
 echo  !C_SUB![*] Scanning local network for active Wireless Debugging services...!R!
 "!ADB!" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
 
-set DEV_COUNT=0
+set DEV_MDNS_COUNT=0
 set DEV_EP_1=
 set DEV_EP_2=
 set DEV_EP_3=
@@ -392,23 +492,14 @@ set DEV_NAME_2=
 set DEV_NAME_3=
 
 for /f "tokens=1,2,3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
-    set /a DEV_COUNT+=1
-    if !DEV_COUNT! EQU 1 (
-        set "DEV_NAME_1=%%A"
-        set "DEV_EP_1=%%C"
-    )
-    if !DEV_COUNT! EQU 2 (
-        set "DEV_NAME_2=%%A"
-        set "DEV_EP_2=%%C"
-    )
-    if !DEV_COUNT! EQU 3 (
-        set "DEV_NAME_3=%%A"
-        set "DEV_EP_3=%%C"
-    )
+    set /a DEV_MDNS_COUNT+=1
+    if !DEV_MDNS_COUNT! EQU 1 set "DEV_NAME_1=%%A" & set "DEV_EP_1=%%C"
+    if !DEV_MDNS_COUNT! EQU 2 set "DEV_NAME_2=%%A" & set "DEV_EP_2=%%C"
+    if !DEV_MDNS_COUNT! EQU 3 set "DEV_NAME_3=%%A" & set "DEV_EP_3=%%C"
 )
 if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 
-if !DEV_COUNT! EQU 0 (
+if !DEV_MDNS_COUNT! EQU 0 (
     echo  !C_WARN![-] No active wireless services detected on local Wi-Fi.!R!
     echo  !C_SUB!    Ensure Wireless Debugging is toggled ON in Developer Options.!R!
     echo.
@@ -420,10 +511,10 @@ if !DEV_COUNT! EQU 0 (
     goto MAIN_MENU
 )
 
-echo  !C_SEC!Discovered Active Endpoints:!R!
-if not "!DEV_EP_1!"=="" echo    !C_NUM![1]!R! !C_TXT!!DEV_NAME_1! !C_OK!(!DEV_EP_1!)!R!
-if not "!DEV_EP_2!"=="" echo    !C_NUM![2]!R! !C_TXT!!DEV_NAME_2! !C_OK!(!DEV_EP_2!)!R!
-if not "!DEV_EP_3!"=="" echo    !C_NUM![3]!R! !C_TXT!!DEV_NAME_3! !C_OK!(!DEV_EP_3!)!R!
+echo  !C_SEC!Discovered Active Wi-Fi Endpoints:!R!
+if not "!DEV_EP_1!"=="" echo    !C_NUM![1]!R! !C_TXT!!DEV_NAME_1! !C_OK![!DEV_EP_1!]!R!
+if not "!DEV_EP_2!"=="" echo    !C_NUM![2]!R! !C_TXT!!DEV_NAME_2! !C_OK![!DEV_EP_2!]!R!
+if not "!DEV_EP_3!"=="" echo    !C_NUM![3]!R! !C_TXT!!DEV_NAME_3! !C_OK![!DEV_EP_3!]!R!
 echo    !C_NUM![M]!R! !C_TXT!Enter custom IP:Port manually!R!
 echo    !C_NUM![0]!R! !C_SUB!Back to Main Menu!R!
 echo.
@@ -440,9 +531,9 @@ if not "!CHOSEN_EP!"=="" (
     echo  !C_SUB![*] Connecting to !CHOSEN_EP!... !R!
     "!ADB!" connect !CHOSEN_EP!
     echo.
-    call :DETECT_PRIMARY_TARGET
-    if not "!TARGET_SERIAL!"=="" (
-        echo  !C_OK![+] CONNECTED: !TARGET_SERIAL!!R!
+    call :ENUMERATE_DEVICES
+    if !DEV_TOTAL! GTR 0 (
+        echo  !C_OK![+] CONNECTED: !CURRENT_TARGET_SERIAL!!R!
     )
 )
 echo !C_BORDER_HI!===============================================================================!R!
@@ -464,7 +555,7 @@ if "%TARGET_PORT%"=="" (
 call :SAVE_CONFIG "!TARGET_IP!"
 echo  !C_SUB![*] Initiating TCP handshake with %TARGET_IP%:%TARGET_PORT%...!R!
 "!ADB!" connect %TARGET_IP%:%TARGET_PORT%
-call :DETECT_PRIMARY_TARGET
+call :ENUMERATE_DEVICES
 pause
 goto MAIN_MENU
 
@@ -500,7 +591,7 @@ echo  !C_HDR!!B![*] DPCLOCKER :: DEPLOY TEST DPC APK!R!
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
-if "!TARGET_SERIAL!"=="" (
+if !DEV_TOTAL! EQU 0 (
     echo  !C_ERR![!] No active device found to install APK.!R!
     pause
     goto MAIN_MENU
@@ -518,11 +609,26 @@ if not exist "%APK_FILE%" (
     goto MAIN_MENU
 )
 
-echo  !C_SUB![*] Target Device :!R! !C_OK!!TARGET_SERIAL!!R!
+if "!ACTIVE_TARGET_MODE!"=="ALL" (
+    echo  !C_WARN![*] Deploying APK to ALL !DEV_TOTAL! attached devices...!R!
+    echo.
+    for /L %%i in (1,1,!DEV_TOTAL!) do (
+        echo  !C_SUB![*] Installing on Device %%i/!DEV_TOTAL!:!R! !C_TXT!!DEV_MODEL_%%i!!R! (!DEV_SERIAL_%%i!)
+        "!ADB!" -s !DEV_SERIAL_%%i! install -r -d "%APK_FILE%"
+    )
+    echo.
+    echo  !C_OK!===========================================================================!R!
+    echo   !C_OK!!B![OK] APK DEPLOYED TO ALL !DEV_TOTAL! DEVICES SUCCESSFULLY!!R!
+    echo  !C_OK!===========================================================================!R!
+    pause
+    goto MAIN_MENU
+)
+
+echo  !C_SUB![*] Target Device :!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!]!R!
 echo  !C_SUB![*] APK Payload   :!R! !C_TXT!%APK_FILE%!R!
 echo.
 echo  !C_SUB![*] Installing / Updating on device...!R!
-"!ADB!" -s !TARGET_SERIAL! install -r -d "%APK_FILE%"
+"!ADB!" -s !CURRENT_TARGET_SERIAL! install -r -d "%APK_FILE%"
 if %ERRORLEVEL% EQU 0 (
     echo.
     echo  !C_OK!===========================================================================!R!
@@ -538,7 +644,7 @@ goto MAIN_MENU
 
 :INSTALL_APK_DIRECT
 call :ENSURE_CONNECTION
-"!ADB!" -s !TARGET_SERIAL! install -r -d "%~dp0TestDPC.apk"
+"!ADB!" -s !CURRENT_TARGET_SERIAL! install -r -d "%~dp0TestDPC.apk"
 exit /b 0
 
 :: --------------------------------------------------------------------------------
@@ -551,14 +657,16 @@ echo  !C_HDR!!B![*] DPCLOCKER :: FIRST-TIME DEVICE OWNER PROVISIONING WIZARD!R!
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
-if "!TARGET_SERIAL!"=="" (
+if !DEV_TOTAL! EQU 0 (
     echo  !C_ERR![!] No active device found. Connect via USB or Wi-Fi first.!R!
     pause
     goto MAIN_MENU
 )
 
+echo  !C_SUB![*] Target Device:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!]!R!
+echo.
 echo  !C_SUB![Step 1/3] Checking for active user accounts on phone...!R!
-"!ADB!" -s !TARGET_SERIAL! shell dumpsys account > "%TEMP%\dpclocker_acc.tmp" 2>&1
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell dumpsys account > "%TEMP%\dpclocker_acc.tmp" 2>&1
 findstr /i "Account {" "%TEMP%\dpclocker_acc.tmp" > nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     echo.
@@ -573,7 +681,7 @@ if %ERRORLEVEL% EQU 0 (
     echo     !C_SUB!3. (You can log back into all accounts right after this step succeeds!)!R!
     echo  !C_WARN!---------------------------------------------------------------------------!R!
     echo.
-    set /p PROCEED=" !C_PROMPT![?] Have you removed all accounts from the phone? (Y/N): !R!"
+    set /p PROCEED=" !C_PROMPT![?] Have you removed all accounts from the phone? [Y/N]: !R!"
     if /i not "!PROCEED!"=="Y" (
         if exist "%TEMP%\dpclocker_acc.tmp" del "%TEMP%\dpclocker_acc.tmp" > nul 2>&1
         goto MAIN_MENU
@@ -583,10 +691,10 @@ if exist "%TEMP%\dpclocker_acc.tmp" del "%TEMP%\dpclocker_acc.tmp" > nul 2>&1
 
 echo.
 echo  !C_SUB![Step 2/3] Removing residual secondary profiles...!R!
-"!ADB!" -s !TARGET_SERIAL! shell pm remove-user 10 > nul 2>&1
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell pm remove-user 10 > nul 2>&1
 
 echo  !C_SUB![Step 3/3] Setting com.afwsamples.testdpc as Device Owner...!R!
-"!ADB!" -s !TARGET_SERIAL! shell dpm set-device-owner com.afwsamples.testdpc/.DeviceAdminReceiver
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell dpm set-device-owner com.afwsamples.testdpc/.DeviceAdminReceiver
 
 if %ERRORLEVEL% EQU 0 (
     echo.
@@ -630,19 +738,19 @@ echo  !C_HDR!!B![*] DPCLOCKER :: DEVICE POLICY ^& SUSPENDED PACKAGES INSPECTOR!R
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
-if "!TARGET_SERIAL!"=="" (
+if !DEV_TOTAL! EQU 0 (
     echo  !C_ERR![!] No active device found.!R!
     pause
     goto MAIN_MENU
 )
 
-echo  !C_SUB![*] Querying Device Policy Manager policies on !TARGET_SERIAL!... !R!
+echo  !C_SUB![*] Querying Device Policy Manager policies on !CURRENT_TARGET_SERIAL!... !R!
 echo  !C_BORDER!-------------------------------------------------------------------------------!R!
-"!ADB!" -s !TARGET_SERIAL! shell "dumpsys device_policy | grep -E 'mSuspendedPackages|PackageNameSetPolicyValue|dpclocker'"
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell "dumpsys device_policy | grep -E 'mSuspendedPackages|PackageNameSetPolicyValue|dpclocker'"
 echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 echo.
 echo  !C_SUB![*] Checking Global DpcLocker Enabled Status:!R!
-"!ADB!" -s !TARGET_SERIAL! shell settings get global dpclocker_enabled
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell settings get global dpclocker_enabled
 echo.
 echo !C_BORDER_HI!===============================================================================!R!
 pause
@@ -655,12 +763,12 @@ echo  !C_HDR!!B![*] DPCLOCKER :: LIVE TELEMETRY STREAM (Press Ctrl+C to stop)!R!
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
-if "!TARGET_SERIAL!"=="" (
+if !DEV_TOTAL! EQU 0 (
     echo  !C_ERR![!] No active device found.!R!
     pause
     goto MAIN_MENU
 )
-"!ADB!" -s !TARGET_SERIAL! logcat -s SecurityPipeline SecurityLogger NotoriousAppBlocker BrowserBlocker ImpulseGuardService
+"!ADB!" -s !CURRENT_TARGET_SERIAL! logcat -s SecurityPipeline SecurityLogger NotoriousAppBlocker BrowserBlocker ImpulseGuardService
 goto MAIN_MENU
 
 :SCAN_MDNS
@@ -787,37 +895,67 @@ echo PHONE_IP=%~1 > "%~dp0dpclocker_config.ini"
 exit /b 0
 
 :: --------------------------------------------------------------------------------
-:: HELPER: DETECT PRIMARY TARGET SERIAL
+:: HELPER: ENUMERATE ATTACHED DEVICES & MODELS (SMART DEDUPLICATION)
 :: --------------------------------------------------------------------------------
-:DETECT_PRIMARY_TARGET
-set TARGET_SERIAL=
-set TARGET_DISPLAY=NO ACTIVE TARGET DETECTED
-set "C_TARGET_COLOR=!C_ERR!"
+:ENUMERATE_DEVICES
+set DEV_TOTAL=0
+set CURRENT_TARGET_SERIAL=
+set CURRENT_TARGET_NAME=Device
 
-"!ADB!" devices > "%TEMP%\dpclocker_devs.tmp" 2>&1
-for /f "tokens=1,2" %%A in ('findstr /R "device$" "%TEMP%\dpclocker_devs.tmp"') do (
-    if "!TARGET_SERIAL!"=="" (
-        set TARGET_SERIAL=%%A
-        set TARGET_DISPLAY=%%A [ONLINE]
-        set "C_TARGET_COLOR=!C_OK!"
+"!ADB!" devices -l > "%TEMP%\dpclocker_devs.tmp" 2>&1
+
+:: Parse all online attached devices
+for /f "tokens=1,*" %%A in ('findstr /R /C:"^[0-9a-zA-Z.:_-]*[ ]*device " "%TEMP%\dpclocker_devs.tmp"') do (
+    set "RAW_SER=%%A"
+    set "RAW_INFO=%%B"
+    
+    :: Extract model name if available
+    set "DEV_MOD=Android Device"
+    for %%X in (%%B) do (
+        for /f "tokens=1,2 delims=:" %%Y in ("%%X") do (
+            if "%%Y"=="model" set "DEV_MOD=%%Z"
+        )
+    )
+
+    :: Deduplicate if both IP and mDNS TLS alias exist for same phone
+    set "IS_DUP=0"
+    if !DEV_TOTAL! GTR 0 (
+        for /L %%k in (1,1,!DEV_TOTAL!) do (
+            if "!RAW_SER!"=="!DEV_SERIAL_%%k!" set "IS_DUP=1"
+        )
+    )
+
+    if "!IS_DUP!"=="0" (
+        set /a DEV_TOTAL+=1
+        set "DEV_SERIAL_!DEV_TOTAL!=!RAW_SER!"
+        set "DEV_MODEL_!DEV_TOTAL!=!DEV_MOD!"
     )
 )
 if exist "%TEMP%\dpclocker_devs.tmp" del "%TEMP%\dpclocker_devs.tmp" > nul 2>&1
+
+:: Validate active target index bounds
+if !ACTIVE_TARGET_INDEX! GTR !DEV_TOTAL! set "ACTIVE_TARGET_INDEX=1"
+if !ACTIVE_TARGET_INDEX! LSS 1 set "ACTIVE_TARGET_INDEX=1"
+
+if !DEV_TOTAL! GTR 0 (
+    set "CURRENT_TARGET_SERIAL=!DEV_SERIAL_%ACTIVE_TARGET_INDEX%!"
+    set "CURRENT_TARGET_NAME=!DEV_MODEL_%ACTIVE_TARGET_INDEX%!"
+)
 exit /b 0
 
 :: --------------------------------------------------------------------------------
 :: HELPER: ENSURE ACTIVE CONNECTION
 :: --------------------------------------------------------------------------------
 :ENSURE_CONNECTION
-call :DETECT_PRIMARY_TARGET
-if "!TARGET_SERIAL!"=="" (
+call :ENUMERATE_DEVICES
+if !DEV_TOTAL! EQU 0 (
     echo  !C_SUB![-] No active target. Attempting auto-connect via mDNS...!R!
     "!ADB!" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
     for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
         "!ADB!" connect %%A > nul 2>&1
     )
     if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
-    call :DETECT_PRIMARY_TARGET
+    call :ENUMERATE_DEVICES
 )
 exit /b 0
 
