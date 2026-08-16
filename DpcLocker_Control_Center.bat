@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 title DPCLOCKER CYBER CONSOLE - WIRELESS ADB POLICY ENGINE
 color 0A
 
-set ADB="C:\Users\ThinkPad\AppData\Local\Android\Sdk\platform-tools\adb.exe"
+set ADB=C:\Users\ThinkPad\AppData\Local\Android\Sdk\platform-tools\adb.exe
 
 :MAIN_MENU
 cls
@@ -13,7 +13,7 @@ echo ===========================================================================
 echo.
 echo  [*] ADB CORE STATUS:
 echo  -----------------------------------------------------------------------------
-%ADB% devices -l
+"%ADB%" devices -l
 echo  -----------------------------------------------------------------------------
 echo.
 echo  [CONNECTION ^& PAIRING]
@@ -48,7 +48,7 @@ if "%CHOICE%"=="9" goto SCAN_MDNS
 if "%CHOICE%"=="0" goto EXIT_PROMPT
 
 echo [!] Invalid option selected.
-timeout /t 2 > nul
+ping 127.0.0.1 -n 2 > nul
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
@@ -61,22 +61,24 @@ echo  [*] DPCLOCKER :: AUTO-SCAN ^& WIRELESS CONNECT
 echo ===============================================================================
 echo.
 echo  [1/3] Disconnecting stale/ghost sockets...
-%ADB% disconnect > nul 2>&1
+"%ADB%" disconnect > nul 2>&1
 echo  [+] Stale sockets purged.
 echo.
 echo  [2/3] Querying Android mDNS Discovery Services...
 echo  -----------------------------------------------------------------------------
-%ADB% mdns services
+"%ADB%" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
+type "%TEMP%\dpclocker_mdns.tmp"
 echo  -----------------------------------------------------------------------------
 echo.
 echo  [3/3] Attempting auto-connection to discovered endpoints...
 set FOUND=0
-for /f "tokens=3" %%A in ('%ADB% mdns services ^| findstr "_adb-tls-connect._tcp"') do (
+for /f "tokens=3" %%A in ('findstr /i "_tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
     set FOUND=1
     echo  [+] Detected target: %%A
     echo  [*] Handshaking...
-    %ADB% connect %%A
+    "%ADB%" connect %%A
 )
+if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 
 if "!FOUND!"=="0" (
     echo.
@@ -98,7 +100,7 @@ echo  [*] DPCLOCKER :: MANUAL IP ^& PORT CONNECTION
 echo ===============================================================================
 echo.
 echo  Look at your phone: Developer Options -^> Wireless Debugging
-echo  Note the "IP address ^& Port" (e.g. 192.168.1.13:34195)
+echo  Note the "IP address ^& Port" (e.g. 192.168.1.13:40779)
 echo.
 set TARGET_IP=192.168.1.13
 set /p TARGET_IP=" [?] Enter Phone IP address [%TARGET_IP%]: "
@@ -112,7 +114,7 @@ if "%TARGET_PORT%"=="" (
 
 echo.
 echo  [*] Initiating TCP handshake with %TARGET_IP%:%TARGET_PORT%...
-%ADB% connect %TARGET_IP%:%TARGET_PORT%
+"%ADB%" connect %TARGET_IP%:%TARGET_PORT%
 echo.
 echo ===============================================================================
 pause
@@ -138,7 +140,7 @@ set /p PAIR_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code: "
 
 echo.
 echo  [*] Sending TLS Pairing Request...
-%ADB% pair %PAIR_IP%:%PAIR_PORT% %PAIR_CODE%
+"%ADB%" pair %PAIR_IP%:%PAIR_PORT% %PAIR_CODE%
 echo.
 echo  [*] If pairing succeeded, now connect using option [1] or [2]!
 echo ===============================================================================
@@ -155,13 +157,13 @@ echo  [*] DPCLOCKER :: RESET ADB SUBSYSTEM
 echo ===============================================================================
 echo.
 echo  [*] Terminating adb daemon and clearing TCP sockets...
-%ADB% kill-server
+"%ADB%" kill-server
 ping 127.0.0.1 -n 2 > nul
 echo  [*] Spawning fresh ADB server daemon...
-%ADB% start-server
+"%ADB%" start-server
 echo  [+] Server daemon restarted successfully.
 echo.
-%ADB% devices
+"%ADB%" devices
 echo.
 echo ===============================================================================
 pause
@@ -177,20 +179,22 @@ echo  [*] DPCLOCKER :: UNLOCK TEST DPC
 echo ===============================================================================
 echo.
 REM Check if online device exists
-%ADB% devices | findstr /R "device$" > NUL
+"%ADB%" devices | findstr /R "device$" > NUL
 if %ERRORLEVEL% NEQ 0 (
     echo  [-] No online device detected. Attempting auto-reconnect...
-    for /f "tokens=3" %%A in ('%ADB% mdns services ^| findstr "_adb-tls-connect._tcp"') do (
-        %ADB% connect %%A
+    "%ADB%" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
+    for /f "tokens=3" %%A in ('findstr /i "_tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
+        "%ADB%" connect %%A
     )
+    if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 )
 
 echo  [*] Sending Signal: dpclocker_enabled = 0 (UNLOCKED)
-%ADB% shell settings put global dpclocker_enabled 0
+"%ADB%" shell settings put global dpclocker_enabled 0
 if %ERRORLEVEL% EQU 0 (
     echo  [+] SUCCESS: Device Global Setting applied: dpclocker_enabled = 0
     echo  [*] Launching Test DPC Management UI on phone...
-    %ADB% shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
+    "%ADB%" shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
     echo.
     echo  ===========================================================================
     echo   [OK] Test DPC is now UNLOCKED and accessible on your phone screen!
@@ -214,20 +218,22 @@ echo  [*] DPCLOCKER :: LOCK TEST DPC
 echo ===============================================================================
 echo.
 REM Check if online device exists
-%ADB% devices | findstr /R "device$" > NUL
+"%ADB%" devices | findstr /R "device$" > NUL
 if %ERRORLEVEL% NEQ 0 (
     echo  [-] No online device detected. Attempting auto-reconnect...
-    for /f "tokens=3" %%A in ('%ADB% mdns services ^| findstr "_adb-tls-connect._tcp"') do (
-        %ADB% connect %%A
+    "%ADB%" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
+    for /f "tokens=3" %%A in ('findstr /i "_tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
+        "%ADB%" connect %%A
     )
+    if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 )
 
 echo  [*] Sending Signal: dpclocker_enabled = 1 (LOCKED)
-%ADB% shell settings put global dpclocker_enabled 1
+"%ADB%" shell settings put global dpclocker_enabled 1
 if %ERRORLEVEL% EQU 0 (
     echo  [+] SUCCESS: Device Global Setting applied: dpclocker_enabled = 1
     echo  [*] Force-stopping Test DPC activity...
-    %ADB% shell am force-stop com.afwsamples.testdpc
+    "%ADB%" shell am force-stop com.afwsamples.testdpc
     echo.
     echo  ===========================================================================
     echo   [OK] Test DPC is now LOCKED! Any launch attempt from phone will be blocked.
@@ -252,11 +258,11 @@ echo ===========================================================================
 echo.
 echo  [*] Querying Device Policy Manager policies...
 echo  -----------------------------------------------------------------------------
-%ADB% shell "dumpsys device_policy | grep -E 'mSuspendedPackages|PackageNameSetPolicyValue|dpclocker'"
+"%ADB%" shell "dumpsys device_policy | grep -E 'mSuspendedPackages|PackageNameSetPolicyValue|dpclocker'"
 echo  -----------------------------------------------------------------------------
 echo.
 echo  [*] Checking Global DpcLocker Enabled Status:
-%ADB% shell settings get global dpclocker_enabled
+"%ADB%" shell settings get global dpclocker_enabled
 echo.
 echo ===============================================================================
 pause
@@ -271,7 +277,7 @@ echo ===========================================================================
 echo  [*] DPCLOCKER :: LIVE TELEMETRY STREAM (Press Ctrl+C to stop)
 echo ===============================================================================
 echo.
-%ADB% logcat -s SecurityPipeline SecurityLogger NotoriousAppBlocker BrowserBlocker ImpulseGuardService
+"%ADB%" logcat -s SecurityPipeline SecurityLogger NotoriousAppBlocker BrowserBlocker ImpulseGuardService
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
@@ -283,9 +289,9 @@ echo ===========================================================================
 echo  [*] DPCLOCKER :: RAW MDNS NETWORK PROBE
 echo ===============================================================================
 echo.
-%ADB% mdns services
+"%ADB%" mdns services
 echo.
-%ADB% mdns check
+"%ADB%" mdns check
 echo.
 echo ===============================================================================
 pause
@@ -294,5 +300,5 @@ goto MAIN_MENU
 :EXIT_PROMPT
 cls
 echo [*] Exiting DpcLocker Cyber Console.
-timeout /t 1 > nul
+ping 127.0.0.1 -n 2 > nul
 exit /b 0

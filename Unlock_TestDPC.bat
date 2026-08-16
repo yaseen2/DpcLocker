@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 title DPCLOCKER - UNLOCK TEST DPC
 color 0A
 
-set ADB="C:\Users\ThinkPad\AppData\Local\Android\Sdk\platform-tools\adb.exe"
+set ADB=C:\Users\ThinkPad\AppData\Local\Android\Sdk\platform-tools\adb.exe
 
 :START
 cls
@@ -13,20 +13,22 @@ echo ===========================================================================
 echo.
 
 REM 1. Check if an online device is already active
-%ADB% devices | findstr /R "device$" > NUL
+"%ADB%" devices | findstr /R "device$" > NUL
 if %ERRORLEVEL% EQU 0 (
     goto PERFORM_UNLOCK
 )
 
 echo  [-] No active device detected. Scanning wireless network (mDNS)...
-%ADB% disconnect > nul 2>&1
-for /f "tokens=3" %%A in ('%ADB% mdns services ^| findstr "_adb-tls-connect._tcp"') do (
+"%ADB%" disconnect > nul 2>&1
+"%ADB%" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
+for /f "tokens=3" %%A in ('findstr /i "_tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
     echo  [+] Discovered dynamic port: %%A
     echo  [*] Connecting...
-    %ADB% connect %%A
+    "%ADB%" connect %%A
 )
+if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 
-%ADB% devices | findstr /R "device$" > NUL
+"%ADB%" devices | findstr /R "device$" > NUL
 if %ERRORLEVEL% EQU 0 (
     goto PERFORM_UNLOCK
 )
@@ -64,8 +66,8 @@ set /p DEF_IP=" [?] Enter Phone IP [%DEF_IP%]: "
 set /p M_PORT=" [?] Enter 5-digit Port on phone screen: "
 if "%M_PORT%"=="" goto RECOVERY_MENU
 echo [*] Connecting to %DEF_IP%:%M_PORT%...
-%ADB% connect %DEF_IP%:%M_PORT%
-%ADB% devices | findstr /R "device$" > NUL
+"%ADB%" connect %DEF_IP%:%M_PORT%
+"%ADB%" devices | findstr /R "device$" > NUL
 if %ERRORLEVEL% EQU 0 goto PERFORM_UNLOCK
 echo [-] Failed to connect to %DEF_IP%:%M_PORT%.
 pause
@@ -76,26 +78,26 @@ set DEF_IP=192.168.1.13
 set /p DEF_IP=" [?] Enter Phone IP [%DEF_IP%]: "
 set /p P_PORT=" [?] Enter Port from 'Pair with pairing code' popup: "
 set /p P_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code: "
-%ADB% pair %DEF_IP%:%P_PORT% %P_CODE%
+"%ADB%" pair %DEF_IP%:%P_PORT% %P_CODE%
 echo.
 echo [*] If paired, enter the main Wireless Debugging Port:
 goto MANUAL_PORT
 
 :RESTART_ADB
 echo [*] Killing ADB daemon...
-%ADB% kill-server
+"%ADB%" kill-server
 ping 127.0.0.1 -n 2 > nul
-%ADB% start-server
+"%ADB%" start-server
 echo [+] Server restarted.
 goto START
 
 :PERFORM_UNLOCK
 echo.
 echo  [*] Sending Unlock Signal...
-%ADB% shell settings put global dpclocker_enabled 0
+"%ADB%" shell settings put global dpclocker_enabled 0
 if %ERRORLEVEL% EQU 0 (
     ping 127.0.0.1 -n 2 > nul
-    %ADB% shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
+    "%ADB%" shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
     echo.
     echo  ===========================================================================
     echo   [OK] TEST DPC IS UNLOCKED AND OPENED ON YOUR PHONE SCREEN!
