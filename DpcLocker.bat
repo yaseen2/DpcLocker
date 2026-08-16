@@ -265,11 +265,12 @@ echo.
 echo  !C_SEC!Instructions:!R!
 echo    !C_TXT!1. On phone: Go to Developer Options -^> Wireless Debugging!R!
 echo    !C_TXT!2. Tap "Pair device with pairing code"!R!
-echo    !C_WARN!3. KEEP THE POPUP OPEN on your phone screen! (Do not close it)!R!
+echo    !C_WARN!3. KEEP THE POPUP OPEN on your phone screen! [Do not close it]!R!
 echo.
 echo  !C_SUB![*] Scanning local Wi-Fi for device pairing broadcast...!R!
 
 set SCAN_COUNT=0
+
 :RETRY_PAIR_SCAN
 set PAIR_FOUND_COUNT=0
 set PAIR_EP_1=
@@ -282,56 +283,44 @@ set PAIR_NAME_3=
 "!ADB!" mdns services > "%TEMP%\dpclocker_pair_mdns.tmp" 2>&1
 for /f "tokens=1,2,3" %%A in ('findstr /i "_adb-tls-pairing._tcp" "%TEMP%\dpclocker_pair_mdns.tmp"') do (
     set /a PAIR_FOUND_COUNT+=1
-    if !PAIR_FOUND_COUNT! EQU 1 (
-        set "PAIR_NAME_1=%%A"
-        set "PAIR_EP_1=%%C"
-    )
-    if !PAIR_FOUND_COUNT! EQU 2 (
-        set "PAIR_NAME_2=%%A"
-        set "PAIR_EP_2=%%C"
-    )
-    if !PAIR_FOUND_COUNT! EQU 3 (
-        set "PAIR_NAME_3=%%A"
-        set "PAIR_EP_3=%%C"
-    )
+    if !PAIR_FOUND_COUNT! EQU 1 set "PAIR_NAME_1=%%A" & set "PAIR_EP_1=%%C"
+    if !PAIR_FOUND_COUNT! EQU 2 set "PAIR_NAME_2=%%A" & set "PAIR_EP_2=%%C"
+    if !PAIR_FOUND_COUNT! EQU 3 set "PAIR_NAME_3=%%A" & set "PAIR_EP_3=%%C"
 )
 if exist "%TEMP%\dpclocker_pair_mdns.tmp" del "%TEMP%\dpclocker_pair_mdns.tmp" > nul 2>&1
 
-if !PAIR_FOUND_COUNT! EQU 0 (
-    set /a SCAN_COUNT+=1
-    if !SCAN_COUNT! LSS 3 (
-        echo  !C_SUB![*] Waiting for pairing popup to open on phone... (!SCAN_COUNT!/3)!R!
-        ping 127.0.0.1 -n 3 > nul
-        goto RETRY_PAIR_SCAN
-    )
-    echo  !C_WARN![-] No pairing broadcast detected automatically.!R!
-    echo  !C_SUB!    Make sure the "Pair device with pairing code" popup is currently OPEN on phone.!R!
-    echo.
-    echo    !C_NUM![1]!R! !C_TXT!Scan Wi-Fi again!R!
-    echo    !C_NUM![2]!R! !C_TXT!Enter Port manually from popup!R!
-    echo    !C_NUM![0]!R! !C_SUB!Cancel!R!
-    echo.
-    set /p PCHOICE=" !C_PROMPT![>] Select Option: !R!"
-    if "!PCHOICE!"=="1" (
-        set SCAN_COUNT=0
-        goto RETRY_PAIR_SCAN
-    )
-    if "!PCHOICE!"=="2" goto PAIR_MANUAL_ENTRY
-    goto MAIN_MENU
+if !PAIR_FOUND_COUNT! GTR 0 goto PAIR_TARGET_FOUND
+
+set /a SCAN_COUNT+=1
+if !SCAN_COUNT! LSS 3 (
+    echo  !C_SUB![*] Waiting for pairing popup to open on phone... [Attempt !SCAN_COUNT! of 3]!R!
+    ping 127.0.0.1 -n 3 > nul
+    goto RETRY_PAIR_SCAN
 )
 
-:: If 1 device found -> Auto-select
+echo  !C_WARN![-] No pairing broadcast detected automatically.!R!
+echo  !C_SUB!    Make sure the "Pair device with pairing code" popup is currently OPEN on phone.!R!
+echo.
+echo    !C_NUM![1]!R! !C_TXT!Scan Wi-Fi again!R!
+echo    !C_NUM![2]!R! !C_TXT!Enter Port manually from popup!R!
+echo    !C_NUM![0]!R! !C_SUB!Cancel!R!
+echo.
+set /p PCHOICE=" !C_PROMPT![>] Select Option: !R!"
+if "!PCHOICE!"=="1" set SCAN_COUNT=0 & goto RETRY_PAIR_SCAN
+if "!PCHOICE!"=="2" goto PAIR_MANUAL_ENTRY
+goto MAIN_MENU
+
+:PAIR_TARGET_FOUND
 if !PAIR_FOUND_COUNT! EQU 1 (
     set "SELECTED_PAIR_EP=!PAIR_EP_1!"
     echo  !C_OK![+] AUTO-DETECTED Device: !PAIR_NAME_1! @ !PAIR_EP_1!!R!
     goto PROMPT_CODE
 )
 
-:: If multiple devices found -> Let user select
 echo  !C_SEC!Multiple devices discovered on Wi-Fi:!R!
-if not "!PAIR_EP_1!"=="" echo    !C_NUM![1]!R! !C_TXT!!PAIR_NAME_1! (!PAIR_EP_1!)!R!
-if not "!PAIR_EP_2!"=="" echo    !C_NUM![2]!R! !C_TXT!!PAIR_NAME_2! (!PAIR_EP_2!)!R!
-if not "!PAIR_EP_3!"=="" echo    !C_NUM![3]!R! !C_TXT!!PAIR_NAME_3! (!PAIR_EP_3!)!R!
+if not "!PAIR_EP_1!"=="" echo    !C_NUM![1]!R! !C_TXT!!PAIR_NAME_1! [!PAIR_EP_1!]!R!
+if not "!PAIR_EP_2!"=="" echo    !C_NUM![2]!R! !C_TXT!!PAIR_NAME_2! [!PAIR_EP_2!]!R!
+if not "!PAIR_EP_3!"=="" echo    !C_NUM![3]!R! !C_TXT!!PAIR_NAME_3! [!PAIR_EP_3!]!R!
 echo.
 set /p DEV_SEL=" !C_PROMPT![?] Select your device [1-!PAIR_FOUND_COUNT!]: !R!"
 if "!DEV_SEL!"=="1" set "SELECTED_PAIR_EP=!PAIR_EP_1!"
@@ -345,7 +334,20 @@ set /p PAIR_CODE=" !C_PROMPT![?] Enter 6-digit Wi-Fi Pairing Code from phone pop
 echo.
 echo  !C_SUB![*] Sending TLS Pairing Request to !SELECTED_PAIR_EP!... !R!
 "!ADB!" pair !SELECTED_PAIR_EP! !PAIR_CODE!
+goto AUTO_LINK_AFTER_PAIR
 
+:PAIR_MANUAL_ENTRY
+echo.
+set /p PAIR_IP=" !C_PROMPT![?] Enter Pairing IP address [!SAVED_IP!]: !R!"
+if "!PAIR_IP!"=="" set PAIR_IP=!SAVED_IP!
+set /p PAIR_PORT=" !C_PROMPT![?] Enter Pairing Port shown on the popup: !R!"
+set /p PAIR_CODE=" !C_PROMPT![?] Enter 6-digit Wi-Fi Pairing Code from popup: !R!"
+call :SAVE_CONFIG "!PAIR_IP!"
+echo.
+echo  !C_SUB![*] Sending TLS Pairing Request to !PAIR_IP!:!PAIR_PORT!... !R!
+"!ADB!" pair !PAIR_IP!:!PAIR_PORT! !PAIR_CODE!
+
+:AUTO_LINK_AFTER_PAIR
 echo.
 echo  !C_SUB![*] Auto-discovering main connection port and linking device...!R!
 ping 127.0.0.1 -n 2 > nul
@@ -368,17 +370,6 @@ if not "!TARGET_SERIAL!"=="" (
 echo.
 pause
 goto MAIN_MENU
-
-:PAIR_MANUAL_ENTRY
-set /p PAIR_IP=" !C_PROMPT![?] Enter Pairing IP address [!SAVED_IP!]: !R!"
-if "!PAIR_IP!"=="" set PAIR_IP=!SAVED_IP!
-set /p PAIR_PORT=" !C_PROMPT![?] Enter Pairing Port shown on the popup: !R!"
-set /p PAIR_CODE=" !C_PROMPT![?] Enter 6-digit Wi-Fi Pairing Code from popup: !R!"
-call :SAVE_CONFIG "!PAIR_IP!"
-echo.
-echo  !C_SUB![*] Sending TLS Pairing Request to !PAIR_IP!:!PAIR_PORT!... !R!
-"!ADB!" pair !PAIR_IP!:!PAIR_PORT! !PAIR_CODE!
-goto PROMPT_CODE
 
 :: --------------------------------------------------------------------------------
 :: [5] SELECT / CONNECT DEVICE (LISTS DISCOVERED WI-FI TARGETS)
