@@ -6,6 +6,10 @@ import android.content.Intent;
 import android.net.Uri;
 import android.util.Log;
 
+/**
+ * Clean BroadcastReceiver routing package installation/update events directly
+ * to the unified SecurityPipelineManager.
+ */
 public class PackageInstallReceiver extends BroadcastReceiver {
     private static final String TAG = "PackageInstallReceiver";
 
@@ -20,8 +24,10 @@ public class PackageInstallReceiver extends BroadcastReceiver {
             Uri data = intent.getData();
             if (data != null) {
                 String packageName = data.getSchemeSpecificPart();
-                Log.i(TAG, "New package installed/updated: " + packageName);
-                BrowserBlocker.checkAndSuspendPackage(context, packageName);
+                if (packageName != null && !packageName.isEmpty() && !packageName.startsWith("com.afwsamples.testdpc")) {
+                    Log.i(TAG, "PackageInstallReceiver routing package event to pipeline: " + packageName);
+                    SecurityPipelineManager.onPackageAddedOrUpdated(context, packageName);
+                }
             }
         }
     }

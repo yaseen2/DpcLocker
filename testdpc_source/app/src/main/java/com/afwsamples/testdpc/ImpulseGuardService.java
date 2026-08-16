@@ -141,6 +141,10 @@ public class ImpulseGuardService extends AccessibilityService {
             Map<String, ?> allEntries = prefs.getAll();
 
             for (String pkg : allEntries.keySet()) {
+                if (SecurityPipelineManager.isPermanentlyProhibited(context, pkg)) {
+                    Log.i(TAG, "Preserving permanent prohibition for [" + pkg + "] during master unsuspend.");
+                    continue;
+                }
                 try {
                     dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{pkg}, false);
                     Log.i(TAG, "UNSUSPENDED PACKAGE [" + pkg + "] via master unsuspend.");
@@ -180,6 +184,12 @@ public class ImpulseGuardService extends AccessibilityService {
                 }
 
                 if (!isEngineActive || (now >= expiryTimestamp)) {
+                    if (SecurityPipelineManager.isPermanentlyProhibited(this, pkg)) {
+                        Log.i(TAG, "Preserving permanent prohibition for [" + pkg + "] during auto-unsuspend cycle.");
+                        editor.remove(pkg);
+                        continue;
+                    }
+
                     try {
                         dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(this), new String[]{pkg}, false);
                         Log.i(TAG, "AUTO-UNSUSPENDED PACKAGE [" + pkg + "] after penalty duration expired.");

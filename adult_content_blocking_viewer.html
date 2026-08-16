@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test DPC Adult Content Blocking Architecture & Conflicts</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        h1 {
+            font-size: 24px;
+            color: #38bdf8;
+            margin-bottom: 8px;
+        }
+        p.subtitle {
+            font-size: 14px;
+            color: #94a3b8;
+            margin-bottom: 12px;
+        }
+        .live-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #0284c7, #2563eb);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+            transition: transform 0.15s ease, background 0.2s ease;
+        }
+        .live-btn:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(135deg, #38bdf8, #3b82f6);
+        }
+        .container {
+            width: 100%;
+            height: calc(100vh - 160px);
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+            margin-top: 12px;
+        }
+        #mermaid-output {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .controls {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid #475569;
+            border-radius: 8px;
+            padding: 6px 12px;
+            display: flex;
+            gap: 8px;
+            z-index: 10;
+        }
+        button {
+            background: #38bdf8;
+            color: #0f172a;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover {
+            background: #7dd3fc;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>🛡️ Test DPC Adult Content Blocking: Complete Architecture & Conflicts</h1>
+    <p class="subtitle">Detailed Visual Breakdown of Runtime AI Guard, Install-Time Defense, Chrome Restrictions, Timers & System Overlaps</p>
+    <a class="live-btn" href="https://mermaid.live/edit#pako:eNq1WwtT40iS_iu1TGzg3rENNjA357vZDUkW4MGvtgQ0c2wQslS2FciSRw_AMcx_vy-rSi9jmOm7aaIxlqoqKysrH19mVf924EYeP-ixg7__nf30l_7chyBpTEbToWmbTJsZlwPbNOzrmTZkw8nFwOgx27Rs1p8aTOtfD210Htvm2Gb6cGJcDcYXzLqzbHMkCA1CN8g8nrAZd4KW7a850wbs3A9SHjfRmqROELA-X_Aw4U1mrOIIXaZR4Ls-T5qMRsQJc0KPGVG4wOs0EYT_6kXfh8vY2ayY3b8PGX4wRev_-lNQkIJgnR6bmdqwZQ9GJptdj8VfiOHiWpv9ZdMl2VyuwLrWO_9zf1CZuxD9LAtT-gtRpjxM1T744ZI1ButNFiT8InNiT4j7gq_90Aebn-4P_i2noB-NaF8nPMbmYazjpn4UMj9koyj00yjmHtM2m_-ex0f_bMjdbGKamC-ilyYzvSUeJxuMazI9dp44EcfK_8n0zm_3B-YTcWVvN1xSd_km5Z4kprkuTxJ_7gd-uhUdMfb3krHym94hiq_3B_bd1Hy4GZi3D7b5xX4wLrXxhdlnUczKFmM4MK7M_v3BKzNoaeZLSotiGhb2xNnnjMdbZvOXVHJhcSd2V2zuxOyIcc9PWYq2uojq898Oxv0J5pFGUmXCMmaT4VB9tzXbzBsFM90KM-cZjMRyY85DwQsbw_oTydHIeWGnx8fHzF05MSxmxt0sToj3Zyd4rHNWfoO-TWP_yXG3YrNvV37KAz_JVaLsaIjFsD5tz_4Rxoq7j4KXTpsNEjZ1kuQ5ghYRk_8SDV00hMzaJilflyNl20mbWakTpwl79tMVu54N2Qbq4r_I5tO2XHHAwyWa5zyIntmJXOy_agrQl2K_g7M5Yhb8iU87-MpM2tbBMhS6ecT07QYM4mvDchZcrEWsK-V1WSly4whjRtwJYSWLDLsgFOCVnZNAsFooe137h8XKGn5SvEa399T1PJ_olV1UiOpx9Awzaw39R8GlIDmOUjZy4kfMczjmT7BCLXk8rMvhopDDK7uktU-zZIXNSP2F7zrCXKfQp54geKg4ZOnKh5vFvAs8KGfAhDf412FNLhclu2bng_WI-QdqQcfrhA0j14Gr95NHZjjuirNLPxeUS88PWI4H__7wK9lcXVoDSbMYB6c2sK7uXtnPtECifu4kaWvqQEXs2F8ueSzXd-NHAbYWTsnLglSac205bylb2rn5yq7eEtYC6B73JGGhPG_JvUN45CeQxpCkodiDxni8tsZh7jaUj9GzNMVe2dgU0tY3LusTuYmRUG4Ko3CcCCkQ78ZJMbpBvHs8cLZ1tS5mET5cerlgSz5XhIH9LlNMNaap-nweZaHLZWBmjU73mCbaOFnCPwnB3Do-bJkCTcAymmOBMJKsYJXPqyjg7NcPZDaWzmZU0auRfDUh0VlgMeCt88BfrlLSp0elPtF648RcCz2L70SFiVyuniXbVzYVK4gjslg4uTX8N3SDPXI4pjh65DWu1EjN_TVD-PJe2WcaraKiDJOEZABf5o77yIaO5_E4d4NL0a110j5rLQInWbUQtHjuCovGzm7jSdHYfTvytGjsFI0_zt-R5GcpthmJTfFsYERS-oAZT2ARNWHNct3wk4cYdrplP7E0zjhrwCfM-CJLYMC2jHevzOo8CCOEVCQOtExCi2wg0SAC3vlgNjL7ylwQkNJIOILSBdSY3zf7woEboslsAWlgmfksn6_N2d1Xkp4sACBDDodO2htlKb6ZcRzFr-ya6J87ftAShg2IErKGMvgPYqiKyVIdztG7Eji7YgduhOJWuylkkbt0Ed2GMro5FOfgb1jnbF-Eu9nvem8qDveWpiNJqCln2qjibWvUboth8KYk71f2pVNupjEzzXGB7fsmJQEETf79hoIMkcLD3VVsRHEAIzGfnCATWiftdRo4ZIBYtx8mGy4gZF3Id5KyYCtHq8Temx5it4oO-wMS7ROH24FLcgoYpWUAb2UfW9rLL0LNys7TlYMw2O0hI0EUUI65SkGhQggY8QVu-lS4Q2cB98IS2d3Zp0W_yPmMrnzFQ49SkL868SDGZ5OLmWlZgxuTTc2xNrTvmDbuI0uw8GgNJmNmji8GY_Nb5CHdMg8BK2YCAAA1QJzpw9K2bMpDJ0i3yncKKGZlUAhANzgoMwQUcYFFq3L7WcpNE2mI6gHE6T46S14ZXBuTO6p8ZNnypfP2XSXV0VSzrlBMPo8WxNzxtmo-D9sOBDixFJjxNuu2n6i-RZd6WNL0is1qIvGgcJb7BvNl48cVg-lHLATyi3nCU8oWYDogygD0Y0qYKKeLd9I0vfQVWp_oIy8gUC4BkcrZ1AaMnBCsxu-4Oa2vxGCSGLqnrcsoo-yPUr8n5GLIKgMZoRpD8l1PxQxRQNuarpyQdU9Xn-ruB-QqIjiXLNL6pG6UfBoAHCliQae-QLOywAuJgmCXa5LHfgqN7zvveXLtXC1R4GXDCdyMUCMSg2gZU9aJPcmVtZ9VdqbFOgkgY4fB42UY0PD4wkFY_aRau6GH1mPVnKi3JzHenuy-PU1X31df15d7UXC4dwGXqnkgQdqT73JRRMn3FjJYr2FgErySikLUSkeTQkkbm8dlU4T8HW0aKPICbpMvRDhZrlpInKKYVKCWXZAd2xFUQWYY5T5896UnUpuksBtKNu5owcnh_gkFDM_dK1xuGrWuQzUe0DhRCHADlvoEdhXN3c16d-Ov1DxDmselTBYo0kAQDoUNcq_0KUljRyhDNXZEdnHpJNJstwJcAJCvNyIV5t6O3o-qei9A9cfbITCQVCgSHvRRJpok5ixsFcL8W527UcU-JjTLiIIufve5yW8Uf056QIOWrQ1V7YsCDwKSZtgUjrTpFLjiHFHomwSfkzL4EB-y1CjrYDLpjxzpbUmqqgJZr-OIIDPmz-D0KicAwUO_rjeeyCqh1NLYijJWpY6V52LoB3gK_8sxW5y8UwagqivymCikoVovDzZq2nx0hbuizDQQ6AemBbFOxg9TzbjSLswHrd-XpSRdxJd36NUWrIo9uggYqgChBwhMPG7nxqG0U5FrfACOy-Xou8sRRvn_WpP5dk11orWFmWphedVmoyI5rGGT68GDevkwpxVTgUr6lkPxzL28PXmArR7uRDO9WvXQZTxa5wnmu_YtPK2c5SLmW0YpCemm5yfOHP6O6jF-TibYyeT1SuFIl4UeuBtStZCg9UIW8v7E7hg9IDAk9SsewxQS5Asyp923L9WO7bxjOwrV2jQAOU_sjwhENbJUGOPhuyzpyuXrIsYgh67rX49JlaC8NQoyEU8s16kjPV3BQ_1KuuTQC3jCqJwhxKrPJreWpg9NESNWabpJFGajupo6eziiYFYWKXeRm35VSZvGUdhSwxS3WLkIJVNzNtLGlDlp1_akJdF2X3Jgzj4Owm_jbz6p2OpRdavBKyJwlMmaoSjF_pF8RcjptsuhGFkI2YpcyntGpHJ7yOmqQqOLeswgrMyv51ajRGo_-ykU8OgLlaQ9pEpNZmfreRDjLw843PS6ye6izM7mfEfEk6otTT8Q53hiT2aDybVFseSrhTqpCPVzVahIWUmaIsGL_lBfZzT0pM00H4PUmB7CAt9AjKmDQOEQxbfKOlMELCXLSyf26FgPwCbOSPN2S-XFgcrtyklp20i0N07ocq9J0YYAflOV2XdEalVFKosplDmXVXxZFq8zaFUEdF07HIF0ACz9BbBIsUgJLYfOnAdN-JCUL6N42wQUi9d-IgBUU-Y3furvoNvKnNdKKDeVyhXth5RrtczW2C2VwXS77ePie1El2xHFzW6dqScQr6R543s8Yv3oOQwix6MzyutwLSC0l5t4U9WSL7O5qIPptx8ZPLLtwVdr5h4Wi0qY_iVXVbAkNnG-xRx7CYgCpR-Icw9V_AKBO1GSwrRuCngclDVMUZ-S20hwlgp5s7Fps--ZBTtD_GXfyxIvn9_4_PmoFNORkk2-wdud6HhXVT9ZZLFn1-pUWcnqq6V0V1HPvDT0jYDsKQxaGwzvBGYlKDuzZBVFVsmGg9HAtr4FiD0tQSx4yI8ACcNeJwRghv6ayu0NWKSoyKt0ry4pQx3aUj0ihefIc8IjSWQyx849iWfkjFCSZY5mDb2eD9uR52zZOdKPZYyc2lNMNEY-hiU7k-qqxGXk6ZEYfZhUVyH23HxxOSe3Ryf8_jKTp2jr3XqlYVSUyBAQValHUZhZiDo1fFK0YH1n-7Ualc9AGmUIgCkqwMLdiZW-47QMVSExRBVj5HuhOKDQAideM4PiImvMbOPhVrsyr6fs-LhH_7o7k6sahHGxWwqRQhZFjPwuRJkDg0N5FtMqq1EEt751anfWY_B3Gh1lG5ezCV1sMGHTA4HXpXFMJ8OBcfcNy4tnpXGAnZ27I7KcCP-oqrYqeNaqIjsnvsJM9CiicwGZ1rHJcyiuOvj0TvPWlD7zNNvkFtIXFgKBY59GKk7kaizykYQ9AUn1p6OyOIidpQGqXEL6GvuiBr5jQX1lQX1DIeJzqnZeRNEy4JWF5Wc0liBTWfJ71LoS_4mOCP-JPPLX-cp58mFAP7FOLqyyj4p5sut7hE8kEEJm_bKl402QOvT8mLvpIWsIfJjIxqOb6RhhixCHrGUmH62efOBpm24GFBhTGgG9cNSLfrSm2kZxo0WGscU8ekmf2lG8bLKXthsBcqYSl8qHWCBT8V30TwVClW0ucbqhD_m8RXYGrEoPR8kqitPk6B_vcEyKeUZ3HtxoScfrJAztCcbsyOsrdRX51qb6A2xjNrAHBmItncrBKm2rySY35myoTaWtzjTDpMb-QNjvt7DWH0prLbgQc_fpjHlGKL5gqSHwHnYz9LCXO5ohVYoSQFvf647PHzQKW2oSugJlcyS7sRNv2VMiEKkjMt_KacMEAfA5zs9aW6x6H8pCeCRnkOVeV9yUoANthDEKv53WyTG5BlGIh0ZT5TBp55QWzGGbfE74CVVPENl9g7eX7fKClLoaVeRMn6Chop5B7qy4llFU2KXSshqzh0nJJ3O3bsCpYLV2EjqSKlvm8nYBkhLmuC5Qb0glFASbcauKx9hezucS7UkfGxYpIAnlb-_FyPMHvbopXbqX5gFD0MWF_B5gXiIAoLFjfxPwVn5bYua4PC-q35LYHRaqwpyf0DGirM0ht7wEImMJ3zgxIZagoLiAjFnir-HGsBywG2x7aolwrfurY_BaMfCtC-Hlrz6pMd32RyWtDwbCQe4tosCBKzXLpZCv908W4kgQ_IW7GWWOtEwSoFDJRNS5IBCIKBAgKV1x9KVULnHg5lVl64O9M6p7d9KrXv-KQiSFnopgSADiCF7dyuaJyEPz041qdkwBK4HZHMIvt1NVDGiDz4SH2OxDBrCYUGYDV7vOQhUoc3vaU7cgk6OoX-joB7SRLalDmvZHrGHqNrQ7jnwPEqdgeNgko6nZGltxxExMupa3qCDotP2-EPtVIRKcz7VUmw7YFd8yCzQIpCrGZPorZjLDJd1coHNHqDLYYYcy_X1YUvMDF-0PdHMuOdy7sOpQx3-ArT44smlnFPwVqYe4u-PmiDwR74jPR_AJdYrAjec7QUQHRmiK8BFTpp7kOw-fs8WsIix7mPwISl8A_A9UzaxKqcR1RTCVCG_L-mRVSx66ucveA_DyI1JsEVBX8kFE_okds0Y5hzmmOmH_Uy4U5E1wVXQ1VuAgV12gBTxIVSxag2KQYMHivtCHM3WqM_UHlprqHRww9MPH8vKzqE_JcwtxCVR206gu1xYlAwMeHTYj-ANfwqkXbl_cLEV4lKP0YTHKdiBKchzzbS1ILHdGTL92hBpnFOP6mYS-cE3St6v-KpSLUv2f6zn4sz1Vf6vkXRp5XodUvQ3Vb1L0U5h1fz_5-bnoTAbcUV3UrW5Rhylbu_VW-Qm0mPdRig1NFZck1n6ypvMjNcqs6ISVbuHbxY2uXAVceujzBZN3pxZIyXvf8cUpfpryelvvu_9YdLyOpx5bz76XrnrdzUvTjYIo7n23WCz-a4eYcMOSVrfrnp3xglbn9Oyk-1W0XKXDit7i7D_58bzk7ceTs-NFnd5JSe_4-HiXnuMrSifzH7uLH0rO-Inzo_MHnFVosZ87zfyOSPNLp6kNOk2YRhPK3tRv8ftLp0kpvhBslQl21WnaaMcYHX9hhE3DxO9FR8it1pUsokkqSR8GffTpwyykUuv9udO8A9GbTnOEP7MO1or2gyY7WBMc8z36rx-_0Yj7AzjeNb_Hi_sDeKjH-4P78Hfq6WRpZG1D90DWN_EmE6eWfd8hZVavf_9fj0cvQg" target="_blank">🔗 Open in Official Mermaid Live Editor</a>
+</header>
+
+<div class="container">
+    <div id="mermaid-output" class="mermaid">
+graph TD
+    %% ---------------------------------------------------------
+    %% SYSTEM 1: REAL-TIME RUNTIME AI GUARD
+    %% ---------------------------------------------------------
+    subgraph SUB1["SYSTEM 1: Real-Time Runtime Content Filtering (ImpulseGuard and Gemini AI)"]
+        A1["User Interaction in Monitored App<br/>(Chrome, Firefox, Edge, Opera, Brave)"] --> B1{"Event Type Intercepted<br/>(AccessibilityEvent)"}
+        
+        B1 -->|"TYPE_VIEW_TEXT_CHANGED or TYPE_VIEW_CLICKED"| C1["Extract Active Query Text<br/>(Search bar / edit text)"]
+        B1 -->|"TYPE_WINDOW_CONTENT_CHANGED or SCROLLED or STATE_CHANGED"| C2["Extract Full Screen Text Nodes<br/>(Max 4000 chars, Recursive walk)"]
+        
+        %% Privacy and Whitelist Filter
+        C1 --> D1{"Privacy and Whitelist Check<br/>1. Is Password Node?<br/>2. In System Whitelist?<br/>3. Starts with URL prefix?<br/>4. Text length below 3 chars?"}
+        D1 -->|Yes / Sensitive| E1["Ignored / Bypassed (Safe and Private)"]
+        D1 -->|No / Meaningful Search| F1{"Is App in Monitored List?<br/>(isMonitoredApp)"}
+        
+        F1 -->|No| G1{"Is App Browser-Like and<br/>Not Marked 'Never Ask'?"}
+        G1 -->|Yes| H1["Push Notification Pull:<br/>'Monitor this app for Impulse Guard?'"]
+        G1 -->|No| E1
+        
+        F1 -->|Yes| I1{"Is 0ms Local Disk Cache Hit?<br/>(cache_verdict_query)"}
+        I1 -->|Cache Hit: RISKY| J1["0ms Fast-Path Trigger:<br/>Violated Adult Query"]
+        I1 -->|Cache Hit: SAFE| K1["0ms Fast-Path Allowed:<br/>Safe Query"]
+        
+        I1 -->|Cache Miss| L1{"Trigger Mode"}
+        L1 -->|"Search Button Tapped (TYPE_VIEW_CLICKED)"| M1["Instant AI Dispatch (0ms delay)"]
+        L1 -->|"User Actively Typing (TYPE_VIEW_TEXT_CHANGED)"| N1["Debounce Timer (1200ms pause)<br/>Waits until user finishes whole query"]
+        
+        N1 --> M1
+        M1 --> O1{"Single-Flight Lock<br/>(compareAndSet)"}
+        O1 -->|Busy| P1["Drop intermediate keystroke"]
+        O1 -->|Acquired| Q1["Gemini Guard AI Fallback Ladder<br/>1. gemini-3.5-flash-lite<br/>2. gemini-3.1-flash-lite<br/>3. gemini-2.5-flash-lite<br/>4. gemini-1.5-flash-8b"]
+        
+        Q1 --> R1{"Gemini Classification Result"}
+        R1 -->|"is_risky = true (or Refusal Text)"| S1_RISKY["ADULT SEARCH INTENT CONFIRMED<br/>Save to 0ms Disk Cache"]
+        R1 -->|"is_risky = false"| T1["SAFE SEARCH QUERY<br/>Save to 0ms Disk Cache"]
+        R1 -->|Offline / Timeout / Error| U1["Fail-Safe Open (Allowed)"]
+        
+        %% Screen Guard Flow
+        C2 --> V1{"Screen Guard Active and<br/>Text Length at least 15 chars?"}
+        V1 -->|No| E1
+        V1 -->|Yes| W1{"0ms Screen RAM Cache Hit?"}
+        W1 -->|Yes: Risky| X1["ADULT SCREEN CONTENT DETECTED"]
+        W1 -->|No / Miss| Y1["Gemini Screen AI Evaluation<br/>(Plaintext inspection)"]
+        Y1 -->|Risky Content| X1
+        Y1 -->|Safe Content| E1
+        
+        %% Sequential Screen Audit
+        T1 --> Z1["Sequential Phase 2: Post-Search Screen Audit<br/>(Scheduled 400ms after search allowed)"]
+        Z1 --> C2
+    end
+
+    %% ---------------------------------------------------------
+    %% SYSTEM 2: PROGRESSIVE PENALTY AND SUSPENSION ENGINE
+    %% ---------------------------------------------------------
+    subgraph SUB2["SYSTEM 2: Escalating Daily Penalty Ladder and Suspension Enforcer"]
+        J1 --> AA1["Enforce Package Suspension"]
+        S1_RISKY --> AA1
+        X1 --> AA1
+        
+        AA1 --> AB1{"Is Package Already Suspended in OS?<br/>(dpm.isPackageSuspended)"}
+        AB1 -->|Yes| AC1["Lock Active Expiration<br/>(Do not reset or extend current timer)"]
+        AB1 -->|No| AD1["Record Violation in PenaltyManager"]
+        
+        AD1 --> AE1{"24-Hour Inactivity Rule<br/>(Last violation older than 24h)?"}
+        AE1 -->|Yes| AF1["Reset Daily Violation Count = 1"]
+        AE1 -->|No| AG1["Increment Daily Violation Count (+1)"]
+        
+        AF1 --> AH1["Calculate Progressive Penalty Duration<br/>- 1st: 1 minute (default)<br/>- 2nd: 10 minutes<br/>- 3rd: 30 minutes<br/>- 4th+: 30 minutes"]
+        AG1 --> AH1
+        
+        AH1 --> AI1["DevicePolicyManager Command:<br/>dpm.setPackagesSuspended(pkg, true)"]
+        AI1 --> AJ1["Post High-Priority Notification and Toast<br/>'Violation #X: App suspended for Y mins'"]
+        AI1 --> AK1["Schedule Auto-Unsuspend Task<br/>(postDelayed for Penalty Duration)"]
+        
+        AK1 --> AL1["checkAndCleanExpiredSuspensions()"]
+        AL1 --> AM1{"Has Expiry Timestamp Passed?"}
+        AM1 -->|Yes| AN1["dpm.setPackagesSuspended(pkg, false)<br/>App restored and un-suspended!"]
+        AM1 -->|No| AO1["Maintain Suspension"]
+    end
+
+    %% ---------------------------------------------------------
+    %% SYSTEM 3: INSTALL-TIME AND PROACTIVE APP DEFENSE
+    %% ---------------------------------------------------------
+    subgraph SUB3["SYSTEM 3: Install-Time and Proactive App Defense"]
+        BA1["New APK Installed or Updated on Device"] --> BB1{"Event Dispatched to Receivers"}
+        
+        %% Component A: PackageInstallReceiver
+        BB1 -->|"Intent: ACTION_PACKAGE_ADDED"| BC1["PackageInstallReceiver"]
+        BC1 --> BD1["BrowserBlocker.checkAndSuspendPackage()"]
+        
+        %% Component B: PackageInstallationReceiver
+        BB1 -->|"Intent: ACTION_PACKAGE_ADDED"| BE1["PackageInstallationReceiver"]
+        BE1 --> BF1{"Is package in proactive_package_blocklist<br/>('blocked_packages_set')?"}
+        BF1 -->|Yes| BG1["Immediate dpm.setPackagesSuspended(true)<br/>(Grey out and disable app immediately)"]
+        BF1 -->|No| BH1["Pass to next filter"]
+        
+        %% Component C: LauncherApps Callback
+        BB1 -->|"LauncherApps.Callback.onPackageAdded"| BI1["LauncherApps Listener"]
+        
+        BI1 --> BJ1["1. BrowserBlocker: Intent Resolution Scan"]
+        BJ1 --> BK1{"Handles VIEW and BROWSABLE for https?<br/>(Not Chrome / Not Whitelisted)"}
+        BK1 -->|Yes: Non-Chrome Browser| BL1["PERMANENT AUTO-SUSPEND BROWSER<br/>dpm.setPackagesSuspended(true)"]
+        BK1 -->|No| BM1["Pass to Notorious App Check"]
+        
+        BI1 --> BN1["2. NotoriousAppBlocker: Social Media Check"]
+        BN1 --> BO1{"In Notorious Blocklist?<br/>(Twitter/X, Reddit, Tumblr, Telegram, YouTube)"}
+        BO1 -->|Yes| BP1["PERMANENT AUTO-SUSPEND NOTORIOUS APP<br/>dpm.setPackagesSuspended(true)"]
+        BO1 -->|No| BQ1["Pass to AI App Auditor"]
+        
+        BI1 --> BR1["3. AiAppAuditor: Deep Metadata AI Scan"]
+        BR1 --> BS1{"In Hardcoded Trusted Whitelist?<br/>(Chrome, WhatsApp, ReVanced, Discord, System)"}
+        BS1 -->|Yes| BT1["Safe Whitelist Bypass"]
+        BS1 -->|No| BU1["Extract App Manifest Metadata:<br/>Label, Category, Permissions, Activities"]
+        
+        BU1 --> BV1{"Gemini AI Auditor Ladder<br/>(gemini-2.5-flash / 2.0-flash / 1.5-flash)"}
+        BV1 -->|"is_risky: true<br/>(Video Downloader, Unmanaged Browser, Adult Hub)"| BW1["PERMANENT AUTO-SUSPEND BY AI<br/>dpm.setPackagesSuspended(true)"]
+        BV1 -->|"is_risky: false"| BX1["Passed Safe by AI"]
+        BV1 -->|AI Failed / Offline| BY1{"Structural Fallback Guard:<br/>Has INTERNET + STORAGE +<br/>WebView/Downloader/Browser Activity?"}
+        BY1 -->|Yes| BZ1["STRUCTURAL SUSPEND<br/>dpm.setPackagesSuspended(true)"]
+        BY1 -->|No| BX1
+    end
+
+    %% ---------------------------------------------------------
+    %% SYSTEM 4: DAILY APP TIMERS AND SCREEN LIMITS
+    %% ---------------------------------------------------------
+    subgraph SUB4["SYSTEM 4: Screen Time Usage Limits (AppTimerManager)"]
+        CA1["UsageStatsManager / UsageObserver / Polling"] --> CB1["Calculate Today Foreground Usage (Millis)"]
+        CB1 --> CC1{"Has Today's Screen Time<br/>Exceeded Configured Limit?"}
+        CC1 -->|Yes| CD1["Suspend Package for Rest of Day<br/>dpm.setPackagesSuspended(true)"]
+        CC1 -->|No| CE1["Allow App Usage"]
+        
+        CD1 --> CF1["Midnight Alarm Clock (RTC_WAKEUP 00:00:02)"]
+        CF1 --> CG1["Reset Daily Usage Counters and Unsuspend All Timer-Suspended Apps"]
+    end
+
+    %% ---------------------------------------------------------
+    %% SYSTEM 5: MANAGED CHROME RESTRICTIONS AND POLICY ENGINE
+    %% ---------------------------------------------------------
+    subgraph SUB5["SYSTEM 5: Chrome Policies and SafeSearch (ChromePolicyManager)"]
+        DA1["Boot / Device Owner Init / Admin Setup"] --> DB1["Apply Managed Configurations via DPM<br/>(dpm.setApplicationRestrictions)"]
+        DB1 --> DC1["1. ForceGoogleSafeSearch = true (Strict SafeSearch)"]
+        DB1 --> DC2["2. SafeSitesFilterBehavior = 1 (Chrome SafeSites Adult Filter)"]
+        DB1 --> DC3["3. ProxyMode = 'direct' (Blocks Proxy/VPN bypass extensions)"]
+        DB1 --> DC4["4. URLBlocklist and URLBlacklist Domain Filtering:<br/>fboxtv.org, x.com, twitter.com, reddit.com,<br/>tumblr.com, croxyproxy.com, youtube.com/shorts/*"]
+        DB1 --> DC5["5. IncognitoModeAvailability Configuration"]
+    end
+
+    %% ---------------------------------------------------------
+    %% SYSTEM 6: CRITICAL CONFLICTS, OVERLAPS AND RACE CONDITIONS
+    %% ---------------------------------------------------------
+    subgraph SUB6["SYSTEM CONFLICTS AND DANGEROUS OVERLAPS (Audit Findings)"]
+        direction TB
+        
+        CF_A["CONFLICT 1: Temporary vs Permanent Suspension Overwrite<br/>- ImpulseGuardService unsuspends apps when its 1-30min timer expires.<br/>- If a permanently blocked app (e.g. Firefox, Opera, X, Reddit) receives an Impulse violation,<br/>  ImpulseGuard's unsuspend cycle or master unsuspend button can accidentally UN-SUSPEND<br/>  permanently blocked browsers and notorious apps!"]
+        
+        CF_B["CONFLICT 2: Redundant Install Listeners (Triple-Trigger Race)<br/>- When a new APK is installed, THREE separate listeners fire simultaneously:<br/>  1. PackageInstallReceiver (BroadcastReceiver)<br/>  2. PackageInstallationReceiver (BroadcastReceiver)<br/>  3. LauncherApps.Callback (Service Listener)<br/>- BrowserBlocker.checkAndSuspendPackage() is executed multiple times in parallel for the exact same package!"]
+        
+        CF_C["CONFLICT 3: Whitelist Contradictions Across Subsystems<br/>- AiAppAuditor trusts 'org.telegram.messenger' as safe communication.<br/>- NotoriousAppBlocker explicitly blocks 'org.telegram.messenger' by default.<br/>- AiAppAuditor trusts 'com.android.chrome', but ImpulseGuard heavily monitors it."]
+        
+        CF_D["CONFLICT 4: Separate API Key Storages<br/>- GeminiGuardEngine reads from 'gemini_guard_engine_prefs'.<br/>- AiAppAuditor reads from 'ai_app_auditor_prefs'.<br/>- If the user configures the API key in one dialog, the other AI subsystem may remain dead/unconfigured!"]
+        
+        CF_E["CONFLICT 5: Chrome Incognito Policy Divergence<br/>- ChromePolicyManager currently sets IncognitoModeAvailability = 0 (Incognito ENABLED).<br/>- Standard adult content protection models require IncognitoModeAvailability = 1 (Incognito DISABLED)."]
+    end
+
+    %% Link Conflicts to Active Nodes
+    AN1 -.->|"Can unintentionally unsuspend"| CF_A
+    BL1 -.->|"Targeted by unsuspend bug"| CF_A
+    BP1 -.->|"Targeted by unsuspend bug"| CF_A
+    
+    BC1 -.->|"Duplicate trigger"| CF_B
+    BE1 -.->|"Duplicate trigger"| CF_B
+    BI1 -.->|"Duplicate trigger"| CF_B
+    
+    BS1 -.->|"Trusts Telegram"| CF_C
+    BO1 -.->|"Blocks Telegram"| CF_C
+    
+    Q1 -.->|"Key 1"| CF_D
+    BV1 -.->|"Key 2"| CF_D
+    
+    DC5 -.->|"Policy setting mismatch"| CF_E
+
+    %% Style Classes
+    classDef risky fill:#ef4444,stroke:#7f1d1d,stroke-width:2px,color:#fff;
+    classDef safe fill:#22c55e,stroke:#14532d,stroke-width:2px,color:#fff;
+    classDef conflict fill:#f59e0b,stroke:#78350f,stroke-width:3px,color:#000;
+    classDef ai fill:#3b82f6,stroke:#1e3a8a,stroke-width:2px,color:#fff;
+
+    class J1,S1_RISKY,X1,AI1,BL1,BP1,BW1,BZ1,CD1 risky;
+    class K1,T1,BX1,BT1,AN1,CE1,CG1 safe;
+    class CF_A,CF_B,CF_C,CF_D,CF_E conflict;
+    class Q1,Y1,BV1,M1,BR1 ai;
+    </div>
+    <div class="controls">
+        <button onclick="panZoom.zoomIn()">🔍 Zoom In</button>
+        <button onclick="panZoom.zoomOut()">🔍 Zoom Out</button>
+        <button onclick="panZoom.reset()">🔄 Reset View</button>
+    </div>
+</div>
+
+<script>
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: 'dark',
+        flowchart: {
+            useMaxWidth: false,
+            htmlLabels: true,
+            curve: 'basis'
+        }
+    });
+
+    let panZoom;
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            const svgElement = document.querySelector('#mermaid-output svg');
+            if (svgElement) {
+                svgElement.setAttribute('id', 'mermaid-svg');
+                panZoom = svgPanZoom('#mermaid-svg', {
+                    zoomEnabled: true,
+                    controlIconsEnabled: false,
+                    fit: true,
+                    center: true,
+                    minZoom: 0.1,
+                    maxZoom: 10
+                });
+            }
+        }, 800);
+    });
+</script>
+
+</body>
+</html>

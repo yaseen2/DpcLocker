@@ -11,4 +11,4 @@ $env:ANDROID_SDK_ROOT = "C:\Users\ThinkPad\AppData\Local\Android\Sdk"
 Write-Host "Building Merged Test DPC APK..." -ForegroundColor Cyan
 Set-Location "$PSScriptRoot\testdpc_source"
 & ".\gradlew.bat" assembleNormalDebug
-Write-Host "`nBUILD SUCCESSFUL! APK created at: $PSScriptRoot\testdpc_source\app\build\outputs\apk\normal\debug\app-normal-debug.apk" -ForegroundColor Green
+Write-Host "`nBUILD SUCCESSFUL! APK created at: $PSScriptRoot\testdpc_source\app\build\outputs\apk\normal\debug\TestDPC-normal-debug.apk" -ForegroundColor Green

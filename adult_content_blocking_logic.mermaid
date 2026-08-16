@@ -1,0 +1,196 @@
+%% ==============================================================================
+%% COMPLETE ARCHITECTURAL LOGIC: TEST DPC ADULT CONTENT BLOCKING SYSTEM
+%% Includes Real-Time AI Filter, Install Defense, Chrome Policies, Timers and Conflicts
+%% ==============================================================================
+
+graph TD
+    %% ---------------------------------------------------------
+    %% SYSTEM 1: REAL-TIME RUNTIME AI GUARD
+    %% ---------------------------------------------------------
+    subgraph SUB1["SYSTEM 1: Real-Time Runtime Content Filtering (ImpulseGuard and Gemini AI)"]
+        A1["User Interaction in Monitored App<br/>(Chrome, Firefox, Edge, Opera, Brave)"] --> B1{"Event Type Intercepted<br/>(AccessibilityEvent)"}
+        
+        B1 -->|"TYPE_VIEW_TEXT_CHANGED or TYPE_VIEW_CLICKED"| C1["Extract Active Query Text<br/>(Search bar / edit text)"]
+        B1 -->|"TYPE_WINDOW_CONTENT_CHANGED or SCROLLED or STATE_CHANGED"| C2["Extract Full Screen Text Nodes<br/>(Max 4000 chars, Recursive walk)"]
+        
+        %% Privacy and Whitelist Filter
+        C1 --> D1{"Privacy and Whitelist Check<br/>1. Is Password Node?<br/>2. In System Whitelist?<br/>3. Starts with URL prefix?<br/>4. Text length below 3 chars?"}
+        D1 -->|Yes / Sensitive| E1["Ignored / Bypassed (Safe and Private)"]
+        D1 -->|No / Meaningful Search| F1{"Is App in Monitored List?<br/>(isMonitoredApp)"}
+        
+        F1 -->|No| G1{"Is App Browser-Like and<br/>Not Marked 'Never Ask'?"}
+        G1 -->|Yes| H1["Push Notification Pull:<br/>'Monitor this app for Impulse Guard?'"]
+        G1 -->|No| E1
+        
+        F1 -->|Yes| I1{"Is 0ms Local Disk Cache Hit?<br/>(cache_verdict_query)"}
+        I1 -->|Cache Hit: RISKY| J1["0ms Fast-Path Trigger:<br/>Violated Adult Query"]
+        I1 -->|Cache Hit: SAFE| K1["0ms Fast-Path Allowed:<br/>Safe Query"]
+        
+        I1 -->|Cache Miss| L1{"Trigger Mode"}
+        L1 -->|"Search Button Tapped (TYPE_VIEW_CLICKED)"| M1["Instant AI Dispatch (0ms delay)"]
+        L1 -->|"User Actively Typing (TYPE_VIEW_TEXT_CHANGED)"| N1["Debounce Timer (1200ms pause)<br/>Waits until user finishes whole query"]
+        
+        N1 --> M1
+        M1 --> O1{"Single-Flight Lock<br/>(compareAndSet)"}
+        O1 -->|Busy| P1["Drop intermediate keystroke"]
+        O1 -->|Acquired| Q1["Gemini Guard AI Fallback Ladder<br/>1. gemini-3.5-flash-lite<br/>2. gemini-3.1-flash-lite<br/>3. gemini-2.5-flash-lite<br/>4. gemini-1.5-flash-8b"]
+        
+        Q1 --> R1{"Gemini Classification Result"}
+        R1 -->|"is_risky = true (or Refusal Text)"| S1_RISKY["ADULT SEARCH INTENT CONFIRMED<br/>Save to 0ms Disk Cache"]
+        R1 -->|"is_risky = false"| T1["SAFE SEARCH QUERY<br/>Save to 0ms Disk Cache"]
+        R1 -->|Offline / Timeout / Error| U1["Fail-Safe Open (Allowed)"]
+        
+        %% Screen Guard Flow
+        C2 --> V1{"Screen Guard Active and<br/>Text Length at least 15 chars?"}
+        V1 -->|No| E1
+        V1 -->|Yes| W1{"0ms Screen RAM Cache Hit?"}
+        W1 -->|Yes: Risky| X1["ADULT SCREEN CONTENT DETECTED"]
+        W1 -->|No / Miss| Y1["Gemini Screen AI Evaluation<br/>(Plaintext inspection)"]
+        Y1 -->|Risky Content| X1
+        Y1 -->|Safe Content| E1
+        
+        %% Sequential Screen Audit
+        T1 --> Z1["Sequential Phase 2: Post-Search Screen Audit<br/>(Scheduled 400ms after search allowed)"]
+        Z1 --> C2
+    end
+
+    %% ---------------------------------------------------------
+    %% SYSTEM 2: PROGRESSIVE PENALTY AND SUSPENSION ENGINE
+    %% ---------------------------------------------------------
+    subgraph SUB2["SYSTEM 2: Escalating Daily Penalty Ladder and Suspension Enforcer"]
+        J1 --> AA1["Enforce Package Suspension"]
+        S1_RISKY --> AA1
+        X1 --> AA1
+        
+        AA1 --> AB1{"Is Package Already Suspended in OS?<br/>(dpm.isPackageSuspended)"}
+        AB1 -->|Yes| AC1["Lock Active Expiration<br/>(Do not reset or extend current timer)"]
+        AB1 -->|No| AD1["Record Violation in PenaltyManager"]
+        
+        AD1 --> AE1{"24-Hour Inactivity Rule<br/>(Last violation older than 24h)?"}
+        AE1 -->|Yes| AF1["Reset Daily Violation Count = 1"]
+        AE1 -->|No| AG1["Increment Daily Violation Count (+1)"]
+        
+        AF1 --> AH1["Calculate Progressive Penalty Duration<br/>- 1st: 1 minute (default)<br/>- 2nd: 10 minutes<br/>- 3rd: 30 minutes<br/>- 4th+: 30 minutes"]
+        AG1 --> AH1
+        
+        AH1 --> AI1["DevicePolicyManager Command:<br/>dpm.setPackagesSuspended(pkg, true)"]
+        AI1 --> AJ1["Post High-Priority Notification and Toast<br/>'Violation #X: App suspended for Y mins'"]
+        AI1 --> AK1["Schedule Auto-Unsuspend Task<br/>(postDelayed for Penalty Duration)"]
+        
+        AK1 --> AL1["checkAndCleanExpiredSuspensions()"]
+        AL1 --> AM1{"Has Expiry Timestamp Passed?"}
+        AM1 -->|Yes| AN1["dpm.setPackagesSuspended(pkg, false)<br/>App restored and un-suspended!"]
+        AM1 -->|No| AO1["Maintain Suspension"]
+    end
+
+    %% ---------------------------------------------------------
+    %% SYSTEM 3: INSTALL-TIME AND PROACTIVE APP DEFENSE
+    %% ---------------------------------------------------------
+    subgraph SUB3["SYSTEM 3: Install-Time and Proactive App Defense"]
+        BA1["New APK Installed or Updated on Device"] --> BB1{"Event Dispatched to Receivers"}
+        
+        %% Component A: PackageInstallReceiver
+        BB1 -->|"Intent: ACTION_PACKAGE_ADDED"| BC1["PackageInstallReceiver"]
+        BC1 --> BD1["BrowserBlocker.checkAndSuspendPackage()"]
+        
+        %% Component B: PackageInstallationReceiver
+        BB1 -->|"Intent: ACTION_PACKAGE_ADDED"| BE1["PackageInstallationReceiver"]
+        BE1 --> BF1{"Is package in proactive_package_blocklist<br/>('blocked_packages_set')?"}
+        BF1 -->|Yes| BG1["Immediate dpm.setPackagesSuspended(true)<br/>(Grey out and disable app immediately)"]
+        BF1 -->|No| BH1["Pass to next filter"]
+        
+        %% Component C: LauncherApps Callback
+        BB1 -->|"LauncherApps.Callback.onPackageAdded"| BI1["LauncherApps Listener"]
+        
+        BI1 --> BJ1["1. BrowserBlocker: Intent Resolution Scan"]
+        BJ1 --> BK1{"Handles VIEW and BROWSABLE for https?<br/>(Not Chrome / Not Whitelisted)"}
+        BK1 -->|Yes: Non-Chrome Browser| BL1["PERMANENT AUTO-SUSPEND BROWSER<br/>dpm.setPackagesSuspended(true)"]
+        BK1 -->|No| BM1["Pass to Notorious App Check"]
+        
+        BI1 --> BN1["2. NotoriousAppBlocker: Social Media Check"]
+        BN1 --> BO1{"In Notorious Blocklist?<br/>(Twitter/X, Reddit, Tumblr, Telegram, YouTube)"}
+        BO1 -->|Yes| BP1["PERMANENT AUTO-SUSPEND NOTORIOUS APP<br/>dpm.setPackagesSuspended(true)"]
+        BO1 -->|No| BQ1["Pass to AI App Auditor"]
+        
+        BI1 --> BR1["3. AiAppAuditor: Deep Metadata AI Scan"]
+        BR1 --> BS1{"In Hardcoded Trusted Whitelist?<br/>(Chrome, WhatsApp, ReVanced, Discord, System)"}
+        BS1 -->|Yes| BT1["Safe Whitelist Bypass"]
+        BS1 -->|No| BU1["Extract App Manifest Metadata:<br/>Label, Category, Permissions, Activities"]
+        
+        BU1 --> BV1{"Gemini AI Auditor Ladder<br/>(gemini-2.5-flash / 2.0-flash / 1.5-flash)"}
+        BV1 -->|"is_risky: true<br/>(Video Downloader, Unmanaged Browser, Adult Hub)"| BW1["PERMANENT AUTO-SUSPEND BY AI<br/>dpm.setPackagesSuspended(true)"]
+        BV1 -->|"is_risky: false"| BX1["Passed Safe by AI"]
+        BV1 -->|AI Failed / Offline| BY1{"Structural Fallback Guard:<br/>Has INTERNET + STORAGE +<br/>WebView/Downloader/Browser Activity?"}
+        BY1 -->|Yes| BZ1["STRUCTURAL SUSPEND<br/>dpm.setPackagesSuspended(true)"]
+        BY1 -->|No| BX1
+    end
+
+    %% ---------------------------------------------------------
+    %% SYSTEM 4: DAILY APP TIMERS AND SCREEN LIMITS
+    %% ---------------------------------------------------------
+    subgraph SUB4["SYSTEM 4: Screen Time Usage Limits (AppTimerManager)"]
+        CA1["UsageStatsManager / UsageObserver / Polling"] --> CB1["Calculate Today Foreground Usage (Millis)"]
+        CB1 --> CC1{"Has Today's Screen Time<br/>Exceeded Configured Limit?"}
+        CC1 -->|Yes| CD1["Suspend Package for Rest of Day<br/>dpm.setPackagesSuspended(true)"]
+        CC1 -->|No| CE1["Allow App Usage"]
+        
+        CD1 --> CF1["Midnight Alarm Clock (RTC_WAKEUP 00:00:02)"]
+        CF1 --> CG1["Reset Daily Usage Counters and Unsuspend All Timer-Suspended Apps"]
+    end
+
+    %% ---------------------------------------------------------
+    %% SYSTEM 5: MANAGED CHROME RESTRICTIONS AND POLICY ENGINE
+    %% ---------------------------------------------------------
+    subgraph SUB5["SYSTEM 5: Chrome Policies and SafeSearch (ChromePolicyManager)"]
+        DA1["Boot / Device Owner Init / Admin Setup"] --> DB1["Apply Managed Configurations via DPM<br/>(dpm.setApplicationRestrictions)"]
+        DB1 --> DC1["1. ForceGoogleSafeSearch = true (Strict SafeSearch)"]
+        DB1 --> DC2["2. SafeSitesFilterBehavior = 1 (Chrome SafeSites Adult Filter)"]
+        DB1 --> DC3["3. ProxyMode = 'direct' (Blocks Proxy/VPN bypass extensions)"]
+        DB1 --> DC4["4. URLBlocklist and URLBlacklist Domain Filtering:<br/>fboxtv.org, x.com, twitter.com, reddit.com,<br/>tumblr.com, croxyproxy.com, youtube.com/shorts/*"]
+        DB1 --> DC5["5. IncognitoModeAvailability Configuration"]
+    end
+
+    %% ---------------------------------------------------------
+    %% SYSTEM 6: CRITICAL CONFLICTS, OVERLAPS AND RACE CONDITIONS
+    %% ---------------------------------------------------------
+    subgraph SUB6["SYSTEM CONFLICTS AND DANGEROUS OVERLAPS (Audit Findings)"]
+        direction TB
+        
+        CF_A["CONFLICT 1: Temporary vs Permanent Suspension Overwrite<br/>- ImpulseGuardService unsuspends apps when its 1-30min timer expires.<br/>- If a permanently blocked app (e.g. Firefox, Opera, X, Reddit) receives an Impulse violation,<br/>  ImpulseGuard's unsuspend cycle or master unsuspend button can accidentally UN-SUSPEND<br/>  permanently blocked browsers and notorious apps!"]
+        
+        CF_B["CONFLICT 2: Redundant Install Listeners (Triple-Trigger Race)<br/>- When a new APK is installed, THREE separate listeners fire simultaneously:<br/>  1. PackageInstallReceiver (BroadcastReceiver)<br/>  2. PackageInstallationReceiver (BroadcastReceiver)<br/>  3. LauncherApps.Callback (Service Listener)<br/>- BrowserBlocker.checkAndSuspendPackage() is executed multiple times in parallel for the exact same package!"]
+        
+        CF_C["CONFLICT 3: Whitelist Contradictions Across Subsystems<br/>- AiAppAuditor trusts 'org.telegram.messenger' as safe communication.<br/>- NotoriousAppBlocker explicitly blocks 'org.telegram.messenger' by default.<br/>- AiAppAuditor trusts 'com.android.chrome', but ImpulseGuard heavily monitors it."]
+        
+        CF_D["CONFLICT 4: Separate API Key Storages<br/>- GeminiGuardEngine reads from 'gemini_guard_engine_prefs'.<br/>- AiAppAuditor reads from 'ai_app_auditor_prefs'.<br/>- If the user configures the API key in one dialog, the other AI subsystem may remain dead/unconfigured!"]
+        
+        CF_E["CONFLICT 5: Chrome Incognito Policy Divergence<br/>- ChromePolicyManager currently sets IncognitoModeAvailability = 0 (Incognito ENABLED).<br/>- Standard adult content protection models require IncognitoModeAvailability = 1 (Incognito DISABLED)."]
+    end
+
+    %% Link Conflicts to Active Nodes
+    AN1 -.->|"Can unintentionally unsuspend"| CF_A
+    BL1 -.->|"Targeted by unsuspend bug"| CF_A
+    BP1 -.->|"Targeted by unsuspend bug"| CF_A
+    
+    BC1 -.->|"Duplicate trigger"| CF_B
+    BE1 -.->|"Duplicate trigger"| CF_B
+    BI1 -.->|"Duplicate trigger"| CF_B
+    
+    BS1 -.->|"Trusts Telegram"| CF_C
+    BO1 -.->|"Blocks Telegram"| CF_C
+    
+    Q1 -.->|"Key 1"| CF_D
+    BV1 -.->|"Key 2"| CF_D
+    
+    DC5 -.->|"Policy setting mismatch"| CF_E
+
+    %% Style Classes
+    classDef risky fill:#ef4444,stroke:#7f1d1d,stroke-width:2px,color:#fff;
+    classDef safe fill:#22c55e,stroke:#14532d,stroke-width:2px,color:#fff;
+    classDef conflict fill:#f59e0b,stroke:#78350f,stroke-width:3px,color:#000;
+    classDef ai fill:#3b82f6,stroke:#1e3a8a,stroke-width:2px,color:#fff;
+
+    class J1,S1_RISKY,X1,AI1,BL1,BP1,BW1,BZ1,CD1 risky;
+    class K1,T1,BX1,BT1,AN1,CE1,CG1 safe;
+    class CF_A,CF_B,CF_C,CF_D,CF_E conflict;
+    class Q1,Y1,BV1,M1,BR1 ai;

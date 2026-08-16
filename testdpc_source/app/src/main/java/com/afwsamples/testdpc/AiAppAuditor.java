@@ -1,6 +1,7 @@
 package com.afwsamples.testdpc;
 
 import android.app.admin.DevicePolicyManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
@@ -19,29 +20,31 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * Intelligent Install-Time Security Auditor powered by Google Gemini AI.
+ * Performs Tier 3 Deep Manifest Scans and Tier 2 False-Positive Rescue Audits.
+ */
 public class AiAppAuditor {
     private static final String TAG = "AiAppAuditor";
     private static final String PREFS_NAME = "ai_app_auditor_prefs";
     private static final String KEY_ENABLED = "ai_auditor_enabled";
-    private static final String KEY_GEMINI_API_KEY = "gemini_api_key";
-    private static final String KEY_AUDIT_LOGS = "ai_audit_logs_history";
+    private static final String KEY_PENDING_QUEUE = "pending_offline_audits";
 
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    // Endpoints tried in order
+    // Fallback AI models ladder
     private static final String[] GEMINI_MODELS = new String[]{
             "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
             "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b"
+            "gemini-1.5-flash-latest"
     };
 
     private static SharedPreferences getPrefs(Context context) {
@@ -58,62 +61,84 @@ public class AiAppAuditor {
     }
 
     public static String getGeminiApiKey(Context context) {
-        return getPrefs(context).getString(KEY_GEMINI_API_KEY, "");
+        return SecurityConfig.getGeminiApiKey(context);
     }
 
     public static void setGeminiApiKey(Context context, String apiKey) {
-        getPrefs(context).edit().putString(KEY_GEMINI_API_KEY, apiKey != null ? apiKey.trim() : "").apply();
-        Log.i(TAG, "Gemini API key updated.");
+        SecurityConfig.setGeminiApiKey(context, apiKey);
     }
 
     public static String getAuditLogs(Context context) {
-        String logs = getPrefs(context).getString(KEY_AUDIT_LOGS, "");
-        if (logs.isEmpty()) {
-            return "No AI App Audit events recorded yet.";
-        }
-        return logs;
+        return SecurityLogger.getLogs(context);
     }
 
-    private static synchronized void appendAuditLog(Context context, String logEntry) {
-        String timeStamp = new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date());
-        String fullEntry = "[" + timeStamp + "] " + logEntry;
-        String existing = getPrefs(context).getString(KEY_AUDIT_LOGS, "");
-        String updated = fullEntry + "\n" + existing;
-        // Keep max 50 lines
-        String[] lines = updated.split("\n");
-        StringBuilder sb = new StringBuilder();
-        int max = Math.min(lines.length, 50);
-        for (int i = 0; i < max; i++) {
-            sb.append(lines[i]).append("\n");
-        }
-        getPrefs(context).edit().putString(KEY_AUDIT_LOGS, sb.toString().trim()).apply();
+    // --- Offline Retry Queue ---
+
+    public static void enqueuePendingAudit(Context context, String packageName) {
+        if (packageName == null) return;
+        Set<String> queue = new HashSet<>(getPrefs(context).getStringSet(KEY_PENDING_QUEUE, new HashSet<String>()));
+        queue.add(packageName.trim().toLowerCase());
+        getPrefs(context).edit().putStringSet(KEY_PENDING_QUEUE, queue).apply();
+        Log.i(TAG, "Enqueued " + packageName + " for deferred AI audit when network connects.");
     }
 
+    public static void removePendingAudit(Context context, String packageName) {
+        if (packageName == null) return;
+        Set<String> queue = new HashSet<>(getPrefs(context).getStringSet(KEY_PENDING_QUEUE, new HashSet<String>()));
+        queue.remove(packageName.trim().toLowerCase());
+        getPrefs(context).edit().putStringSet(KEY_PENDING_QUEUE, queue).apply();
+    }
+
+    public static void processPendingAudits(final Context context) {
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                Set<String> queue = new HashSet<>(getPrefs(context).getStringSet(KEY_PENDING_QUEUE, new HashSet<String>()));
+                if (queue.isEmpty()) return;
+
+                Log.i(TAG, "Processing " + queue.size() + " pending deferred AI audits...");
+                for (String pkg : queue) {
+                    try {
+                        auditPackageInternal(context, pkg, false, "");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error processing pending audit for " + pkg, e);
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Tier 2 Verification & Rescue Audit:
+     * Asynchronously double-checks whether a Tier 2 provisional suspension was a false positive.
+     */
+    public static void verifyAndRescuePackageAsync(final Context context, final String packageName, final String triggerReason) {
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    auditPackageInternal(context, packageName, true, triggerReason);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in AI verification audit for " + packageName, e);
+                }
+            }
+        });
+    }
+
+    /**
+     * Tier 3 Deep Scan for unknown gray-area apps.
+     */
     public static void checkAndAuditPackage(final Context context, final String packageName) {
-        if (packageName == null || packageName.isEmpty()) {
-            return;
-        }
+        if (packageName == null || packageName.isEmpty()) return;
 
         if (!isEnabled(context)) {
             Log.i(TAG, "AiAppAuditor is disabled. Skipping package: " + packageName);
             return;
         }
 
-        // Hardcoded trusted whitelist for system and core communication apps
-        if ("com.android.chrome".equals(packageName) ||
-            "com.google.android.googlequicksearchbox".equals(packageName) ||
-            "com.android.vending".equals(packageName) ||
-            "com.custom.dpclocker".equals(packageName) ||
-            "com.afwsamples.testdpc".equals(packageName) ||
-            "com.whatsapp".equals(packageName) ||
-            "org.telegram.messenger".equals(packageName) ||
-            "com.discord".equals(packageName) ||
-            "app.revanced.android.youtube".equals(packageName) ||
-            "app.revanced.android.gms".equals(packageName) ||
-            packageName.startsWith("com.google.android.") ||
-            packageName.startsWith("com.android.")) {
-            Log.i(TAG, "Package " + packageName + " is in hardcoded trusted whitelist. Skipping AI audit.");
-            appendAuditLog(context, packageName + " -> WHITELISTED (System/Trusted)");
+        if (SecurityConfig.isWhitelisted(context, packageName)) {
+            SecurityPipelineManager.markPackageSafe(context, packageName);
+            SecurityLogger.log(context, "[TIER1_PASS]", packageName + " -> Whitelisted / System (0ms)");
             return;
         }
 
@@ -121,7 +146,7 @@ public class AiAppAuditor {
             @Override
             public void run() {
                 try {
-                    auditPackageInternal(context, packageName);
+                    auditPackageInternal(context, packageName, false, "");
                 } catch (Exception e) {
                     Log.e(TAG, "Error performing AI audit for package " + packageName, e);
                 }
@@ -129,7 +154,7 @@ public class AiAppAuditor {
         });
     }
 
-    private static void auditPackageInternal(Context context, String packageName) {
+    private static void auditPackageInternal(Context context, String packageName, boolean isRescueMode, String triggerReason) {
         PackageManager pm = context.getPackageManager();
 
         String appLabel = packageName;
@@ -175,18 +200,9 @@ public class AiAppAuditor {
             }
         } catch (PackageManager.NameNotFoundException e) {
             Log.w(TAG, "Package not found for AI audit: " + packageName);
+            removePendingAudit(context, packageName);
             return;
         }
-
-        String lowerPkg = packageName.toLowerCase(Locale.US);
-        String lowerLabel = appLabel.toLowerCase(Locale.US);
-
-        // Strict explicit matching: only flag apps with unambiguous downloader or adult names
-        boolean isExplicitDownloader = lowerPkg.contains("snaptube") || lowerPkg.contains("vmate") ||
-                lowerPkg.contains("vidmate") || lowerPkg.contains("tubemate") ||
-                lowerPkg.contains("xnxx") || lowerPkg.contains("xvideo") || lowerPkg.contains("pornhub") ||
-                lowerLabel.contains("video downloader") || lowerLabel.contains("all video downloader") ||
-                lowerLabel.contains("snaptube") || lowerLabel.contains("vmate") || lowerLabel.contains("vidmate");
 
         boolean aiSuccess = false;
         String apiKey = getGeminiApiKey(context);
@@ -218,22 +234,25 @@ public class AiAppAuditor {
                     JSONObject sysParts = new JSONObject();
                     sysParts.put("text",
                         "SYSTEM ROLE:\n" +
-                        "You are an expert Security Classifier for an Android Device Owner Security System. Your job is to classify newly installed Android applications to protect the user from hidden adult browsers, video downloaders, and unmanaged web search tools.\n\n" +
+                        "You are an expert Security Classifier for an Android Device Owner Security System. Your job is to classify newly installed Android applications to protect the user from ALL adult content, pornography, hookup platforms, stealth browsers, and video downloaders.\n\n" +
                         "IMPACT OF YOUR DECISION:\n" +
-                        "- If you return \"is_risky\": true, the Android system will IMMEDIATELY FREEZE the app, rendering it un-openable.\n" +
-                        "- A FALSE POSITIVE (freezing a clean app like WhatsApp, Banking, Maps, Utilities, Games, Productivity tools) ruins the user's phone experience.\n" +
-                        "- A FALSE NEGATIVE (allowing a hidden video downloader or adult browser) exposes the user to unwanted adult content.\n\n" +
+                        "- If you return \"is_risky\": true, the Android system will freeze/suspend the app.\n" +
+                        "- If you return \"is_risky\": false, the Android system will un-suspend and permit the app.\n\n" +
                         "STRICT CLASSIFICATION RULES:\n" +
                         "1. MARK AS RISKY (\"is_risky\": true):\n" +
-                        "   - Apps whose primary or secondary feature is downloading videos from web/social media (e.g. Video Downloader, Snaptube, TubeMate, Vmate, Video Saver, All Downloader, XNXX, Hot Video Downloader).\n" +
-                        "   - Unmanaged third-party web browsers or private browsers with built-in search engines (e.g. Opera Mini, UC Browser, DuckDuckGo, Brave, X Browser).\n" +
-                        "   - Apps with built-in web search bars or video fetchers designed to access web media.\n\n" +
+                        "   - PORNOGRAPHY & ADULT MEDIA: Any app designed to stream, view, browse, or download explicit adult/18+ content, hentai, erotica, adult comics/manga, OnlyFans/Fansly viewers, or NSFW hubs.\n" +
+                        "   - ADULT DATING & LIVE CAM PLATFORMS: Casual hookup apps (Tinder, Grindr, Bumble, Badoo, AdultFriendFinder), unfiltered random video chat apps (Omegle-clones, OmeTV, Chatroulette, Monkey, Azar), and live adult cam platforms.\n" +
+                        "   - VIDEO DOWNLOADERS & MEDIA SCRAPERS: Apps whose primary feature is downloading/scraping videos from web/social media (Snaptube, VidMate, TubeMate, All Video Downloader, XNXX, Video Saver).\n" +
+                        "   - UNMANAGED BROWSERS & WEB VIEWERS: Third-party web browsers or private browsers with built-in search engines (Opera, Brave, Firefox, DuckDuckGo, UC Browser, X Browser, Tor, Aloha Browser).\n" +
+                        "   - SECRET VAULTS & STEALTH BROWSERS: Apps disguised as calculators, clocks, or file locks that contain hidden private web browsers or hidden adult galleries (Calculator Vault, HideX, Secret Browser).\n" +
+                        "   - UNCENSORED NSFW AI CHATBOTS: AI companion or roleplay apps designed for explicit romantic or sexual interaction.\n\n" +
                         "2. MARK AS SAFE (\"is_risky\": false):\n" +
-                        "   - Messaging & Communication apps (WhatsApp, Telegram, Signal, Messenger, Discord, Zoom, Teams).\n" +
-                        "   - Financial, Banking, Shopping, and Payment apps.\n" +
-                        "   - Productivity, Office, Utilities, Calculators, File Managers, PDF Readers, Weather apps.\n" +
-                        "   - Games (Action, Puzzle, Casual, Arcade, Strategy games).\n" +
-                        "   - Streaming services from legitimate major providers (Netflix, Spotify, Prime Video, YouTube ReVanced).\n" +
+                        "   - Standard Messaging & Communication (WhatsApp, Telegram, Signal, Messenger, Discord, Zoom, Microsoft Teams, Slack).\n" +
+                        "   - Financial, Banking, Shopping, and Payment apps (PayPal, Amazon, Local Bank apps).\n" +
+                        "   - Productivity, Office, Utilities, Standard Calculators, File Managers, PDF Readers, Weather apps.\n" +
+                        "   - Normal Games (Action, Puzzle, Casual, Arcade, Strategy, Sports games without explicit porn).\n" +
+                        "   - Mainstream family streaming services (Netflix, Spotify, Prime Video, YouTube ReVanced, Disney+).\n" +
+                        "   - Educational, Language learning (Duolingo, Anki), and Reference apps.\n" +
                         "   - Official system tools and Google apps."
                     );
                     systemInstruction.put("parts", new JSONArray().put(sysParts));
@@ -286,14 +305,32 @@ public class AiAppAuditor {
                                     boolean isRisky = aiResult.optBoolean("is_risky", false);
                                     String reason = aiResult.optString("reason", "No reason provided");
 
-                                    Log.i(TAG, "Gemini Model [" + modelName + "] Audit Result for [" + packageName + "]: is_risky=" + isRisky + ", reason: " + reason);
+                                    Log.i(TAG, "Gemini Model [" + modelName + "] Result for [" + packageName + "]: is_risky=" + isRisky + ", reason: " + reason);
                                     aiSuccess = true;
+                                    removePendingAudit(context, packageName);
 
-                                    if (isRisky) {
-                                        appendAuditLog(context, packageName + " -> AUTO-SUSPENDED by Gemini AI (" + modelName + ")");
-                                        suspendPackage(context, packageName, "Gemini AI (" + modelName + "): " + reason);
+                                    if (isRescueMode) {
+                                        // Tier 2 Rescue Check
+                                        if (!isRisky) {
+                                            // False positive rescued!
+                                            unsuspendPackage(context, packageName);
+                                            SecurityPipelineManager.markPackageSafe(context, packageName);
+                                            SecurityLogger.log(context, "[AI_RESCUE]", packageName + " -> Tier 2 False Positive Rescued by Gemini AI (" + modelName + "): " + reason);
+                                        } else {
+                                            // Confirmed risky
+                                            SecurityPipelineManager.markPackageBlocked(context, packageName);
+                                            SecurityLogger.log(context, "[AI_VERIFIED]", packageName + " -> Confirmed Prohibited by Gemini AI (" + modelName + "): " + reason);
+                                        }
                                     } else {
-                                        appendAuditLog(context, packageName + " -> PASSED SAFE by Gemini AI (" + modelName + ")");
+                                        // Tier 3 Gray-Area Scan
+                                        if (isRisky) {
+                                            suspendPackage(context, packageName, "Gemini AI (" + modelName + "): " + reason);
+                                            SecurityPipelineManager.markPackageBlocked(context, packageName);
+                                            SecurityLogger.log(context, "[AI_RISKY_SUSPEND]", packageName + " -> Suspended by Gemini AI (" + modelName + "): " + reason);
+                                        } else {
+                                            SecurityPipelineManager.markPackageSafe(context, packageName);
+                                            SecurityLogger.log(context, "[AI_PASSED_SAFE]", packageName + " -> Passed Safe by Gemini AI (" + modelName + ")");
+                                        }
                                     }
                                     break;
                                 }
@@ -309,14 +346,14 @@ public class AiAppAuditor {
             }
         }
 
-        // Structural Fallback Guard: If AI API failed or returned 404/error, evaluate manifest component structure
+        // If AI is offline or failed, enqueue for deferred background review when network connects
         if (!aiSuccess) {
-            if (isExplicitDownloader) {
-                Log.i(TAG, "Enforcing Structural Fallback Guard for package: " + packageName);
-                appendAuditLog(context, packageName + " -> AUTO-SUSPENDED by Structural Fallback Guard");
-                suspendPackage(context, packageName, "Structural Fallback Guard (Internet + Storage + Media/Downloader Components)");
+            enqueuePendingAudit(context, packageName);
+            if (!isRescueMode) {
+                SecurityPipelineManager.markPackageSafe(context, packageName);
+                SecurityLogger.log(context, "[OFFLINE_DEFERRED]", packageName + " -> Allowed temporarily (Enqueued for Gemini AI audit upon network connection)");
             } else {
-                appendAuditLog(context, packageName + " -> PASSED SAFE (Fallback Structural Analysis)");
+                SecurityLogger.log(context, "[AI_OFFLINE]", packageName + " -> Tier 2 provisional block maintained (Enqueued for AI rescue check)");
             }
         }
     }
@@ -324,12 +361,26 @@ public class AiAppAuditor {
     private static void suspendPackage(Context context, String packageName, String reason) {
         try {
             DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            ComponentName admin = DeviceAdminReceiver.getComponentName(context);
             if (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName())) {
-                dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{packageName}, true);
-                Log.i(TAG, "SUCCESSFULLY AUTO-SUSPENDED RISKY PACKAGE: " + packageName + " | Reason: " + reason);
+                dpm.setPackagesSuspended(admin, new String[]{packageName}, true);
+                Log.i(TAG, "SUCCESSFULLY AUTO-SUSPENDED PACKAGE: " + packageName + " | Reason: " + reason);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error suspending package: " + packageName, e);
+        }
+    }
+
+    private static void unsuspendPackage(Context context, String packageName) {
+        try {
+            DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            ComponentName admin = DeviceAdminReceiver.getComponentName(context);
+            if (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName())) {
+                dpm.setPackagesSuspended(admin, new String[]{packageName}, false);
+                Log.i(TAG, "SUCCESSFULLY RESCUED / UN-SUSPENDED PACKAGE: " + packageName);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error unsuspending package: " + packageName, e);
         }
     }
 }

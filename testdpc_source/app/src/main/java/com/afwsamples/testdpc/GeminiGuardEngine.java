@@ -82,12 +82,11 @@ public class GeminiGuardEngine {
     }
 
     public static String getApiKey(Context context) {
-        return getPrefs(context).getString(KEY_API_KEY, "").trim();
+        return SecurityConfig.getGeminiApiKey(context);
     }
 
     public static void setApiKey(Context context, String apiKey) {
-        getPrefs(context).edit().putString(KEY_API_KEY, apiKey != null ? apiKey.trim() : "").apply();
-        Log.i(TAG, "Gemini API Key updated.");
+        SecurityConfig.setGeminiApiKey(context, apiKey);
     }
 
     public static boolean isNetworkConnected(Context context) {

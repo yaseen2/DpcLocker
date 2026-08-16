@@ -68,6 +68,9 @@ public class NotoriousAppBlocker {
 
     public static boolean isPackageBlocked(Context context, String packageName) {
         if (packageName == null) return false;
+        if (SecurityConfig.isWhitelisted(context, packageName)) {
+            return false;
+        }
         Set<String> blocked = getBlockedPackages(context);
         return blocked.contains(packageName.toLowerCase());
     }

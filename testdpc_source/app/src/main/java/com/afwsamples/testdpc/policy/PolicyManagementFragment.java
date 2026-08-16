@@ -19,6 +19,9 @@ package com.afwsamples.testdpc.policy;
 import com.afwsamples.testdpc.GeminiGuardEngine;
 import com.afwsamples.testdpc.ImpulseGuardService;
 import com.afwsamples.testdpc.PenaltyManager;
+import com.afwsamples.testdpc.SecurityConfig;
+import com.afwsamples.testdpc.SecurityLogger;
+import com.afwsamples.testdpc.SecurityPipelineManager;
 import android.text.InputType;
 import android.view.ViewGroup;
 import java.util.Locale;
@@ -4398,8 +4401,18 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         pickerBtn.setOnClickListener(v -> showMonitoredAppPickerDialog());
         layout.addView(pickerBtn);
 
+        Button whitelistBtn = new Button(context);
+        whitelistBtn.setText("🛡️ Manage User Whitelist Apps (Tier 1)");
+        whitelistBtn.setOnClickListener(v -> showUserWhitelistPickerDialog());
+        layout.addView(whitelistBtn);
+
+        Button pipelineLogsBtn = new Button(context);
+        pipelineLogsBtn.setText("📋 View Security Pipeline & AI Logs");
+        pipelineLogsBtn.setOnClickListener(v -> showSecurityPipelineLogsDialog());
+        layout.addView(pipelineLogsBtn);
+
         Button logsBtn = new Button(context);
-        logsBtn.setText("📋 View Event Logs & Cache Stats");
+        logsBtn.setText("📜 View Runtime Search Logs & Cache");
         logsBtn.setOnClickListener(v -> {
             String logs = GeminiGuardEngine.getLogs(context);
             new AlertDialog.Builder(context)
@@ -4416,7 +4429,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         unsuspendBtn.setText("🔓 Unsuspend All Apps Now");
         unsuspendBtn.setOnClickListener(v -> {
             ImpulseGuardService.unsuspendAllImpulseSuspendedPackages(context);
-            Toast.makeText(context, "All apps unsuspended!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Temporary suspensions cleared!", Toast.LENGTH_SHORT).show();
         });
         layout.addView(unsuspendBtn);
 
@@ -4543,6 +4556,77 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                     Toast.makeText(context, "Monitored Apps list updated!", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void showUserWhitelistPickerDialog() {
+        final Context context = getActivity();
+        if (context == null) return;
+
+        PackageManager pm = context.getPackageManager();
+        List<ApplicationInfo> installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+
+        final java.util.List<ApplicationInfo> candidateApps = new java.util.ArrayList<>();
+        for (ApplicationInfo ai : installedApps) {
+            candidateApps.add(ai);
+        }
+
+        candidateApps.sort((a, b) -> pm.getApplicationLabel(a).toString().compareToIgnoreCase(pm.getApplicationLabel(b).toString()));
+
+        final String[] appNames = new String[candidateApps.size()];
+        final String[] pkgNames = new String[candidateApps.size()];
+        final boolean[] checkedItems = new boolean[candidateApps.size()];
+
+        Set<String> currentWhitelist = SecurityConfig.getUserWhitelist(context);
+
+        for (int i = 0; i < candidateApps.size(); i++) {
+            ApplicationInfo ai = candidateApps.get(i);
+            pkgNames[i] = ai.packageName;
+            appNames[i] = pm.getApplicationLabel(ai).toString() + " (" + ai.packageName + ")";
+            checkedItems[i] = currentWhitelist.contains(ai.packageName.toLowerCase());
+        }
+
+        new AlertDialog.Builder(context)
+                .setTitle("🛡️ User Whitelist Apps (Tier 1 0ms Bypass)")
+                .setMultiChoiceItems(appNames, checkedItems, (dialog, which, isChecked) -> {
+                    checkedItems[which] = isChecked;
+                })
+                .setPositiveButton("Save Whitelist", (dialog, which) -> {
+                    for (int i = 0; i < pkgNames.length; i++) {
+                        if (checkedItems[i]) {
+                            SecurityConfig.addToUserWhitelist(context, pkgNames[i]);
+                            SecurityPipelineManager.markPackageSafe(context, pkgNames[i]);
+                        } else {
+                            SecurityConfig.removeFromUserWhitelist(context, pkgNames[i]);
+                        }
+                    }
+                    Toast.makeText(context, "User Whitelist updated!", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void showSecurityPipelineLogsDialog() {
+        final Context context = getActivity();
+        if (context == null) return;
+
+        String logs = SecurityLogger.getLogs(context);
+
+        ScrollView scrollView = new ScrollView(context);
+        TextView textView = new TextView(context);
+        textView.setText(logs);
+        textView.setTextSize(12);
+        textView.setPadding(30, 20, 30, 20);
+        scrollView.addView(textView);
+
+        new AlertDialog.Builder(context)
+                .setTitle("📋 Security Pipeline & AI Telemetry Logs")
+                .setView(scrollView)
+                .setNeutralButton("Clear Logs", (d, w) -> {
+                    SecurityLogger.clearLogs(context);
+                    Toast.makeText(context, "Security logs cleared!", Toast.LENGTH_SHORT).show();
+                })
+                .setPositiveButton("Close", null)
                 .show();
     }
 }

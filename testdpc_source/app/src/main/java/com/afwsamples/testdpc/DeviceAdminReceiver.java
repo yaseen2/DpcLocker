@@ -76,10 +76,10 @@ public class DeviceAdminReceiver extends android.app.admin.DeviceAdminReceiver {
         BrowserBlocker.initLauncherAppsCallback(context);
         AppTimerManager.registerAllObservers(context);
         ChromePolicyManager.enforceDefaultChromePolicies(context);
-        NotoriousAppBlocker.scanAndSuspendAllNotoriousApps(context);
         if (intent != null && intent.getAction() != null) {
             if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
-                BrowserBlocker.scanAndSuspendAllBrowsers(context);
+                SecurityPipelineManager.onBootCompleted(context);
+                AiAppAuditor.processPendingAudits(context);
             }
         }
         switch (intent.getAction()) {
