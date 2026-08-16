@@ -1,16 +1,20 @@
 @echo off
-:: Batch Wrapper to run enable_windows_protection.ps1 with ExecutionPolicy Bypass
+setlocal EnableDelayedExpansion
+title DPCLOCKER :: WINDOWS BROWSER PROTECTION LAUNCHER
+
 net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo ========================================================
-    echo  ERROR: Please Right-Click this file and select:
-    echo  "Run as administrator"
-    echo ========================================================
+if %errorlevel% neq 0 (
     echo.
-    pause
-    exit /b
+    echo ===============================================================================
+    echo  [*] ADMINISTRATOR PRIVILEGES REQUIRED
+    echo ===============================================================================
+    echo.
+    echo  Requesting Windows UAC Elevation...
+    echo.
+    powershell -NoProfile -Command "Start-Process '%~f0' -Verb RunAs"
+    exit /b 0
 )
 
-powershell -ExecutionPolicy Bypass -File "%~dp0enable_windows_protection.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0enable_windows_protection.ps1"
 echo.
 pause

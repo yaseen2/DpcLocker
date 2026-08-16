@@ -41,6 +41,7 @@ if /i "%1"=="install" goto INSTALL_APK_DIRECT
 if /i "%1"=="setup" goto SETUP_DEVICE_OWNER
 if /i "%1"=="logs" goto STREAM_LOGS
 if /i "%1"=="policy" goto INSPECT_POLICY
+if /i "%1"=="winprotect" goto RUN_WIN_PROTECT_DIRECT
 
 :: --------------------------------------------------------------------------------
 :: MAIN DASHBOARD
@@ -796,31 +797,51 @@ echo  !C_TXT!This tool locks down Windows browsers [Chrome, Edge, Brave]:!R!
 echo    !C_TXT!* Disables Incognito / InPrivate Mode!R!
 echo    !C_TXT!* Enforces SafeSearch across Google, Bing, YouTube!R!
 echo    !C_TXT!* Sets Cloudflare Family-Filtered DNS [1.1.1.3]!R!
-echo    !C_TXT!* Blocks Adult, Notorious ^& Proxy Domains in Hosts!R!
+echo    !C_TXT!* Blocks Adult, Notorious and Proxy Domains in Hosts!R!
 echo.
 echo  !C_SEC!Options:!R!
-echo    !C_NUM![1]!R! !C_TXT!Enable Full Windows Protection [Elevated PowerShell Engine]!R!
+echo    !C_NUM![1]!R! !C_TXT!Enable Full Windows Protection [Run Elevated Engine]!R!
 echo    !C_NUM![2]!R! !C_TXT!Audit / Inspect Windows Protection Status!R!
 echo    !C_NUM![3]!R! !C_TXT!Apply Direct Registry Policies [.reg]!R!
 echo    !C_NUM![0]!R! !C_SUB!Back to Main Menu!R!
 echo.
 set /p WIN_OPT=" !C_PROMPT![>] Select Option [0-3]: !R!"
-if "%WIN_OPT%"=="1" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \"\"%~dp0enable_windows_protection.ps1\"\"'"
-    pause
+if "%WIN_OPT%"=="1" goto RUN_WIN_PROTECT
+if "%WIN_OPT%"=="2" goto AUDIT_WIN_PROTECT
+if "%WIN_OPT%"=="3" goto APPLY_WIN_REG
+goto MAIN_MENU
+
+:RUN_WIN_PROTECT
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo  !C_WARN![*] Windows Browser and DNS protection requires Administrator privileges.!R!
+    echo  !C_SUB![*] Spawning elevated Administrator console...!R!
+    powershell -NoProfile -Command "Start-Process '%~f0' -ArgumentList 'winprotect' -Verb RunAs"
     goto MAIN_MENU
 )
-if "%WIN_OPT%"=="2" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\inspect_windows_protection.ps1"
-    pause
-    goto MAIN_MENU
-)
-if "%WIN_OPT%"=="3" (
-    reg import "%~dp0enable_windows_protection.reg"
-    echo !C_OK![+] Registry policies imported successfully.!R!
-    pause
-    goto MAIN_MENU
-)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0enable_windows_protection.ps1"
+echo.
+pause
+goto MAIN_MENU
+
+:RUN_WIN_PROTECT_DIRECT
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0enable_windows_protection.ps1"
+echo.
+pause
+exit /b 0
+
+:AUDIT_WIN_PROTECT
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\inspect_windows_protection.ps1"
+echo.
+pause
+goto MAIN_MENU
+
+:APPLY_WIN_REG
+reg import "%~dp0enable_windows_protection.reg"
+echo !C_OK![+] Registry policies imported successfully.!R!
+echo.
+pause
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------

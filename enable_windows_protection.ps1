@@ -2,14 +2,6 @@
 # DPCLOCKER :: WINDOWS BROWSER & CONTENT LOCKDOWN ENGINE
 # ==============================================================================
 
-# 0. Auto-Elevate to Administrator with UAC prompt if not elevated
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "Elevating with Administrator privileges..." -ForegroundColor Yellow
-    $scriptPath = $MyInvocation.MyCommand.Path
-    Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
-    Exit
-}
-
 $esc = [char]27
 $C_HDR = "$esc[1;38;5;39m"
 $C_SEC = "$esc[1;38;5;75m"
@@ -28,7 +20,7 @@ Write-Host "$C_HDR==============================================================
 # ------------------------------------------------------------------------------
 # 1. APPLY CLOUDFLARE FAMILY-FILTER DNS (1.1.1.3 / 1.0.0.3)
 # ------------------------------------------------------------------------------
-Write-Host "$C_SEC[1/6] Configuring Cloudflare Family-Filtered DNS on Network Adapters...$R"
+Write-Host "$C_SEC[1/5] Configuring Cloudflare Family-Filtered DNS on Network Adapters...$R"
 try {
     $adapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
     foreach ($adapter in $adapters) {
@@ -36,13 +28,13 @@ try {
         Write-Host "  $C_OK[+] Set Cloudflare Family DNS on: $($adapter.Name) (1.1.1.3 / 1.0.0.3)$R"
     }
 } catch {
-    Write-Host "  $C_WARN[!] DNS configuration warning: $($_.Exception.Message)$R"
+    Write-Host "  $C_WARN[!] DNS configuration notice: $($_.Exception.Message)$R"
 }
 
 # ------------------------------------------------------------------------------
 # 2. UPDATE HOSTS FILE FOR SAFESEARCH & NOTORIOUS DOMAINS
 # ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[2/6] Updating Windows Hosts File (SafeSearch & Adult/Notorious Blocklist)...$R"
+Write-Host "`n$C_SEC[2/5] Updating Windows Hosts File (SafeSearch & Adult/Notorious Blocklist)...$R"
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 
 $hostsEntries = @(
@@ -112,14 +104,14 @@ try {
 }
 
 # ------------------------------------------------------------------------------
-# 3. APPLY ENTERPRISE BROWSER POLICIES (CHROME, EDGE, BRAVE)
+# 3. APPLY ENTERPRISE BROWSER POLICIES (CHROME, EDGE, BRAVE - HKLM)
 # ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[3/6] Enforcing Strict Enterprise Policies in Chrome, Edge & Brave...$R"
+Write-Host "`n$C_SEC[3/5] Enforcing Strict Enterprise Policies in Chrome, Edge & Brave...$R"
 
 $browserTargets = @(
-    @{ Name = "Google Chrome";  Key = "HKLM:\SOFTWARE\Policies\Google\Chrome"; IncognitoProp = "IncognitoModeAvailability" },
-    @{ Name = "Microsoft Edge"; Key = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"; IncognitoProp = "InPrivateModeAvailability" },
-    @{ Name = "Brave Browser";  Key = "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave"; IncognitoProp = "IncognitoModeAvailability" }
+    @{ Name = "Google Chrome";  HklmKey = "HKLM:\SOFTWARE\Policies\Google\Chrome"; IncognitoProp = "IncognitoModeAvailability" },
+    @{ Name = "Microsoft Edge"; HklmKey = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"; IncognitoProp = "InPrivateModeAvailability" },
+    @{ Name = "Brave Browser";  HklmKey = "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave"; IncognitoProp = "IncognitoModeAvailability" }
 )
 
 $blockedUrls = @(
@@ -130,57 +122,30 @@ $blockedUrls = @(
 
 foreach ($b in $browserTargets) {
     try {
-        if (-not (Test-Path $b.Key)) {
-            New-Item -Path $b.Key -Force | Out-Null
-        }
-        
-        # 1 = Incognito Disabled, SafeSearch Forced, DoH Disabled (Forces local DNS), Direct Proxy
-        Set-ItemProperty -Path $b.Key -Name $b.IncognitoProp -Value 1 -Type DWord -Force
-        Set-ItemProperty -Path $b.Key -Name "ForceGoogleSafeSearch" -Value 1 -Type DWord -Force
-        Set-ItemProperty -Path $b.Key -Name "SafeSitesFilterBehavior" -Value 1 -Type DWord -Force
-        Set-ItemProperty -Path $b.Key -Name "ForceYouTubeRestrict" -Value 0 -Type DWord -Force
-        Set-ItemProperty -Path $b.Key -Name "DnsOverHttpsMode" -Value "off" -Type String -Force
-        Set-ItemProperty -Path $b.Key -Name "ProxyMode" -Value "direct" -Type String -Force
-        
-        # Write URLBlocklist
-        $urlBlockKey = "$($b.Key)\URLBlocklist"
-        if (-not (Test-Path $urlBlockKey)) {
-            New-Item -Path $urlBlockKey -Force | Out-Null
-        }
+        if (-not (Test-Path $b.HklmKey)) { New-Item -Path $b.HklmKey -Force | Out-Null }
+        Set-ItemProperty -Path $b.HklmKey -Name $b.IncognitoProp -Value 1 -Type DWord -Force
+        Set-ItemProperty -Path $b.HklmKey -Name "ForceGoogleSafeSearch" -Value 1 -Type DWord -Force
+        Set-ItemProperty -Path $b.HklmKey -Name "SafeSitesFilterBehavior" -Value 1 -Type DWord -Force
+        Set-ItemProperty -Path $b.HklmKey -Name "ForceYouTubeRestrict" -Value 0 -Type DWord -Force
+        Set-ItemProperty -Path $b.HklmKey -Name "DnsOverHttpsMode" -Value "off" -Type String -Force
+        Set-ItemProperty -Path $b.HklmKey -Name "ProxyMode" -Value "direct" -Type String -Force
+
+        $urlBlockKey = "$($b.HklmKey)\URLBlocklist"
+        if (-not (Test-Path $urlBlockKey)) { New-Item -Path $urlBlockKey -Force | Out-Null }
         for ($i = 0; $i -lt $blockedUrls.Count; $i++) {
             $num = $i + 1
             Set-ItemProperty -Path $urlBlockKey -Name "$num" -Value $blockedUrls[$i] -Type String -Force
         }
-        
         Write-Host "  $C_OK[+] $($b.Name): Incognito Disabled | SafeSearch Enforced | URLBlocklist Active$R"
     } catch {
-        Write-Host "  $C_ERR[!] Failed to set policies for $($b.Name): $($_.Exception.Message)$R"
+        Write-Host "  $C_WARN[!] Notice for $($b.Name): $($_.Exception.Message)$R"
     }
 }
 
 # ------------------------------------------------------------------------------
-# 4. WINDOWS NETWORK & PROXY LOCKDOWN
+# 4. FLUSH DNS RESOLVER CACHE
 # ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[4/6] Enforcing Windows Proxy & Network Lockdown...$R"
-try {
-    $netKey = "HKLM:\SOFTWARE\Policies\Microsoft\Network Connections"
-    if (-not (Test-Path $netKey)) { New-Item -Path $netKey -Force | Out-Null }
-    Set-ItemProperty -Path $netKey -Name "NC_NewConnectionWizard" -Value 1 -Type DWord -Force
-    Set-ItemProperty -Path $netKey -Name "NC_DeleteAllUserConnection" -Value 1 -Type DWord -Force
-
-    $ieKey = "HKLM:\SOFTWARE\Policies\Microsoft\Internet Explorer\Control Panel"
-    if (-not (Test-Path $ieKey)) { New-Item -Path $ieKey -Force | Out-Null }
-    Set-ItemProperty -Path $ieKey -Name "Proxy" -Value 1 -Type DWord -Force
-    Set-ItemProperty -Path $ieKey -Name "Connwiz Admin Lock" -Value 1 -Type DWord -Force
-    Write-Host "  $C_OK[+] Windows Proxy & VPN Wizard locked down.$R"
-} catch {
-    Write-Host "  $C_WARN[!] Network policy notice: $($_.Exception.Message)$R"
-}
-
-# ------------------------------------------------------------------------------
-# 5. FLUSH DNS RESOLVER CACHE
-# ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[5/6] Flushing Windows DNS Cache...$R"
+Write-Host "`n$C_SEC[4/5] Flushing Windows DNS Cache...$R"
 try {
     Clear-DnsClientCache -ErrorAction SilentlyContinue
     ipconfig /flushdns | Out-Null
@@ -190,12 +155,12 @@ try {
 }
 
 # ------------------------------------------------------------------------------
-# 6. GRACEFUL BROWSER PROCESS RESTART (POLICY ACTIVATION)
+# 5. GRACEFUL BROWSER PROCESS RESTART (POLICY ACTIVATION)
 # ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[6/6] Checking Running Browser Instances...$R"
+Write-Host "`n$C_SEC[5/5] Checking Running Browser Instances...$R"
 $runningBrowsers = Get-Process -Name "chrome", "msedge", "brave" -ErrorAction SilentlyContinue
 if ($runningBrowsers) {
-    Write-Host "  $C_WARN[!] Active browser instances detected.$R"
+    Write-Host "  $C_WARN[!] Active browser instances detected ($($runningBrowsers.Count) processes).$R"
     Write-Host "  $C_TXT    Chromium browsers must restart to activate new Incognito & URL policies.$R"
     $ans = Read-Host "`n  $C_HDR[?] Restart running browsers now to enforce policies? (Y/N)$R"
     if ($ans -eq "Y" -or $ans -eq "y") {
@@ -207,11 +172,9 @@ if ($runningBrowsers) {
         Write-Host "  $C_WARN[*] Notice: Protections will take effect next time you open your browser.$R"
     }
 } else {
-    Write-Host "  $C_OK[+] No conflicting browser instances running. Policies are ready!$R"
+    Write-Host "  $C_OK[+] No conflicting browser processes active. Policies are ready!$R"
 }
 
 Write-Host "`n$C_HDR===============================================================================$R"
 Write-Host " $C_OK[OK] WINDOWS BROWSER PROTECTION IS NOW 100% ACTIVE!$R"
 Write-Host "$C_HDR===============================================================================$R`n"
-Write-Host "Press any key to exit..."
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
