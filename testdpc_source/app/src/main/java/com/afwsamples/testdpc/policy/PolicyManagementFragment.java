@@ -937,6 +937,10 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         loadPasswordComplexity();
         loadSeparateChallenge();
         reloadAffiliatedApis();
+
+        if (getActivity() != null) {
+            NotoriousAppBlocker.scanAndSuspendAllNotoriousApps(getActivity());
+        }
     }
 
     @Override
@@ -2408,8 +2412,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
             @Override
             public void run() {
                 customPackagesContainer.removeAllViews();
-                SharedPreferences prefs = activity.getSharedPreferences("proactive_package_blocklist", Context.MODE_PRIVATE);
-                Set<String> set = prefs.getStringSet("blocked_packages_set", new HashSet<String>());
+                Set<String> set = SecurityConfig.getUserBlocklist(activity);
 
                 Set<String> installedPkgs = new HashSet<>();
                 List<ApplicationInfo> apps = mPackageManager.getInstalledApplications(0);
@@ -2434,9 +2437,6 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                         removeBtn.setText("Remove");
                         removeBtn.setOnClickListener(v -> {
                             removePackageFromBlocklist(activity, pkg);
-                            try {
-                                mDevicePolicyManager.setPackagesSuspended(mAdminComponentName, new String[]{pkg}, false);
-                            } catch (Exception ignored) {}
                             run(); // Refresh list
                         });
                         row.addView(removeBtn);
@@ -2491,10 +2491,6 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
             String newPkg = pkgInput.getText().toString().trim().toLowerCase(Locale.US);
             if (!newPkg.isEmpty()) {
                 savePackageToBlocklist(activity, newPkg);
-                try {
-                    mDevicePolicyManager.setPackagesSuspended(mAdminComponentName, new String[]{newPkg}, true);
-                } catch (Exception ignored) {
-                }
                 showToast(R.string.uninstallation_blocked, newPkg);
                 pkgInput.setText("");
                 refreshCustomPackages.run();
@@ -2509,17 +2505,11 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     }
 
     private void savePackageToBlocklist(Context context, String pkgName) {
-        SharedPreferences prefs = context.getSharedPreferences("proactive_package_blocklist", Context.MODE_PRIVATE);
-        Set<String> set = new HashSet<>(prefs.getStringSet("blocked_packages_set", new HashSet<String>()));
-        set.add(pkgName);
-        prefs.edit().putStringSet("blocked_packages_set", set).apply();
+        SecurityConfig.addToUserBlocklist(context, pkgName);
     }
 
     private void removePackageFromBlocklist(Context context, String pkgName) {
-        SharedPreferences prefs = context.getSharedPreferences("proactive_package_blocklist", Context.MODE_PRIVATE);
-        Set<String> set = new HashSet<>(prefs.getStringSet("blocked_packages_set", new HashSet<String>()));
-        set.remove(pkgName.toLowerCase(Locale.US));
-        prefs.edit().putStringSet("blocked_packages_set", set).apply();
+        SecurityConfig.removeFromUserBlocklist(context, pkgName);
     }
 
     @TargetApi(VERSION_CODES.N)
