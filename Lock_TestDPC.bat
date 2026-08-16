@@ -36,13 +36,16 @@ if %ERRORLEVEL% EQU 0 (
 :RECOVERY_MENU
 echo.
 echo  =============================================================================
-echo   [!] DEVICE NOT REACHABLE OR PORT CHANGED AFTER TOGGLING WIRELESS DEBUGGING
+echo   [!] DEVICE NOT REACHABLE OR INITIAL PAIRING REQUIRED
 echo  =============================================================================
 echo.
+echo   * Ensure your phone and PC are connected to the SAME Wi-Fi network.
+echo   * In Developer Options -^> Wireless Debugging, make sure the toggle is ON.
+echo.
 echo   Options:
-echo     [1] Auto-Scan mDNS again
-echo     [2] Enter Port manually from phone (Developer Options -^> Wireless Debugging)
-echo     [3] Pair device with pairing code
+echo     [1] Auto-Scan mDNS network again
+echo     [2] Enter Port manually from phone (Settings -^> Wireless Debugging)
+echo     [3] First-Time / Re-Pair Setup (Choose 'Pair device with pairing code')
 echo     [4] Restart ADB server daemon (clears zombie connections)
 echo     [5] Launch Full DpcLocker Cyber Control Center
 echo     [0] Cancel
@@ -61,9 +64,11 @@ if "%REC%"=="0" exit /b 1
 goto RECOVERY_MENU
 
 :MANUAL_PORT
+echo.
+echo  Look at your phone screen under "IP address ^& Port"
 set DEF_IP=192.168.1.13
 set /p DEF_IP=" [?] Enter Phone IP [%DEF_IP%]: "
-set /p M_PORT=" [?] Enter 5-digit Port on phone screen: "
+set /p M_PORT=" [?] Enter 5-digit Port shown on screen: "
 if "%M_PORT%"=="" goto RECOVERY_MENU
 echo [*] Connecting to %DEF_IP%:%M_PORT%...
 "%ADB%" connect %DEF_IP%:%M_PORT%
@@ -74,13 +79,18 @@ pause
 goto RECOVERY_MENU
 
 :PAIR_DEVICE
+echo.
+echo  Instructions:
+echo    1. On phone: Tap "Pair device with pairing code" (Do NOT choose QR code)
+echo    2. Keep the popup open on your phone screen!
+echo.
 set DEF_IP=192.168.1.13
-set /p DEF_IP=" [?] Enter Phone IP [%DEF_IP%]: "
-set /p P_PORT=" [?] Enter Port from 'Pair with pairing code' popup: "
+set /p DEF_IP=" [?] Enter IP shown on popup [%DEF_IP%]: "
+set /p P_PORT=" [?] Enter Pairing Port shown on popup: "
 set /p P_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code: "
 "%ADB%" pair %DEF_IP%:%P_PORT% %P_CODE%
 echo.
-echo [*] If paired, enter the main Wireless Debugging Port:
+echo [*] Pairing sent! Now enter the main 5-digit port under 'IP address ^& Port':
 goto MANUAL_PORT
 
 :RESTART_ADB

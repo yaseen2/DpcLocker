@@ -8,7 +8,7 @@ set ADB=C:\Users\ThinkPad\AppData\Local\Android\Sdk\platform-tools\adb.exe
 :MAIN_MENU
 cls
 echo ===============================================================================
-echo  [#] DPCLOCKER CYBER CONTROL CENTER :: WIRELESS ^& POLICY ENGINE v2.6
+echo  [#] DPCLOCKER CYBER CONTROL CENTER :: WIRELESS ^& POLICY ENGINE v2.7
 echo ===============================================================================
 echo.
 echo  [*] ADB CORE STATUS:
@@ -17,25 +17,27 @@ echo  --------------------------------------------------------------------------
 echo  -----------------------------------------------------------------------------
 echo.
 echo  [CONNECTION ^& PAIRING]
-echo    [1] Auto-Scan ^& Connect   (Purge stale sockets ^& auto-connect to active port)
-echo    [2] Manual IP:Port Connect (Enter IP and Port shown on phone screen)
-echo    [3] Wireless Pair Device   (Re-pair after 'Forget PC' with 6-digit code)
-echo    [4] Reset ADB Subsystem    (Kill server, purge zombies, restart daemon)
+echo    [1] Auto-Scan ^& Connect   (Discover dynamic mDNS port ^& connect automatically)
+echo    [2] Manual IP:Port Connect (Enter IP and Port shown on your phone screen)
+echo    [3] Wireless Pair Device   (Initial pairing setup using 6-digit Wi-Fi code)
+echo    [4] Reset ADB Subsystem    (Kill server, purge ghost sockets, restart daemon)
 echo.
 echo  [POLICY ENFORCEMENT]
-echo    [5] UNLOCK Test DPC        (dpclocker_enabled = 0 ^& Launch App)
-echo    [6] LOCK Test DPC          (dpclocker_enabled = 1 ^& Force Stop)
+echo    [5] UNLOCK Test DPC        (dpclocker_enabled = 0 ^& Launch Policy Manager)
+echo    [6] LOCK Test DPC          (dpclocker_enabled = 1 ^& Force Stop App)
 echo.
-echo  [DIAGNOSTICS ^& TELEMETRY]
-echo    [7] Inspect Device Policy  (List all suspended packages ^& DPM active policies)
-echo    [8] Stream Live Logs       (SecurityLogger / Pipeline / Blockers)
-echo    [9] Wireless Port Scanner  (Raw mDNS query ^& network probe)
+echo  [DIAGNOSTICS ^& TOOLS]
+echo    [7] Inspect Device Policy  (View suspended packages ^& active Device Owner rules)
+echo    [8] Stream Live Logs       (SecurityLogger / Pipeline / Blockers telemetry)
+echo    [9] Wireless Network Probe (Raw mDNS service query ^& port scan)
+echo    [H] Setup ^& Pairing Guide  (Help for first-time users ^& troubleshooting)
 echo.
 echo    [0] Exit Console
 echo.
 echo ===============================================================================
-set /p CHOICE=" [>] Enter Command [0-9]: "
+set /p CHOICE=" [>] Enter Command [0-9 or H]: "
 
+if /i "%CHOICE%"=="H" goto HELP_GUIDE
 if "%CHOICE%"=="1" goto AUTO_CONNECT
 if "%CHOICE%"=="2" goto MANUAL_CONNECT
 if "%CHOICE%"=="3" goto PAIR_DEVICE
@@ -49,6 +51,38 @@ if "%CHOICE%"=="0" goto EXIT_PROMPT
 
 echo [!] Invalid option selected.
 ping 127.0.0.1 -n 2 > nul
+goto MAIN_MENU
+
+:: --------------------------------------------------------------------------------
+:: [H] HELP & PAIRING GUIDE
+:: --------------------------------------------------------------------------------
+:HELP_GUIDE
+cls
+echo ===============================================================================
+echo  [*] DPCLOCKER :: WIRELESS SETUP ^& PAIRING GUIDE (FOR ALL USERS)
+echo ===============================================================================
+echo.
+echo  1. ENABLE WIRELESS DEBUGGING (ON YOUR PHONE):
+echo     * Open Settings -^> System -^> Developer Options.
+echo     * Make sure both "USB Debugging" and "Wireless Debugging" are turned ON.
+echo     * Ensure your phone and computer are connected to the SAME Wi-Fi network.
+echo.
+echo  2. FIRST TIME CONNECTING TO THIS COMPUTER?
+echo     * Tap directly on "Wireless Debugging" text to enter its settings screen.
+echo     * Tap "Pair device with pairing code".
+echo       (Note: Do NOT use 'QR code' unless using Android Studio GUI scanner;
+echo        command-line terminal tools use 'Pair device with pairing code').
+echo     * Select option [3] in this console, which will guide you through entering
+echo       the 6-digit code shown on your phone's screen.
+echo     * Once paired, your phone permanently trusts this PC!
+echo.
+echo  3. ALREADY PAIRED PREVIOUSLY?
+echo     * Simply choose option [1] (Auto-Scan) to connect in 1-second.
+echo     * If Android changed its port after a reboot or toggle, use option [2]
+echo       to enter the 5-digit port displayed under "IP address ^& Port".
+echo.
+echo ===============================================================================
+pause
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
@@ -88,13 +122,14 @@ if %ERRORLEVEL% EQU 0 (
     echo  ===========================================================================
 ) else (
     echo  ===========================================================================
-    echo   [!] CONNECTION REJECTED OR NOT AUTHORIZED
+    echo   [!] CONNECTION NOT ESTABLISHED OR DEVICE UNPAIRED
     echo   -------------------------------------------------------------------------
-    echo   * Did you tap 'Forget PC' in Developer Options?
-    echo   * If so, Android requires you to re-pair before allowing connections.
+    echo   * If connecting this phone to this computer for the first time,
+    echo     or if the device was forgotten/reset, initial pairing is required.
+    echo   * Make sure phone and PC are on the same Wi-Fi network.
     echo  ===========================================================================
     echo.
-    set /p REPAIR=" [?] Would you like to pair with a 6-digit code now? (Y/N): "
+    set /p REPAIR=" [?] Would you like to run the Pairing Wizard now? (Y/N): "
     if /i "!REPAIR!"=="Y" goto PAIR_DEVICE
 )
 echo.
@@ -110,12 +145,12 @@ echo ===========================================================================
 echo  [*] DPCLOCKER :: MANUAL IP ^& PORT CONNECTION
 echo ===============================================================================
 echo.
-echo  Look at your phone: Developer Options -^> Wireless Debugging
-echo  Note the "IP address ^& Port" (e.g. 192.168.1.13:38747)
+echo  On your phone: Settings -^> Developer Options -^> Wireless Debugging
+echo  Look at "IP address ^& Port" (for example: 192.168.1.13:38747)
 echo.
 set TARGET_IP=192.168.1.13
 set /p TARGET_IP=" [?] Enter Phone IP address [%TARGET_IP%]: "
-set /p TARGET_PORT=" [?] Enter Wireless Debugging Port (5 digits): "
+set /p TARGET_PORT=" [?] Enter 5-digit Wireless Port from phone screen: "
 
 if "%TARGET_PORT%"=="" (
     echo [!] Port cannot be empty!
@@ -131,7 +166,8 @@ echo.
 if %ERRORLEVEL% EQU 0 (
     echo  [+] SUCCESS: Connected to %TARGET_IP%:%TARGET_PORT%
 ) else (
-    echo  [-] Connection failed. If you forgot this PC on your phone, use option [3] to pair.
+    echo  [-] Connection failed. If this is a first-time connection or device was forgotten,
+    echo      use option [3] to pair with a 6-digit code.
 )
 echo ===============================================================================
 pause
@@ -146,10 +182,11 @@ echo ===========================================================================
 echo  [*] DPCLOCKER :: WIRELESS DEBUGGING PAIRING WIZARD
 echo ===============================================================================
 echo.
-echo  Instructions:
-echo    1. On phone, go to Developer Options -^> Wireless Debugging
+echo  Follow these quick steps on your phone:
+echo    1. Open Settings -^> Developer Options -^> Wireless Debugging
 echo    2. Tap "Pair device with pairing code"
-echo    3. Keep the popup OPEN on your phone screen!
+echo       (Do NOT choose 'QR code'; select 'Pair device with pairing code')
+echo    3. KEEP THE POPUP OPEN on your phone screen until pairing finishes!
 echo.
 
 REM Scan if pairing service is broadcasting
@@ -161,23 +198,26 @@ for /f "tokens=3" %%P in ('findstr /i "_adb-tls-pairing._tcp" "%TEMP%\dpclocker_
 if exist "%TEMP%\dpclocker_pair_mdns.tmp" del "%TEMP%\dpclocker_pair_mdns.tmp" > nul 2>&1
 
 if not "!AUTO_PAIR_ENDPOINT!"=="" (
-    echo  [+] AUTO-DETECTED Pairing Endpoint: !AUTO_PAIR_ENDPOINT!
+    echo  [+] AUTO-DETECTED Pairing Endpoint from Wi-Fi broadcast: !AUTO_PAIR_ENDPOINT!
     echo.
-    set /p PAIR_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code from popup: "
+    set /p PAIR_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code shown on popup: "
     echo  [*] Sending TLS Pairing Request to !AUTO_PAIR_ENDPOINT!...
     "%ADB%" pair !AUTO_PAIR_ENDPOINT! !PAIR_CODE!
 ) else (
+    echo  [-] Note: Could not auto-detect pairing port from broadcast.
+    echo      Look at the pairing popup on your phone screen for the IP and Port.
+    echo.
     set PAIR_IP=192.168.1.13
-    set /p PAIR_IP=" [?] Enter Pairing IP address [%PAIR_IP%]: "
-    set /p PAIR_PORT=" [?] Enter Pairing Port shown on the popup: "
-    set /p PAIR_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code from popup: "
+    set /p PAIR_IP=" [?] Enter IP address shown on popup [%PAIR_IP%]: "
+    set /p PAIR_PORT=" [?] Enter Pairing Port shown on popup: "
+    set /p PAIR_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code: "
     echo.
     echo  [*] Sending TLS Pairing Request to !PAIR_IP!:!PAIR_PORT!...
     "%ADB%" pair !PAIR_IP!:!PAIR_PORT! !PAIR_CODE!
 )
 
 echo.
-echo  [*] Attempting auto-connection to main wireless port...
+echo  [*] Attempting auto-connection to main wireless debugging service...
 ping 127.0.0.1 -n 2 > nul
 "%ADB%" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
 for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
@@ -190,10 +230,11 @@ echo.
 "%ADB%" devices | findstr /R "device$" > NUL
 if %ERRORLEVEL% EQU 0 (
     echo  ===========================================================================
-    echo   [OK] PAIRING AND CONNECTION SUCCESSFUL! Device is online and authenticated.
+    echo   [OK] PAIRING AND CONNECTION SUCCESSFUL! Device is online and trusted.
     echo  ===========================================================================
 ) else (
-    echo  [*] If auto-connect didn't trigger, check the main Port on phone and use Option [2].
+    echo  [*] Pairing command sent. Now close the pairing popup, check the main
+    echo      Port shown under 'IP address ^& Port' on your phone, and use Option [2].
 )
 echo.
 pause
