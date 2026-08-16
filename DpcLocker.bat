@@ -1,11 +1,30 @@
 @echo off
 setlocal EnableDelayedExpansion
 title DPCLOCKER MASTER SUITE :: STANDALONE PROTECTION ENGINE
-color 0A
 
 :: --------------------------------------------------------------------------------
-:: INITIALIZATION: RESOLVE PORTABLE ADB & CONFIGURATION
+:: INITIALIZATION: COLOR PALETTE & ESCAPE ENGINE
 :: --------------------------------------------------------------------------------
+for /F "delims=" %%a in ('powershell -NoProfile -Command "[char]27"') do set "ESC=%%a"
+
+set "R=!ESC![0m"
+set "B=!ESC![1m"
+set "DIM=!ESC![2m"
+
+:: Professional Aesthetic Palette
+set "C_HDR=!ESC![1;38;5;39m"       :: Electric Cyan
+set "C_BORDER=!ESC![38;5;240m"     :: Dark Slate Border
+set "C_BORDER_HI=!ESC![38;5;39m"   :: Highlighted Cyan Border
+set "C_SEC=!ESC![1;38;5;75m"       :: Ice Blue Section Header
+set "C_NUM=!ESC![1;38;5;221m"      :: Warm Gold / Amber Numbering
+set "C_TXT=!ESC![38;5;253m"        :: Crisp Clean Text
+set "C_SUB=!ESC![38;5;244m"        :: Slate Gray Subtext / Descriptions
+set "C_OK=!ESC![1;38;5;82m"        :: Vivid Emerald Green (Online / Success)
+set "C_WARN=!ESC![1;38;5;214m"     :: Amber Warning
+set "C_ERR=!ESC![1;38;5;203m"      :: Crimson Coral Red (Locked / Error)
+set "C_PROMPT=!ESC![1;38;5;51m"    :: Neon Turquoise Input Prompt
+set "C_ACCENT=!ESC![1;38;5;141m"   :: Purple / Violet Accent
+
 call :RESOLVE_ADB
 call :LOAD_CONFIG
 
@@ -25,38 +44,38 @@ if /i "%1"=="policy" goto INSPECT_POLICY
 :MAIN_MENU
 cls
 call :DETECT_PRIMARY_TARGET
-echo ===============================================================================
-echo  [#] DPCLOCKER MASTER SUITE :: STANDALONE PROTECTION ENGINE v3.5
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![#] DPCLOCKER MASTER SUITE !R!!C_SUB!:: !C_ACCENT!STANDALONE PROTECTION ENGINE v3.5!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
-echo  [*] ADB ENGINE  : !ADB_TYPE!
-echo  [*] ACTIVE PHONE: !TARGET_DISPLAY!
-echo  -----------------------------------------------------------------------------
+echo   !C_SUB!ADB Engine   :!R! !C_TXT!!ADB_TYPE!!R!
+echo   !C_SUB!Active Target:!R! !C_TARGET_COLOR!!TARGET_DISPLAY!!R!
+echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 "!ADB!" devices -l
-echo  -----------------------------------------------------------------------------
+echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 echo.
-echo  [ANDROID POLICY ^& LOCK]
-echo    [1] UNLOCK Test DPC              (Allow settings access on phone)
-echo    [2] LOCK Test DPC                (Block settings access on phone)
+echo  !C_SEC![ANDROID POLICY ^& LOCK]!R!
+echo    !C_NUM![1]!R! !C_TXT!UNLOCK Test DPC             !C_SUB!(Allow device policy access on phone)!R!
+echo    !C_NUM![2]!R! !C_TXT!LOCK Test DPC               !C_SUB!(Block device policy access on phone)!R!
 echo.
-echo  [WIRELESS ^& PAIRING]
-echo    [3] Auto-Scan ^& Connect Wi-Fi    (Dynamic mDNS Discovery ^& Port Detection)
-echo    [4] Manual IP:Port Connect       (Enter IP and Port from phone screen)
-echo    [5] Pair Phone with 6-Digit Code (Pairing Wizard after 'Forget PC')
-echo    [6] Reset ADB Subsystem          (Kill server, purge zombies, restart daemon)
+echo  !C_SEC![WIRELESS ^& PAIRING]!R!
+echo    !C_NUM![3]!R! !C_TXT!Auto-Scan ^& Connect Wi-Fi   !C_SUB!(Dynamic mDNS Discovery ^& Port Detection)!R!
+echo    !C_NUM![4]!R! !C_TXT!Manual IP:Port Connect      !C_SUB!(Enter IP and Port from phone screen)!R!
+echo    !C_NUM![5]!R! !C_TXT!Pair Phone with 6-Digit Code!C_SUB!(Pairing Wizard after 'Forget PC')!R!
+echo    !C_NUM![6]!R! !C_TXT!Reset ADB Subsystem         !C_SUB!(Kill server, purge zombies, restart daemon)!R!
 echo.
-echo  [SETUP ^& DEPLOYMENT]
-echo    [7] Install/Update TestDPC APK   (Deploy pre-built APK over USB/Wi-Fi)
-echo    [8] 1-Click Set Device Owner     (First-time Provisioning Wizard)
+echo  !C_SEC![SETUP ^& DEPLOYMENT]!R!
+echo    !C_NUM![7]!R! !C_TXT!Install/Update TestDPC APK  !C_SUB!(Deploy pre-built APK over USB/Wi-Fi)!R!
+echo    !C_NUM![8]!R! !C_TXT!1-Click Set Device Owner    !C_SUB!(First-time Provisioning Wizard)!R!
 echo.
-echo  [DIAGNOSTICS ^& WINDOWS PROTECTION]
-echo    [9] Inspect Policies ^& Logs      (View suspended apps / Live Logcat)
-echo    [W] Windows Browser Protection   (Lockdown Incognito on Chrome/Edge/Brave)
+echo  !C_SEC![DIAGNOSTICS ^& WINDOWS PROTECTION]!R!
+echo    !C_NUM![9]!R! !C_TXT!Inspect Policies ^& Logs     !C_SUB!(View suspended apps / Live Logcat)!R!
+echo    !C_NUM![W]!R! !C_TXT!Windows Browser Protection  !C_SUB!(Lockdown Incognito on Chrome/Edge/Brave)!R!
 echo.
-echo    [0] Exit Console
+echo    !C_NUM![0]!R! !C_SUB!Exit Console!R!
 echo.
-echo ===============================================================================
-set /p CHOICE=" [>] Select Option: "
+echo !C_BORDER_HI!===============================================================================!R!
+set /p CHOICE=" !C_PROMPT![>] Select Option: !R!"
 
 if "%CHOICE%"=="1" goto UNLOCK_DPC
 if "%CHOICE%"=="2" goto LOCK_DPC
@@ -70,7 +89,7 @@ if "%CHOICE%"=="9" goto DIAGNOSTICS_SUBMENU
 if /i "%CHOICE%"=="W" goto WINDOWS_PROTECTION
 if "%CHOICE%"=="0" goto EXIT_PROMPT
 
-echo [!] Invalid option selected.
+echo !C_ERR![!] Invalid option selected.!R!
 ping 127.0.0.1 -n 2 > nul
 goto MAIN_MENU
 
@@ -79,44 +98,44 @@ goto MAIN_MENU
 :: --------------------------------------------------------------------------------
 :UNLOCK_DPC
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: UNLOCK TEST DPC
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: UNLOCK TEST DPC!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
 if "!TARGET_SERIAL!"=="" (
-    echo  [!] No active device found to unlock.
+    echo  !C_ERR![!] No active device found to unlock.!R!
     pause
     goto MAIN_MENU
 )
 
-echo  [*] Target Selected: !TARGET_SERIAL!
-echo  [*] Sending Signal: dpclocker_enabled = 0 (UNLOCKED)
+echo  !C_SUB![*] Target:!R! !C_OK!!TARGET_SERIAL!!R!
+echo  !C_SUB![*] Sending Payload:!R! !C_TXT!dpclocker_enabled = 0 (UNLOCKED)!R!
 "!ADB!" -s !TARGET_SERIAL! shell settings put global dpclocker_enabled 0
 if %ERRORLEVEL% EQU 0 (
-    echo  [+] SUCCESS: Device Global Setting applied: dpclocker_enabled = 0
-    echo  [*] Launching Test DPC Management UI on phone...
+    echo  !C_OK![+] SUCCESS: Setting applied (dpclocker_enabled = 0)!R!
+    echo  !C_SUB![*] Launching Test DPC on phone...!R!
     "!ADB!" -s !TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
     echo.
-    echo  ===========================================================================
-    echo   [OK] Test DPC is now UNLOCKED and accessible on your phone screen!
-    echo  ===========================================================================
+    echo  !C_OK!===========================================================================!R!
+    echo   !C_OK!!B![OK] TEST DPC IS NOW UNLOCKED AND OPEN ON YOUR PHONE SCREEN!!R!
+    echo  !C_OK!===========================================================================!R!
 ) else (
     echo.
-    echo  [!] FAILED: Could not deliver unlock payload to phone.
-    echo  [*] Check that Wireless Debugging is ON or use option [5] if unpaired.
+    echo  !C_ERR![!] FAILED: Could not deliver unlock payload to phone.!R!
+    echo  !C_WARN![*] Check Wireless Debugging or use option [5] if unpaired.!R!
 )
 echo.
 pause
 goto MAIN_MENU
 
 :UNLOCK_DPC_DIRECT
-echo ===============================================================================
-echo  [*] DPCLOCKER :: DIRECT UNLOCK
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: DIRECT UNLOCK!R!
+echo !C_BORDER_HI!===============================================================================!R!
 call :ENSURE_CONNECTION
 if "!TARGET_SERIAL!"=="" (
-    echo [!] No device detected.
+    echo !C_ERR![!] No device detected.!R!
     pause
     exit /b 1
 )
@@ -124,7 +143,7 @@ if "!TARGET_SERIAL!"=="" (
 ping 127.0.0.1 -n 2 > nul
 "!ADB!" -s !TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
 echo.
-echo [OK] Test DPC UNLOCKED and opened on phone (!TARGET_SERIAL!)!
+echo !C_OK![OK] Test DPC UNLOCKED and opened on phone (!TARGET_SERIAL!)!!R!
 echo.
 pause
 exit /b 0
@@ -134,44 +153,44 @@ exit /b 0
 :: --------------------------------------------------------------------------------
 :LOCK_DPC
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: LOCK TEST DPC
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: LOCK TEST DPC!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
 if "!TARGET_SERIAL!"=="" (
-    echo  [!] No active device found to lock.
+    echo  !C_ERR![!] No active device found to lock.!R!
     pause
     goto MAIN_MENU
 )
 
-echo  [*] Target Selected: !TARGET_SERIAL!
-echo  [*] Sending Signal: dpclocker_enabled = 1 (LOCKED)
+echo  !C_SUB![*] Target:!R! !C_OK!!TARGET_SERIAL!!R!
+echo  !C_SUB![*] Sending Payload:!R! !C_ERR!dpclocker_enabled = 1 (LOCKED)!R!
 "!ADB!" -s !TARGET_SERIAL! shell settings put global dpclocker_enabled 1
 if %ERRORLEVEL% EQU 0 (
-    echo  [+] SUCCESS: Device Global Setting applied: dpclocker_enabled = 1
-    echo  [*] Force-stopping Test DPC activity...
+    echo  !C_OK![+] SUCCESS: Setting applied (dpclocker_enabled = 1)!R!
+    echo  !C_SUB![*] Force-stopping Test DPC activity...!R!
     "!ADB!" -s !TARGET_SERIAL! shell am force-stop com.afwsamples.testdpc
     echo.
-    echo  ===========================================================================
-    echo   [OK] Test DPC is now LOCKED! Any launch attempt from phone will be blocked.
-    echo  ===========================================================================
+    echo  !C_ERR!===========================================================================!R!
+    echo   !C_ERR!!B![OK] TEST DPC IS NOW LOCKED! Any launch from phone will be blocked.!R!
+    echo  !C_ERR!===========================================================================!R!
 ) else (
     echo.
-    echo  [!] FAILED: Could not deliver lock payload to phone.
-    echo  [*] Check that Wireless Debugging is ON or use option [5] if unpaired.
+    echo  !C_ERR![!] FAILED: Could not deliver lock payload to phone.!R!
+    echo  !C_WARN![*] Check Wireless Debugging or use option [5] if unpaired.!R!
 )
 echo.
 pause
 goto MAIN_MENU
 
 :LOCK_DPC_DIRECT
-echo ===============================================================================
-echo  [*] DPCLOCKER :: DIRECT LOCK
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: DIRECT LOCK!R!
+echo !C_BORDER_HI!===============================================================================!R!
 call :ENSURE_CONNECTION
 if "!TARGET_SERIAL!"=="" (
-    echo [!] No device detected.
+    echo !C_ERR![!] No device detected.!R!
     pause
     exit /b 1
 )
@@ -179,7 +198,7 @@ if "!TARGET_SERIAL!"=="" (
 ping 127.0.0.1 -n 2 > nul
 "!ADB!" -s !TARGET_SERIAL! shell am force-stop com.afwsamples.testdpc
 echo.
-echo [OK] Test DPC is now LOCKED (!TARGET_SERIAL!)!
+echo !C_ERR![OK] Test DPC is now LOCKED (!TARGET_SERIAL!)!!R!
 echo.
 pause
 exit /b 0
@@ -189,26 +208,26 @@ exit /b 0
 :: --------------------------------------------------------------------------------
 :AUTO_CONNECT
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: AUTO-SCAN ^& WIRELESS CONNECT
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: AUTO-SCAN ^& WIRELESS CONNECT!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
-echo  [1/3] Disconnecting stale/ghost sockets...
+echo  !C_SUB![1/3] Disconnecting stale/ghost sockets...!R!
 "!ADB!" disconnect > nul 2>&1
-echo  [+] Stale sockets purged.
+echo  !C_OK![+] Stale sockets purged.!R!
 echo.
-echo  [2/3] Querying Android mDNS Discovery Services...
-echo  -----------------------------------------------------------------------------
+echo  !C_SUB![2/3] Querying Android mDNS Discovery Services...!R!
+echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 "!ADB!" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
 type "%TEMP%\dpclocker_mdns.tmp"
-echo  -----------------------------------------------------------------------------
+echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 echo.
-echo  [3/3] Attempting auto-connection to discovered endpoints...
+echo  !C_SUB![3/3] Attempting auto-connection to discovered endpoints...!R!
 set FOUND=0
 for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
     set FOUND=1
-    echo  [+] Detected target: %%A
-    echo  [*] Handshaking...
+    echo  !C_TXT![+] Detected target:!R! !C_OK!%%A!R!
+    echo  !C_SUB![*] Handshaking...!R!
     "!ADB!" connect %%A
 )
 if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
@@ -216,18 +235,18 @@ if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 echo.
 call :DETECT_PRIMARY_TARGET
 if not "!TARGET_SERIAL!"=="" (
-    echo  ===========================================================================
-    echo   [OK] WIRELESS CONNECTION ESTABLISHED: !TARGET_SERIAL!
-    echo  ===========================================================================
+    echo  !C_OK!===========================================================================!R!
+    echo   !C_OK!!B![OK] WIRELESS CONNECTION ESTABLISHED: !TARGET_SERIAL!!R!
+    echo  !C_OK!===========================================================================!R!
 ) else (
-    echo  ===========================================================================
-    echo   [!] CONNECTION REJECTED OR NOT AUTHORIZED
-    echo   -------------------------------------------------------------------------
-    echo   * Did you tap 'Forget PC' in Developer Options?
-    echo   * If so, Android requires you to re-pair before allowing connections.
-    echo  ===========================================================================
+    echo  !C_WARN!===========================================================================!R!
+    echo   !C_WARN![!] CONNECTION REJECTED OR NOT AUTHORIZED!R!
+    echo   !C_SUB!-------------------------------------------------------------------------!R!
+    echo   !C_TXT!* Did you tap 'Forget PC' in Developer Options?!R!
+    echo   !C_TXT!* If so, Android requires you to re-pair before allowing connections.!R!
+    echo  !C_WARN!===========================================================================!R!
     echo.
-    set /p REPAIR=" [?] Would you like to pair with a 6-digit code now? (Y/N): "
+    set /p REPAIR=" !C_PROMPT![?] Would you like to pair with a 6-digit code now? (Y/N): !R!"
     if /i "!REPAIR!"=="Y" goto PAIR_DEVICE
 )
 echo.
@@ -239,19 +258,19 @@ goto MAIN_MENU
 :: --------------------------------------------------------------------------------
 :MANUAL_CONNECT
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: MANUAL IP ^& PORT CONNECTION
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: MANUAL IP ^& PORT CONNECTION!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
-echo  Look at your phone: Developer Options -^> Wireless Debugging
-echo  Note the "IP address ^& Port" (e.g. !SAVED_IP!:38747)
+echo  !C_TXT!Look at your phone: Developer Options -^> Wireless Debugging!R!
+echo  !C_SUB!Note the "IP address ^& Port" (e.g. !SAVED_IP!:38747)!R!
 echo.
-set /p TARGET_IP=" [?] Enter Phone IP address [!SAVED_IP!]: "
+set /p TARGET_IP=" !C_PROMPT![?] Enter Phone IP address [!SAVED_IP!]: !R!"
 if "!TARGET_IP!"=="" set TARGET_IP=!SAVED_IP!
-set /p TARGET_PORT=" [?] Enter Wireless Debugging Port (5 digits): "
+set /p TARGET_PORT=" !C_PROMPT![?] Enter Wireless Debugging Port (5 digits): !R!"
 
 if "%TARGET_PORT%"=="" (
-    echo [!] Port cannot be empty!
+    echo !C_ERR![!] Port cannot be empty!!R!
     pause
     goto MANUAL_CONNECT
 )
@@ -259,16 +278,16 @@ if "%TARGET_PORT%"=="" (
 call :SAVE_CONFIG "!TARGET_IP!"
 
 echo.
-echo  [*] Initiating TCP handshake with %TARGET_IP%:%TARGET_PORT%...
+echo  !C_SUB![*] Initiating TCP handshake with %TARGET_IP%:%TARGET_PORT%...!R!
 "!ADB!" connect %TARGET_IP%:%TARGET_PORT%
 echo.
 call :DETECT_PRIMARY_TARGET
 if not "!TARGET_SERIAL!"=="" (
-    echo  [+] SUCCESS: Connected to !TARGET_SERIAL!
+    echo  !C_OK![+] SUCCESS: Connected to !TARGET_SERIAL!!R!
 ) else (
-    echo  [-] Connection failed. If you forgot this PC on your phone, use option [5] to pair.
+    echo  !C_ERR![-] Connection failed. If you forgot this PC on phone, use option [5] to pair.!R!
 )
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
 pause
 goto MAIN_MENU
 
@@ -277,14 +296,14 @@ goto MAIN_MENU
 :: --------------------------------------------------------------------------------
 :PAIR_DEVICE
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: WIRELESS DEBUGGING PAIRING WIZARD
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: WIRELESS DEBUGGING PAIRING WIZARD!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
-echo  Instructions:
-echo    1. On phone, go to Developer Options -^> Wireless Debugging
-echo    2. Tap "Pair device with pairing code"
-echo    3. Keep the popup OPEN on your phone screen!
+echo  !C_SEC!Instructions:!R!
+echo    !C_TXT!1. On phone, go to Developer Options -^> Wireless Debugging!R!
+echo    !C_TXT!2. Tap "Pair device with pairing code"!R!
+echo    !C_WARN!3. Keep the popup OPEN on your phone screen!!R!
 echo.
 
 "!ADB!" mdns services > "%TEMP%\dpclocker_pair_mdns.tmp" 2>&1
@@ -295,28 +314,28 @@ for /f "tokens=3" %%P in ('findstr /i "_adb-tls-pairing._tcp" "%TEMP%\dpclocker_
 if exist "%TEMP%\dpclocker_pair_mdns.tmp" del "%TEMP%\dpclocker_pair_mdns.tmp" > nul 2>&1
 
 if not "!AUTO_PAIR_ENDPOINT!"=="" (
-    echo  [+] AUTO-DETECTED Pairing Endpoint: !AUTO_PAIR_ENDPOINT!
+    echo  !C_OK![+] AUTO-DETECTED Pairing Endpoint: !AUTO_PAIR_ENDPOINT!!R!
     echo.
-    set /p PAIR_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code from popup: "
-    echo  [*] Sending TLS Pairing Request to !AUTO_PAIR_ENDPOINT!...
+    set /p PAIR_CODE=" !C_PROMPT![?] Enter 6-digit Wi-Fi Pairing Code from popup: !R!"
+    echo  !C_SUB![*] Sending TLS Pairing Request to !AUTO_PAIR_ENDPOINT!... !R!
     "!ADB!" pair !AUTO_PAIR_ENDPOINT! !PAIR_CODE!
 ) else (
-    set /p PAIR_IP=" [?] Enter Pairing IP address [!SAVED_IP!]: "
+    set /p PAIR_IP=" !C_PROMPT![?] Enter Pairing IP address [!SAVED_IP!]: !R!"
     if "!PAIR_IP!"=="" set PAIR_IP=!SAVED_IP!
-    set /p PAIR_PORT=" [?] Enter Pairing Port shown on the popup: "
-    set /p PAIR_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code from popup: "
+    set /p PAIR_PORT=" !C_PROMPT![?] Enter Pairing Port shown on the popup: !R!"
+    set /p PAIR_CODE=" !C_PROMPT![?] Enter 6-digit Wi-Fi Pairing Code from popup: !R!"
     call :SAVE_CONFIG "!PAIR_IP!"
     echo.
-    echo  [*] Sending TLS Pairing Request to !PAIR_IP!:!PAIR_PORT!...
+    echo  !C_SUB![*] Sending TLS Pairing Request to !PAIR_IP!:!PAIR_PORT!... !R!
     "!ADB!" pair !PAIR_IP!:!PAIR_PORT! !PAIR_CODE!
 )
 
 echo.
-echo  [*] Attempting auto-connection to main wireless port...
+echo  !C_SUB![*] Attempting auto-connection to main wireless port...!R!
 ping 127.0.0.1 -n 2 > nul
 "!ADB!" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
 for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
-    echo  [*] Connecting to %%A...
+    echo  !C_SUB![*] Connecting to %%A...!R!
     "!ADB!" connect %%A
 )
 if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
@@ -324,11 +343,11 @@ if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 echo.
 call :DETECT_PRIMARY_TARGET
 if not "!TARGET_SERIAL!"=="" (
-    echo  ===========================================================================
-    echo   [OK] PAIRING AND CONNECTION SUCCESSFUL: !TARGET_SERIAL!
-    echo  ===========================================================================
+    echo  !C_OK!===========================================================================!R!
+    echo   !C_OK!!B![OK] PAIRING AND CONNECTION SUCCESSFUL: !TARGET_SERIAL!!R!
+    echo  !C_OK!===========================================================================!R!
 ) else (
-    echo  [*] If auto-connect didn't trigger, check the main Port on phone and use Option [4].
+    echo  !C_WARN![*] If auto-connect didn't trigger, check the main Port on phone and use Option [4].!R!
 )
 echo.
 pause
@@ -339,20 +358,20 @@ goto MAIN_MENU
 :: --------------------------------------------------------------------------------
 :RESET_ADB
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: RESET ADB SUBSYSTEM
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: RESET ADB SUBSYSTEM!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
-echo  [*] Terminating adb daemon and clearing TCP sockets...
+echo  !C_SUB![*] Terminating adb daemon and clearing TCP sockets...!R!
 "!ADB!" kill-server
 ping 127.0.0.1 -n 2 > nul
-echo  [*] Spawning fresh ADB server daemon...
+echo  !C_SUB![*] Spawning fresh ADB server daemon...!R!
 "!ADB!" start-server
-echo  [+] Server daemon restarted successfully.
+echo  !C_OK![+] Server daemon restarted successfully.!R!
 echo.
 "!ADB!" devices
 echo.
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
 pause
 goto MAIN_MENU
 
@@ -361,43 +380,42 @@ goto MAIN_MENU
 :: --------------------------------------------------------------------------------
 :INSTALL_APK
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: DEPLOY TEST DPC APK
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: DEPLOY TEST DPC APK!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
 if "!TARGET_SERIAL!"=="" (
-    echo  [!] No active device found to install APK.
+    echo  !C_ERR![!] No active device found to install APK.!R!
     pause
     goto MAIN_MENU
 )
 
 set APK_FILE=%~dp0TestDPC.apk
 if not exist "%APK_FILE%" (
-    echo  [!] TestDPC.apk not found in root directory!
-    echo  [*] Looking for build artifacts...
+    echo  !C_WARN![!] TestDPC.apk not found in root directory! Looking for build artifacts...!R!
     set APK_FILE=%~dp0testdpc_source\app\build\outputs\apk\normal\debug\TestDPC-normal-debug.apk
 )
 
 if not exist "%APK_FILE%" (
-    echo  [!] Could not locate compiled APK.
+    echo  !C_ERR![!] Could not locate compiled APK.!R!
     pause
     goto MAIN_MENU
 )
 
-echo  [*] Target Device : !TARGET_SERIAL!
-echo  [*] APK Payload   : %APK_FILE%
+echo  !C_SUB![*] Target Device :!R! !C_OK!!TARGET_SERIAL!!R!
+echo  !C_SUB![*] APK Payload   :!R! !C_TXT!%APK_FILE%!R!
 echo.
-echo  [*] Installing / Updating on device...
+echo  !C_SUB![*] Installing / Updating on device...!R!
 "!ADB!" -s !TARGET_SERIAL! install -r -d "%APK_FILE%"
 if %ERRORLEVEL% EQU 0 (
     echo.
-    echo  ===========================================================================
-    echo   [OK] TestDPC APK INSTALLED SUCCESSFULLY ON PHONE!
-    echo  ===========================================================================
+    echo  !C_OK!===========================================================================!R!
+    echo   !C_OK!!B![OK] TestDPC APK INSTALLED SUCCESSFULLY ON PHONE!!R!
+    echo  !C_OK!===========================================================================!R!
 ) else (
     echo.
-    echo  [!] Installation failed. Check device storage and permissions.
+    echo  !C_ERR![!] Installation failed. Check device storage and permissions.!R!
 )
 echo.
 pause
@@ -413,34 +431,34 @@ exit /b 0
 :: --------------------------------------------------------------------------------
 :SETUP_DEVICE_OWNER
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: FIRST-TIME DEVICE OWNER PROVISIONING WIZARD
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: FIRST-TIME DEVICE OWNER PROVISIONING WIZARD!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
 if "!TARGET_SERIAL!"=="" (
-    echo  [!] No active device found. Connect via USB or Wi-Fi first.
+    echo  !C_ERR![!] No active device found. Connect via USB or Wi-Fi first.!R!
     pause
     goto MAIN_MENU
 )
 
-echo  [Step 1/3] Checking for active user accounts on phone...
+echo  !C_SUB![Step 1/3] Checking for active user accounts on phone...!R!
 "!ADB!" -s !TARGET_SERIAL! shell dumpsys account > "%TEMP%\dpclocker_acc.tmp" 2>&1
 findstr /i "Account {" "%TEMP%\dpclocker_acc.tmp" > nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     echo.
-    echo  ---------------------------------------------------------------------------
-    echo   [!] WARNING: ACCOUNTS DETECTED ON PHONE!
-    echo   Android OS strictly forbids setting Device Owner if Google, WhatsApp,
-    echo   or any other user accounts are currently logged in.
+    echo  !C_WARN!---------------------------------------------------------------------------!R!
+    echo   !C_WARN!!B![!] WARNING: ACCOUNTS DETECTED ON PHONE!!R!
+    echo   !C_TXT!Android OS strictly forbids setting Device Owner if Google, WhatsApp,!R!
+    echo   !C_TXT!or any other user accounts are currently logged in.!R!
     echo.
-    echo   ACTION REQUIRED ON YOUR PHONE:
-    echo     1. Go to Settings -^> Passwords ^& Accounts (or Accounts)
-    echo     2. Temporarily REMOVE all logged-in accounts
-    echo     3. (You can log back into all accounts right after this step succeeds!)
-    echo  ---------------------------------------------------------------------------
+    echo   !C_SEC!ACTION REQUIRED ON YOUR PHONE:!R!
+    echo     !C_TXT!1. Go to Settings -^> Passwords ^& Accounts (or Accounts)!R!
+    echo     !C_TXT!2. Temporarily REMOVE all logged-in accounts!R!
+    echo     !C_SUB!3. (You can log back into all accounts right after this step succeeds!)!R!
+    echo  !C_WARN!---------------------------------------------------------------------------!R!
     echo.
-    set /p PROCEED=" [?] Have you removed all accounts from the phone? (Y/N): "
+    set /p PROCEED=" !C_PROMPT![?] Have you removed all accounts from the phone? (Y/N): !R!"
     if /i not "!PROCEED!"=="Y" (
         if exist "%TEMP%\dpclocker_acc.tmp" del "%TEMP%\dpclocker_acc.tmp" > nul 2>&1
         goto MAIN_MENU
@@ -449,22 +467,22 @@ if %ERRORLEVEL% EQU 0 (
 if exist "%TEMP%\dpclocker_acc.tmp" del "%TEMP%\dpclocker_acc.tmp" > nul 2>&1
 
 echo.
-echo  [Step 2/3] Removing residual secondary profiles...
+echo  !C_SUB![Step 2/3] Removing residual secondary profiles...!R!
 "!ADB!" -s !TARGET_SERIAL! shell pm remove-user 10 > nul 2>&1
 
-echo  [Step 3/3] Setting com.afwsamples.testdpc as Device Owner...
+echo  !C_SUB![Step 3/3] Setting com.afwsamples.testdpc as Device Owner...!R!
 "!ADB!" -s !TARGET_SERIAL! shell dpm set-device-owner com.afwsamples.testdpc/.DeviceAdminReceiver
 
 if %ERRORLEVEL% EQU 0 (
     echo.
-    echo  ===========================================================================
-    echo   [OK] SUCCESS: TEST DPC IS NOW PERMANENT DEVICE OWNER!
-    echo   * You can now re-add your Google and WhatsApp accounts on your phone.
-    echo   * All DpcLocker security pipelines and browser guards are active.
-    echo  ===========================================================================
+    echo  !C_OK!===========================================================================!R!
+    echo   !C_OK!!B![OK] SUCCESS: TEST DPC IS NOW PERMANENT DEVICE OWNER!!R!
+    echo   !C_TXT!* You can now re-add your Google and WhatsApp accounts on your phone.!R!
+    echo   !C_TXT!* All DpcLocker security pipelines and browser guards are active.!R!
+    echo  !C_OK!===========================================================================!R!
 ) else (
     echo.
-    echo  [!] Provisioning failed. Make sure all accounts are removed and try again.
+    echo  !C_ERR![!] Provisioning failed. Make sure all accounts are removed and try again.!R!
 )
 echo.
 pause
@@ -475,16 +493,16 @@ goto MAIN_MENU
 :: --------------------------------------------------------------------------------
 :DIAGNOSTICS_SUBMENU
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: DIAGNOSTICS ^& TELEMETRY CENTER
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: DIAGNOSTICS ^& TELEMETRY CENTER!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
-echo    [1] Inspect Device Policy  (List all suspended packages ^& DPM active policies)
-echo    [2] Stream Live Logs       (SecurityLogger / Pipeline / Blockers)
-echo    [3] Wireless Port Scanner  (Raw mDNS query ^& network probe)
-echo    [0] Back to Main Menu
+echo    !C_NUM![1]!R! !C_TXT!Inspect Device Policy  !C_SUB!(List all suspended packages ^& DPM active policies)!R!
+echo    !C_NUM![2]!R! !C_TXT!Stream Live Logs       !C_SUB!(SecurityLogger / Pipeline / Blockers)!R!
+echo    !C_NUM![3]!R! !C_TXT!Wireless Port Scanner  !C_SUB!(Raw mDNS query ^& network probe)!R!
+echo    !C_NUM![0]!R! !C_SUB!Back to Main Menu!R!
 echo.
-set /p DS=" [>] Select Option [0-3]: "
+set /p DS=" !C_PROMPT![>] Select Option [0-3]: !R!"
 if "%DS%"=="1" goto INSPECT_POLICY
 if "%DS%"=="2" goto STREAM_LOGS
 if "%DS%"=="3" goto SCAN_MDNS
@@ -492,38 +510,38 @@ goto MAIN_MENU
 
 :INSPECT_POLICY
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: DEVICE POLICY ^& SUSPENDED PACKAGES INSPECTOR
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: DEVICE POLICY ^& SUSPENDED PACKAGES INSPECTOR!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
 if "!TARGET_SERIAL!"=="" (
-    echo  [!] No active device found.
+    echo  !C_ERR![!] No active device found.!R!
     pause
     goto MAIN_MENU
 )
 
-echo  [*] Querying Device Policy Manager policies on !TARGET_SERIAL!...
-echo  -----------------------------------------------------------------------------
+echo  !C_SUB![*] Querying Device Policy Manager policies on !TARGET_SERIAL!... !R!
+echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 "!ADB!" -s !TARGET_SERIAL! shell "dumpsys device_policy | grep -E 'mSuspendedPackages|PackageNameSetPolicyValue|dpclocker'"
-echo  -----------------------------------------------------------------------------
+echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 echo.
-echo  [*] Checking Global DpcLocker Enabled Status:
+echo  !C_SUB![*] Checking Global DpcLocker Enabled Status:!R!
 "!ADB!" -s !TARGET_SERIAL! shell settings get global dpclocker_enabled
 echo.
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
 pause
 goto MAIN_MENU
 
 :STREAM_LOGS
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: LIVE TELEMETRY STREAM (Press Ctrl+C to stop)
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: LIVE TELEMETRY STREAM (Press Ctrl+C to stop)!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
 call :ENSURE_CONNECTION
 if "!TARGET_SERIAL!"=="" (
-    echo  [!] No active device found.
+    echo  !C_ERR![!] No active device found.!R!
     pause
     goto MAIN_MENU
 )
@@ -532,15 +550,15 @@ goto MAIN_MENU
 
 :SCAN_MDNS
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: RAW MDNS NETWORK PROBE
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: RAW MDNS NETWORK PROBE!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
 "!ADB!" mdns services
 echo.
 "!ADB!" mdns check
 echo.
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
 pause
 goto MAIN_MENU
 
@@ -549,20 +567,20 @@ goto MAIN_MENU
 :: --------------------------------------------------------------------------------
 :WINDOWS_PROTECTION
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER :: WINDOWS BROWSER INCOGNITO LOCKDOWN
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: WINDOWS BROWSER INCOGNITO LOCKDOWN!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
-echo  This tool locks down Windows browsers (Chrome, Edge, Brave):
-echo    * Disables Incognito / InPrivate Mode
-echo    * Enforces SafeSearch across Google, Bing, YouTube
+echo  !C_TXT!This tool locks down Windows browsers (Chrome, Edge, Brave):!R!
+echo    !C_TXT!* Disables Incognito / InPrivate Mode!R!
+echo    !C_TXT!* Enforces SafeSearch across Google, Bing, YouTube!R!
 echo.
-echo  Options:
-echo    [1] Enable Windows Incognito Lockdown (Run PowerShell Engine)
-echo    [2] Apply Direct Registry Policies (.reg)
-echo    [0] Back to Main Menu
+echo  !C_SEC!Options:!R!
+echo    !C_NUM![1]!R! !C_TXT!Enable Windows Incognito Lockdown (Run PowerShell Engine)!R!
+echo    !C_NUM![2]!R! !C_TXT!Apply Direct Registry Policies (.reg)!R!
+echo    !C_NUM![0]!R! !C_SUB!Back to Main Menu!R!
 echo.
-set /p WIN_OPT=" [>] Select Option [0-2]: "
+set /p WIN_OPT=" !C_PROMPT![>] Select Option [0-2]: !R!"
 if "%WIN_OPT%"=="1" (
     powershell -ExecutionPolicy Bypass -File "%~dp0enable_windows_protection.ps1"
     pause
@@ -570,7 +588,7 @@ if "%WIN_OPT%"=="1" (
 )
 if "%WIN_OPT%"=="2" (
     reg import "%~dp0enable_windows_protection.reg"
-    echo [+] Registry policies imported successfully.
+    echo !C_OK![+] Registry policies imported successfully.!R!
     pause
     goto MAIN_MENU
 )
@@ -659,12 +677,14 @@ exit /b 0
 :DETECT_PRIMARY_TARGET
 set TARGET_SERIAL=
 set TARGET_DISPLAY=NO ACTIVE TARGET DETECTED
+set "C_TARGET_COLOR=!C_ERR!"
 
 "!ADB!" devices > "%TEMP%\dpclocker_devs.tmp" 2>&1
 for /f "tokens=1,2" %%A in ('findstr /R "device$" "%TEMP%\dpclocker_devs.tmp"') do (
     if "!TARGET_SERIAL!"=="" (
         set TARGET_SERIAL=%%A
         set TARGET_DISPLAY=%%A [ONLINE]
+        set "C_TARGET_COLOR=!C_OK!"
     )
 )
 if exist "%TEMP%\dpclocker_devs.tmp" del "%TEMP%\dpclocker_devs.tmp" > nul 2>&1
@@ -676,7 +696,7 @@ exit /b 0
 :ENSURE_CONNECTION
 call :DETECT_PRIMARY_TARGET
 if "!TARGET_SERIAL!"=="" (
-    echo  [-] No active target. Attempting auto-connect via mDNS...
+    echo  !C_SUB![-] No active target. Attempting auto-connect via mDNS...!R!
     "!ADB!" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
     for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
         "!ADB!" connect %%A > nul 2>&1
@@ -688,6 +708,6 @@ exit /b 0
 
 :EXIT_PROMPT
 cls
-echo [*] Exiting DpcLocker Master Suite.
+echo !C_SUB![*] Exiting DpcLocker Master Suite.!R!
 ping 127.0.0.1 -n 2 > nul
 exit /b 0
