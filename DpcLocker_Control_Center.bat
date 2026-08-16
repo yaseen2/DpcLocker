@@ -8,7 +8,7 @@ set ADB=C:\Users\ThinkPad\AppData\Local\Android\Sdk\platform-tools\adb.exe
 :MAIN_MENU
 cls
 echo ===============================================================================
-echo  [#] DPCLOCKER CYBER CONTROL CENTER :: WIRELESS ^& POLICY ENGINE v2.5
+echo  [#] DPCLOCKER CYBER CONTROL CENTER :: WIRELESS ^& POLICY ENGINE v2.6
 echo ===============================================================================
 echo.
 echo  [*] ADB CORE STATUS:
@@ -17,9 +17,9 @@ echo  --------------------------------------------------------------------------
 echo  -----------------------------------------------------------------------------
 echo.
 echo  [CONNECTION ^& PAIRING]
-echo    [1] Auto-Scan ^& Connect   (Purge stale sockets ^& discover dynamic mDNS port)
+echo    [1] Auto-Scan ^& Connect   (Purge stale sockets ^& auto-connect to active port)
 echo    [2] Manual IP:Port Connect (Enter IP and Port shown on phone screen)
-echo    [3] Wireless Pair Device   (Enter Pairing Port ^& 6-digit Wi-Fi Code)
+echo    [3] Wireless Pair Device   (Re-pair after 'Forget PC' with 6-digit code)
 echo    [4] Reset ADB Subsystem    (Kill server, purge zombies, restart daemon)
 echo.
 echo  [POLICY ENFORCEMENT]
@@ -72,7 +72,7 @@ echo  --------------------------------------------------------------------------
 echo.
 echo  [3/3] Attempting auto-connection to discovered endpoints...
 set FOUND=0
-for /f "tokens=3" %%A in ('findstr /i "_tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
+for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
     set FOUND=1
     echo  [+] Detected target: %%A
     echo  [*] Handshaking...
@@ -80,13 +80,24 @@ for /f "tokens=3" %%A in ('findstr /i "_tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
 )
 if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 
-if "!FOUND!"=="0" (
+echo.
+"%ADB%" devices | findstr /R "device$" > NUL
+if %ERRORLEVEL% EQU 0 (
+    echo  ===========================================================================
+    echo   [OK] WIRELESS CONNECTION ESTABLISHED SUCCESSFULLY!
+    echo  ===========================================================================
+) else (
+    echo  ===========================================================================
+    echo   [!] CONNECTION REJECTED OR NOT AUTHORIZED
+    echo   -------------------------------------------------------------------------
+    echo   * Did you tap 'Forget PC' in Developer Options?
+    echo   * If so, Android requires you to re-pair before allowing connections.
+    echo  ===========================================================================
     echo.
-    echo  [-] No mDNS service broadcast detected automatically.
-    echo  [*] Fallback suggestion: Use option [2] to enter the Port shown on your phone.
+    set /p REPAIR=" [?] Would you like to pair with a 6-digit code now? (Y/N): "
+    if /i "!REPAIR!"=="Y" goto PAIR_DEVICE
 )
 echo.
-echo ===============================================================================
 pause
 goto MAIN_MENU
 
@@ -100,7 +111,7 @@ echo  [*] DPCLOCKER :: MANUAL IP ^& PORT CONNECTION
 echo ===============================================================================
 echo.
 echo  Look at your phone: Developer Options -^> Wireless Debugging
-echo  Note the "IP address ^& Port" (e.g. 192.168.1.13:40779)
+echo  Note the "IP address ^& Port" (e.g. 192.168.1.13:38747)
 echo.
 set TARGET_IP=192.168.1.13
 set /p TARGET_IP=" [?] Enter Phone IP address [%TARGET_IP%]: "
@@ -116,6 +127,12 @@ echo.
 echo  [*] Initiating TCP handshake with %TARGET_IP%:%TARGET_PORT%...
 "%ADB%" connect %TARGET_IP%:%TARGET_PORT%
 echo.
+"%ADB%" devices | findstr /R "device$" > NUL
+if %ERRORLEVEL% EQU 0 (
+    echo  [+] SUCCESS: Connected to %TARGET_IP%:%TARGET_PORT%
+) else (
+    echo  [-] Connection failed. If you forgot this PC on your phone, use option [3] to pair.
+)
 echo ===============================================================================
 pause
 goto MAIN_MENU
@@ -129,21 +146,56 @@ echo ===========================================================================
 echo  [*] DPCLOCKER :: WIRELESS DEBUGGING PAIRING WIZARD
 echo ===============================================================================
 echo.
-echo  1. On Phone: Tap "Pair device with pairing code" in Wireless Debugging
-echo  2. Note the "IP address ^& Port" shown ON THAT POPUP (port differs from main screen)
-echo  3. Note the 6-digit Wi-Fi pairing code
+echo  Instructions:
+echo    1. On phone, go to Developer Options -^> Wireless Debugging
+echo    2. Tap "Pair device with pairing code"
+echo    3. Keep the popup OPEN on your phone screen!
 echo.
-set PAIR_IP=192.168.1.13
-set /p PAIR_IP=" [?] Enter Pairing IP address [%PAIR_IP%]: "
-set /p PAIR_PORT=" [?] Enter Pairing Port shown in popup: "
-set /p PAIR_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code: "
+
+REM Scan if pairing service is broadcasting
+"%ADB%" mdns services > "%TEMP%\dpclocker_pair_mdns.tmp" 2>&1
+set AUTO_PAIR_ENDPOINT=
+for /f "tokens=3" %%P in ('findstr /i "_adb-tls-pairing._tcp" "%TEMP%\dpclocker_pair_mdns.tmp"') do (
+    set AUTO_PAIR_ENDPOINT=%%P
+)
+if exist "%TEMP%\dpclocker_pair_mdns.tmp" del "%TEMP%\dpclocker_pair_mdns.tmp" > nul 2>&1
+
+if not "!AUTO_PAIR_ENDPOINT!"=="" (
+    echo  [+] AUTO-DETECTED Pairing Endpoint: !AUTO_PAIR_ENDPOINT!
+    echo.
+    set /p PAIR_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code from popup: "
+    echo  [*] Sending TLS Pairing Request to !AUTO_PAIR_ENDPOINT!...
+    "%ADB%" pair !AUTO_PAIR_ENDPOINT! !PAIR_CODE!
+) else (
+    set PAIR_IP=192.168.1.13
+    set /p PAIR_IP=" [?] Enter Pairing IP address [%PAIR_IP%]: "
+    set /p PAIR_PORT=" [?] Enter Pairing Port shown on the popup: "
+    set /p PAIR_CODE=" [?] Enter 6-digit Wi-Fi Pairing Code from popup: "
+    echo.
+    echo  [*] Sending TLS Pairing Request to !PAIR_IP!:!PAIR_PORT!...
+    "%ADB%" pair !PAIR_IP!:!PAIR_PORT! !PAIR_CODE!
+)
 
 echo.
-echo  [*] Sending TLS Pairing Request...
-"%ADB%" pair %PAIR_IP%:%PAIR_PORT% %PAIR_CODE%
+echo  [*] Attempting auto-connection to main wireless port...
+ping 127.0.0.1 -n 2 > nul
+"%ADB%" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
+for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
+    echo  [*] Connecting to %%A...
+    "%ADB%" connect %%A
+)
+if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
+
 echo.
-echo  [*] If pairing succeeded, now connect using option [1] or [2]!
-echo ===============================================================================
+"%ADB%" devices | findstr /R "device$" > NUL
+if %ERRORLEVEL% EQU 0 (
+    echo  ===========================================================================
+    echo   [OK] PAIRING AND CONNECTION SUCCESSFUL! Device is online and authenticated.
+    echo  ===========================================================================
+) else (
+    echo  [*] If auto-connect didn't trigger, check the main Port on phone and use Option [2].
+)
+echo.
 pause
 goto MAIN_MENU
 
@@ -183,7 +235,7 @@ REM Check if online device exists
 if %ERRORLEVEL% NEQ 0 (
     echo  [-] No online device detected. Attempting auto-reconnect...
     "%ADB%" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
-    for /f "tokens=3" %%A in ('findstr /i "_tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
+    for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
         "%ADB%" connect %%A
     )
     if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
@@ -202,7 +254,7 @@ if %ERRORLEVEL% EQU 0 (
 ) else (
     echo.
     echo  [!] FAILED: Could not deliver unlock payload to phone.
-    echo  [*] Check that Wireless Debugging is ON and use option [2] to reconnect.
+    echo  [*] Check that Wireless Debugging is ON and use option [3] if unpaired.
 )
 echo.
 pause
@@ -222,7 +274,7 @@ REM Check if online device exists
 if %ERRORLEVEL% NEQ 0 (
     echo  [-] No online device detected. Attempting auto-reconnect...
     "%ADB%" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
-    for /f "tokens=3" %%A in ('findstr /i "_tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
+    for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
         "%ADB%" connect %%A
     )
     if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
@@ -241,7 +293,7 @@ if %ERRORLEVEL% EQU 0 (
 ) else (
     echo.
     echo  [!] FAILED: Could not deliver lock payload to phone.
-    echo  [*] Check that Wireless Debugging is ON and use option [2] to reconnect.
+    echo  [*] Check that Wireless Debugging is ON and use option [3] if unpaired.
 )
 echo.
 pause
