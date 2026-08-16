@@ -59,7 +59,16 @@ goto MAIN_MENU
 :: [3] INSTANT QR CODE PAIRING
 :: --------------------------------------------------------------------------------
 :PAIR_QR
-python "adb_qr_pair.py"
+cls
+echo [*] Launching QR Code Pairing Engine...
+python "%~dp0adb_qr_pair.py"
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [!] Note: Python QR engine returned code %ERRORLEVEL%.
+    echo     Fallback: Use Option [4] (Manual 6-Digit Code) to pair immediately!
+    echo.
+    pause
+)
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
