@@ -580,19 +580,20 @@ goto MAIN_MENU
 :: HELPER: RESOLVE PORTABLE ADB WITH AUTO-DOWNLOADER
 :: --------------------------------------------------------------------------------
 :RESOLVE_ADB
-set ADB_TYPE=LOCAL SDK
+set "ADB="
+set "ADB_TYPE=UNKNOWN"
 
 REM 1. Check local bundled platform-tools in repo
 if exist "%~dp0tools\platform-tools\adb.exe" (
     set "ADB=%~dp0tools\platform-tools\adb.exe"
-    set ADB_TYPE=PORTABLE (tools/platform-tools)
+    set "ADB_TYPE=PORTABLE [tools/platform-tools]"
     exit /b 0
 )
 
 REM 2. Check Android Studio standard path
 if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" (
     set "ADB=%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe"
-    set ADB_TYPE=ANDROID STUDIO SDK
+    set "ADB_TYPE=ANDROID STUDIO SDK"
     exit /b 0
 )
 
@@ -600,7 +601,7 @@ REM 3. Check system PATH
 where adb.exe > nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     set "ADB=adb.exe"
-    set ADB_TYPE=SYSTEM PATH
+    set "ADB_TYPE=SYSTEM PATH"
     exit /b 0
 )
 
@@ -611,14 +612,14 @@ echo  [*] DPCLOCKER STANDALONE SETUP :: ADB NOT DETECTED
 echo ===============================================================================
 echo.
 echo  No Android SDK or ADB tool was found on this computer.
-echo  Downloading official Google Android Platform-Tools (Portable)...
+echo  Downloading official Google Android Platform-Tools [Portable]...
 echo.
 if not exist "%~dp0tools" mkdir "%~dp0tools"
 powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $zip = Join-Path $env:TEMP 'platform-tools.zip'; Write-Host 'Downloading platform-tools from Google CDN...'; Invoke-WebRequest 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' -OutFile $zip; Write-Host 'Extracting portable binaries...'; Expand-Archive -Path $zip -DestinationPath '%~dp0tools' -Force; Remove-Item $zip; Write-Host 'Setup Complete!'"
 
 if exist "%~dp0tools\platform-tools\adb.exe" (
     set "ADB=%~dp0tools\platform-tools\adb.exe"
-    set ADB_TYPE=PORTABLE AUTO-DOWNLOADED
+    set "ADB_TYPE=PORTABLE AUTO-DOWNLOADED"
     echo.
     echo  [+] Portable ADB installed successfully to: tools/platform-tools/
     ping 127.0.0.1 -n 2 > nul
