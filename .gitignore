@@ -1,13 +1,17 @@
 # Exclude raw image screenshots folder
 Chrome manifest restrictions images/
 
-# Build artifacts
-DpcLocker/build/obj/
-TestDPC.apk
+# Local downloaded portable tools & config
+tools/
+dpclocker_config.ini
+*.tmp
 
 # Temporary OS files
 .DS_Store
 Thumbs.db
 
-gmscore_latest.apk
-*.apk
+# Build temp files
+DpcLocker/build/obj/
+testdpc_source/.gradle/
+testdpc_source/build/
+testdpc_source/app/build/
