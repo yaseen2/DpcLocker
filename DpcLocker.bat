@@ -15,11 +15,12 @@ if /i "%1"=="policy" goto INSPECT_POLICY
 
 :MAIN_MENU
 cls
+call :DETECT_PRIMARY_TARGET
 echo ===============================================================================
-echo  [#] DPCLOCKER CYBER CONTROL CENTER :: ALL-IN-ONE POLICY ENGINE v3.0
+echo  [#] DPCLOCKER CYBER CONTROL CENTER :: ALL-IN-ONE POLICY ENGINE v3.1
 echo ===============================================================================
 echo.
-echo  [*] ADB TARGET STATUS:
+echo  [*] ACTIVE TARGET: !TARGET_DISPLAY!
 echo  -----------------------------------------------------------------------------
 "%ADB%" devices -l
 echo  -----------------------------------------------------------------------------
@@ -69,12 +70,19 @@ echo  [*] DPCLOCKER :: UNLOCK TEST DPC
 echo ===============================================================================
 echo.
 call :ENSURE_CONNECTION
+if "!TARGET_SERIAL!"=="" (
+    echo  [!] No active device found to unlock.
+    pause
+    goto MAIN_MENU
+)
+
+echo  [*] Target Selected: !TARGET_SERIAL!
 echo  [*] Sending Signal: dpclocker_enabled = 0 (UNLOCKED)
-"%ADB%" shell settings put global dpclocker_enabled 0
+"%ADB%" -s !TARGET_SERIAL! shell settings put global dpclocker_enabled 0
 if %ERRORLEVEL% EQU 0 (
     echo  [+] SUCCESS: Device Global Setting applied: dpclocker_enabled = 0
     echo  [*] Launching Test DPC Management UI on phone...
-    "%ADB%" shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
+    "%ADB%" -s !TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
     echo.
     echo  ===========================================================================
     echo   [OK] Test DPC is now UNLOCKED and accessible on your phone screen!
@@ -93,11 +101,16 @@ echo ===========================================================================
 echo  [*] DPCLOCKER :: DIRECT UNLOCK
 echo ===============================================================================
 call :ENSURE_CONNECTION
-"%ADB%" shell settings put global dpclocker_enabled 0
+if "!TARGET_SERIAL!"=="" (
+    echo [!] No device detected.
+    pause
+    exit /b 1
+)
+"%ADB%" -s !TARGET_SERIAL! shell settings put global dpclocker_enabled 0
 ping 127.0.0.1 -n 2 > nul
-"%ADB%" shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
+"%ADB%" -s !TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
 echo.
-echo [OK] Test DPC UNLOCKED and opened on phone!
+echo [OK] Test DPC UNLOCKED and opened on phone (!TARGET_SERIAL!)!
 echo.
 pause
 exit /b 0
@@ -112,12 +125,19 @@ echo  [*] DPCLOCKER :: LOCK TEST DPC
 echo ===============================================================================
 echo.
 call :ENSURE_CONNECTION
+if "!TARGET_SERIAL!"=="" (
+    echo  [!] No active device found to lock.
+    pause
+    goto MAIN_MENU
+)
+
+echo  [*] Target Selected: !TARGET_SERIAL!
 echo  [*] Sending Signal: dpclocker_enabled = 1 (LOCKED)
-"%ADB%" shell settings put global dpclocker_enabled 1
+"%ADB%" -s !TARGET_SERIAL! shell settings put global dpclocker_enabled 1
 if %ERRORLEVEL% EQU 0 (
     echo  [+] SUCCESS: Device Global Setting applied: dpclocker_enabled = 1
     echo  [*] Force-stopping Test DPC activity...
-    "%ADB%" shell am force-stop com.afwsamples.testdpc
+    "%ADB%" -s !TARGET_SERIAL! shell am force-stop com.afwsamples.testdpc
     echo.
     echo  ===========================================================================
     echo   [OK] Test DPC is now LOCKED! Any launch attempt from phone will be blocked.
@@ -136,11 +156,16 @@ echo ===========================================================================
 echo  [*] DPCLOCKER :: DIRECT LOCK
 echo ===============================================================================
 call :ENSURE_CONNECTION
-"%ADB%" shell settings put global dpclocker_enabled 1
+if "!TARGET_SERIAL!"=="" (
+    echo [!] No device detected.
+    pause
+    exit /b 1
+)
+"%ADB%" -s !TARGET_SERIAL! shell settings put global dpclocker_enabled 1
 ping 127.0.0.1 -n 2 > nul
-"%ADB%" shell am force-stop com.afwsamples.testdpc
+"%ADB%" -s !TARGET_SERIAL! shell am force-stop com.afwsamples.testdpc
 echo.
-echo [OK] Test DPC is now LOCKED!
+echo [OK] Test DPC is now LOCKED (!TARGET_SERIAL!)!
 echo.
 pause
 exit /b 0
@@ -175,10 +200,10 @@ for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\
 if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 
 echo.
-"%ADB%" devices | findstr /R "device$" > NUL
-if %ERRORLEVEL% EQU 0 (
+call :DETECT_PRIMARY_TARGET
+if not "!TARGET_SERIAL!"=="" (
     echo  ===========================================================================
-    echo   [OK] WIRELESS CONNECTION ESTABLISHED SUCCESSFULLY!
+    echo   [OK] WIRELESS CONNECTION ESTABLISHED: !TARGET_SERIAL!
     echo  ===========================================================================
 ) else (
     echo  ===========================================================================
@@ -221,9 +246,9 @@ echo.
 echo  [*] Initiating TCP handshake with %TARGET_IP%:%TARGET_PORT%...
 "%ADB%" connect %TARGET_IP%:%TARGET_PORT%
 echo.
-"%ADB%" devices | findstr /R "device$" > NUL
-if %ERRORLEVEL% EQU 0 (
-    echo  [+] SUCCESS: Connected to %TARGET_IP%:%TARGET_PORT%
+call :DETECT_PRIMARY_TARGET
+if not "!TARGET_SERIAL!"=="" (
+    echo  [+] SUCCESS: Connected to !TARGET_SERIAL!
 ) else (
     echo  [-] Connection failed. If you forgot this PC on your phone, use option [5] to pair.
 )
@@ -280,10 +305,10 @@ for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\
 if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
 
 echo.
-"%ADB%" devices | findstr /R "device$" > NUL
-if %ERRORLEVEL% EQU 0 (
+call :DETECT_PRIMARY_TARGET
+if not "!TARGET_SERIAL!"=="" (
     echo  ===========================================================================
-    echo   [OK] PAIRING AND CONNECTION SUCCESSFUL! Device is online and authenticated.
+    echo   [OK] PAIRING AND CONNECTION SUCCESSFUL: !TARGET_SERIAL!
     echo  ===========================================================================
 ) else (
     echo  [*] If auto-connect didn't trigger, check the main Port on phone and use Option [4].
@@ -323,13 +348,20 @@ echo ===========================================================================
 echo  [*] DPCLOCKER :: DEVICE POLICY ^& SUSPENDED PACKAGES INSPECTOR
 echo ===============================================================================
 echo.
-echo  [*] Querying Device Policy Manager policies...
+call :ENSURE_CONNECTION
+if "!TARGET_SERIAL!"=="" (
+    echo  [!] No active device found.
+    pause
+    goto MAIN_MENU
+)
+
+echo  [*] Querying Device Policy Manager policies on !TARGET_SERIAL!...
 echo  -----------------------------------------------------------------------------
-"%ADB%" shell "dumpsys device_policy | grep -E 'mSuspendedPackages|PackageNameSetPolicyValue|dpclocker'"
+"%ADB%" -s !TARGET_SERIAL! shell "dumpsys device_policy | grep -E 'mSuspendedPackages|PackageNameSetPolicyValue|dpclocker'"
 echo  -----------------------------------------------------------------------------
 echo.
 echo  [*] Checking Global DpcLocker Enabled Status:
-"%ADB%" shell settings get global dpclocker_enabled
+"%ADB%" -s !TARGET_SERIAL! shell settings get global dpclocker_enabled
 echo.
 echo ===============================================================================
 pause
@@ -344,7 +376,13 @@ echo ===========================================================================
 echo  [*] DPCLOCKER :: LIVE TELEMETRY STREAM (Press Ctrl+C to stop)
 echo ===============================================================================
 echo.
-"%ADB%" logcat -s SecurityPipeline SecurityLogger NotoriousAppBlocker BrowserBlocker ImpulseGuardService
+call :ENSURE_CONNECTION
+if "!TARGET_SERIAL!"=="" (
+    echo  [!] No active device found.
+    pause
+    goto MAIN_MENU
+)
+"%ADB%" -s !TARGET_SERIAL! logcat -s SecurityPipeline SecurityLogger NotoriousAppBlocker BrowserBlocker ImpulseGuardService
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
@@ -365,17 +403,35 @@ pause
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
+:: HELPER: DETECT PRIMARY TARGET SERIAL
+:: --------------------------------------------------------------------------------
+:DETECT_PRIMARY_TARGET
+set TARGET_SERIAL=
+set TARGET_DISPLAY=NO ACTIVE TARGET DETECTED
+
+"%ADB%" devices > "%TEMP%\dpclocker_devs.tmp" 2>&1
+for /f "tokens=1,2" %%A in ('findstr /R "device$" "%TEMP%\dpclocker_devs.tmp"') do (
+    if "!TARGET_SERIAL!"=="" (
+        set TARGET_SERIAL=%%A
+        set TARGET_DISPLAY=%%A [ONLINE]
+    )
+)
+if exist "%TEMP%\dpclocker_devs.tmp" del "%TEMP%\dpclocker_devs.tmp" > nul 2>&1
+exit /b 0
+
+:: --------------------------------------------------------------------------------
 :: HELPER: ENSURE ACTIVE CONNECTION
 :: --------------------------------------------------------------------------------
 :ENSURE_CONNECTION
-"%ADB%" devices | findstr /R "device$" > NUL
-if %ERRORLEVEL% NEQ 0 (
-    echo  [-] No online device detected. Attempting auto-reconnect via mDNS...
+call :DETECT_PRIMARY_TARGET
+if "!TARGET_SERIAL!"=="" (
+    echo  [-] No active target. Attempting auto-connect via mDNS...
     "%ADB%" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
     for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
         "%ADB%" connect %%A > nul 2>&1
     )
     if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
+    call :DETECT_PRIMARY_TARGET
 )
 exit /b 0
 
