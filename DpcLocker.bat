@@ -52,39 +52,31 @@ echo  !C_HDR!!B![#] DPCLOCKER MASTER SUITE !R!!C_SUB!:: !C_ACCENT!STANDALONE PRO
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
 echo   !C_SUB!ADB Engine   :!R! !C_TXT!!ADB_TYPE!!R!
-if "!ACTIVE_TARGET_MODE!"=="ALL" (
-    echo   !C_SUB!Active Target:!R! !C_WARN![ALL ATTACHED DEVICES (!DEV_TOTAL! TOTAL)]!R! !C_SUB![Press S to Switch]!R!
-) else if !DEV_TOTAL! EQU 0 (
-    echo   !C_SUB!Active Target:!R! !C_ERR!NO ACTIVE TARGET DETECTED!R!
-) else if !DEV_TOTAL! EQU 1 (
-    echo   !C_SUB!Active Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!] [ONLINE]!R!
-) else (
-    echo   !C_SUB!Active Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!]!R! !C_SUB![Dev !ACTIVE_TARGET_INDEX! of !DEV_TOTAL! - Press S to Switch]!R!
-)
+call :PRINT_HEADER_TARGET
 echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 "!ADB!" devices -l
 echo  !C_BORDER!-------------------------------------------------------------------------------!R!
 echo.
 echo  !C_SEC![ANDROID POLICY ^& LOCK]!R!
-echo    !C_NUM![1]!R! !C_TXT!UNLOCK Test DPC             !C_SUB!(Allow device policy access on target)!R!
-echo    !C_NUM![2]!R! !C_TXT!LOCK Test DPC               !C_SUB!(Block device policy access on target)!R!
+echo    !C_NUM![1]!R! !C_TXT!UNLOCK Test DPC             !C_SUB![Allow device policy access on target]!R!
+echo    !C_NUM![2]!R! !C_TXT!LOCK Test DPC               !C_SUB![Block device policy access on target]!R!
 echo.
 echo  !C_SEC![DEVICE MANAGEMENT ^& WIRELESS]!R!
 if !DEV_TOTAL! GTR 1 (
-    echo    !C_NUM![S]!R! !C_WARN!Switch Target Device      !C_SUB!(Change active device or select ALL)!R!
+    echo    !C_NUM![S]!R! !C_WARN!Switch Target Device      !C_SUB![Change active device or select ALL]!R!
 )
-echo    !C_NUM![3]!R! !C_TXT!Auto-Scan ^& Connect Wi-Fi   !C_SUB!(Dynamic mDNS Discovery ^& Port Detection)!R!
-echo    !C_NUM![4]!R! !C_TXT!1-Click Wireless Pair       !C_SUB!(Auto-detects phone ^& only asks for 6-digit code)!R!
-echo    !C_NUM![5]!R! !C_TXT!Discovered Wi-Fi Targets    !C_SUB!(List/Connect specific devices on network)!R!
-echo    !C_NUM![6]!R! !C_TXT!Reset ADB Subsystem         !C_SUB!(Kill server, purge zombies, restart daemon)!R!
+echo    !C_NUM![3]!R! !C_TXT!Auto-Scan ^& Connect Wi-Fi   !C_SUB![Dynamic mDNS Discovery ^& Port Detection]!R!
+echo    !C_NUM![4]!R! !C_TXT!1-Click Wireless Pair       !C_SUB![Auto-detects phone ^& only asks for 6-digit code]!R!
+echo    !C_NUM![5]!R! !C_TXT!Discovered Wi-Fi Targets    !C_SUB![List/Connect specific devices on network]!R!
+echo    !C_NUM![6]!R! !C_TXT!Reset ADB Subsystem         !C_SUB![Kill server, purge zombies, restart daemon]!R!
 echo.
 echo  !C_SEC![SETUP ^& DEPLOYMENT]!R!
-echo    !C_NUM![7]!R! !C_TXT!Install/Update TestDPC APK  !C_SUB!(Deploy pre-built APK over USB/Wi-Fi)!R!
-echo    !C_NUM![8]!R! !C_TXT!1-Click Set Device Owner    !C_SUB!(First-time Provisioning Wizard)!R!
+echo    !C_NUM![7]!R! !C_TXT!Install/Update TestDPC APK  !C_SUB![Deploy pre-built APK over USB/Wi-Fi]!R!
+echo    !C_NUM![8]!R! !C_TXT!1-Click Set Device Owner    !C_SUB![First-time Provisioning Wizard]!R!
 echo.
 echo  !C_SEC![DIAGNOSTICS ^& WINDOWS PROTECTION]!R!
-echo    !C_NUM![9]!R! !C_TXT!Inspect Policies ^& Logs     !C_SUB!(View suspended apps / Live Logcat)!R!
-echo    !C_NUM![W]!R! !C_TXT!Windows Browser Protection  !C_SUB!(Lockdown Incognito on Chrome/Edge/Brave)!R!
+echo    !C_NUM![9]!R! !C_TXT!Inspect Policies ^& Logs     !C_SUB![View suspended apps / Live Logcat]!R!
+echo    !C_NUM![W]!R! !C_TXT!Windows Browser Protection  !C_SUB![Lockdown Incognito on Chrome/Edge/Brave]!R!
 echo.
 echo    !C_NUM![0]!R! !C_SUB!Exit Console!R!
 echo.
@@ -108,6 +100,22 @@ echo !C_ERR![!] Invalid option selected.!R!
 ping 127.0.0.1 -n 2 > nul
 goto MAIN_MENU
 
+:PRINT_HEADER_TARGET
+if "!ACTIVE_TARGET_MODE!"=="ALL" (
+    echo   !C_SUB!Active Target:!R! !C_WARN![ALL ATTACHED DEVICES - !DEV_TOTAL! TOTAL]!R! !C_SUB![Press S to Switch]!R!
+    exit /b 0
+)
+if !DEV_TOTAL! EQU 0 (
+    echo   !C_SUB!Active Target:!R! !C_ERR!NO ACTIVE TARGET DETECTED!R!
+    exit /b 0
+)
+if !DEV_TOTAL! EQU 1 (
+    echo   !C_SUB!Active Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!] [ONLINE]!R!
+    exit /b 0
+)
+echo   !C_SUB!Active Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!]!R! !C_SUB![Dev !ACTIVE_TARGET_INDEX! of !DEV_TOTAL! - Press S to Switch]!R!
+exit /b 0
+
 :: --------------------------------------------------------------------------------
 :: [S] SWITCH TARGET DEVICE MENU
 :: --------------------------------------------------------------------------------
@@ -128,7 +136,7 @@ echo  !C_SEC!Attached Android Devices:!R!
 for /L %%i in (1,1,!DEV_TOTAL!) do (
     set "TAG="
     if "%%i"=="!ACTIVE_TARGET_INDEX!" if not "!ACTIVE_TARGET_MODE!"=="ALL" set "TAG=!C_OK![CURRENT ACTIVE]!R!"
-    echo    !C_NUM![%%i]!R! !C_TXT!!DEV_MODEL_%%i!!R! !C_SUB!(!DEV_SERIAL_%%i!)!R! !TAG!
+    echo    !C_NUM![%%i]!R! !C_TXT!!DEV_MODEL_%%i!!R! !C_SUB![!DEV_SERIAL_%%i!]!R! !TAG!
 )
 echo.
 echo    !C_NUM![A]!R! !C_WARN!TARGET ALL ATTACHED DEVICES SIMULTANEOUSLY!R!
@@ -179,10 +187,10 @@ if "!ACTIVE_TARGET_MODE!"=="ALL" (
     echo  !C_WARN![*] Unlocking ALL !DEV_TOTAL! attached devices...!R!
     echo.
     for /L %%i in (1,1,!DEV_TOTAL!) do (
-        echo  !C_SUB![*] Device %%i/!DEV_TOTAL!:!R! !C_TXT!!DEV_MODEL_%%i!!R! (!DEV_SERIAL_%%i!)
+        echo  !C_SUB![*] Device %%i/!DEV_TOTAL!:!R! !C_TXT!!DEV_MODEL_%%i!!R! [!DEV_SERIAL_%%i!]
         "!ADB!" -s !DEV_SERIAL_%%i! shell settings put global dpclocker_enabled 0
         "!ADB!" -s !DEV_SERIAL_%%i! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity > nul 2>&1
-        echo  !C_OK!    [+] UNLOCKED ^& Launched Test DPC!R!
+        echo  !C_OK!    [+] UNLOCKED and Launched Test DPC!R!
     )
     echo.
     echo  !C_OK!===========================================================================!R!
@@ -193,10 +201,10 @@ if "!ACTIVE_TARGET_MODE!"=="ALL" (
 )
 
 echo  !C_SUB![*] Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!]!R!
-echo  !C_SUB![*] Sending Payload:!R! !C_TXT!dpclocker_enabled = 0 (UNLOCKED)!R!
+echo  !C_SUB![*] Sending Payload:!R! !C_TXT!dpclocker_enabled = 0 [UNLOCKED]!R!
 "!ADB!" -s !CURRENT_TARGET_SERIAL! shell settings put global dpclocker_enabled 0
 if %ERRORLEVEL% EQU 0 (
-    echo  !C_OK![+] SUCCESS: Setting applied (dpclocker_enabled = 0)!R!
+    echo  !C_OK![+] SUCCESS: Setting applied [dpclocker_enabled = 0]!R!
     echo  !C_SUB![*] Launching Test DPC on phone...!R!
     "!ADB!" -s !CURRENT_TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
     echo.
@@ -226,7 +234,7 @@ if !DEV_TOTAL! EQU 0 (
 ping 127.0.0.1 -n 2 > nul
 "!ADB!" -s !CURRENT_TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
 echo.
-echo !C_OK![OK] Test DPC UNLOCKED and opened on phone (!CURRENT_TARGET_SERIAL!)!!R!
+echo !C_OK![OK] Test DPC UNLOCKED and opened on phone [!CURRENT_TARGET_SERIAL!]!!R!
 echo.
 pause
 exit /b 0
@@ -251,10 +259,10 @@ if "!ACTIVE_TARGET_MODE!"=="ALL" (
     echo  !C_WARN![*] Locking ALL !DEV_TOTAL! attached devices...!R!
     echo.
     for /L %%i in (1,1,!DEV_TOTAL!) do (
-        echo  !C_SUB![*] Device %%i/!DEV_TOTAL!:!R! !C_TXT!!DEV_MODEL_%%i!!R! (!DEV_SERIAL_%%i!)
+        echo  !C_SUB![*] Device %%i/!DEV_TOTAL!:!R! !C_TXT!!DEV_MODEL_%%i!!R! [!DEV_SERIAL_%%i!]
         "!ADB!" -s !DEV_SERIAL_%%i! shell settings put global dpclocker_enabled 1
         "!ADB!" -s !DEV_SERIAL_%%i! shell am force-stop com.afwsamples.testdpc > nul 2>&1
-        echo  !C_ERR!    [+] LOCKED ^& Force-Stopped Test DPC!R!
+        echo  !C_ERR!    [+] LOCKED and Force-Stopped Test DPC!R!
     )
     echo.
     echo  !C_ERR!===========================================================================!R!
@@ -265,10 +273,10 @@ if "!ACTIVE_TARGET_MODE!"=="ALL" (
 )
 
 echo  !C_SUB![*] Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!]!R!
-echo  !C_SUB![*] Sending Payload:!R! !C_ERR!dpclocker_enabled = 1 (LOCKED)!R!
+echo  !C_SUB![*] Sending Payload:!R! !C_ERR!dpclocker_enabled = 1 [LOCKED]!R!
 "!ADB!" -s !CURRENT_TARGET_SERIAL! shell settings put global dpclocker_enabled 1
 if %ERRORLEVEL% EQU 0 (
-    echo  !C_OK![+] SUCCESS: Setting applied (dpclocker_enabled = 1)!R!
+    echo  !C_OK![+] SUCCESS: Setting applied [dpclocker_enabled = 1]!R!
     echo  !C_SUB![*] Force-stopping Test DPC activity...!R!
     "!ADB!" -s !CURRENT_TARGET_SERIAL! shell am force-stop com.afwsamples.testdpc
     echo.
@@ -298,7 +306,7 @@ if !DEV_TOTAL! EQU 0 (
 ping 127.0.0.1 -n 2 > nul
 "!ADB!" -s !CURRENT_TARGET_SERIAL! shell am force-stop com.afwsamples.testdpc
 echo.
-echo !C_ERR![OK] Test DPC is now LOCKED (!CURRENT_TARGET_SERIAL!)!!R!
+echo !C_ERR![OK] Test DPC is now LOCKED [!CURRENT_TARGET_SERIAL!]!!R!
 echo.
 pause
 exit /b 0
@@ -336,7 +344,7 @@ echo.
 call :ENUMERATE_DEVICES
 if !DEV_TOTAL! GTR 0 (
     echo  !C_OK!===========================================================================!R!
-    echo   !C_OK!!B![OK] WIRELESS CONNECTION ESTABLISHED (!DEV_TOTAL! DEVICE(S) ONLINE)!R!
+    echo   !C_OK!!B![OK] WIRELESS CONNECTION ESTABLISHED [!DEV_TOTAL! DEVICES ONLINE]!R!
     echo  !C_OK!===========================================================================!R!
 ) else (
     echo  !C_WARN!===========================================================================!R!
@@ -613,7 +621,7 @@ if "!ACTIVE_TARGET_MODE!"=="ALL" (
     echo  !C_WARN![*] Deploying APK to ALL !DEV_TOTAL! attached devices...!R!
     echo.
     for /L %%i in (1,1,!DEV_TOTAL!) do (
-        echo  !C_SUB![*] Installing on Device %%i/!DEV_TOTAL!:!R! !C_TXT!!DEV_MODEL_%%i!!R! (!DEV_SERIAL_%%i!)
+        echo  !C_SUB![*] Installing on Device %%i/!DEV_TOTAL!:!R! !C_TXT!!DEV_MODEL_%%i!!R! [!DEV_SERIAL_%%i!]
         "!ADB!" -s !DEV_SERIAL_%%i! install -r -d "%APK_FILE%"
     )
     echo.
@@ -676,9 +684,9 @@ if %ERRORLEVEL% EQU 0 (
     echo   !C_TXT!or any other user accounts are currently logged in.!R!
     echo.
     echo   !C_SEC!ACTION REQUIRED ON YOUR PHONE:!R!
-    echo     !C_TXT!1. Go to Settings -^> Passwords ^& Accounts (or Accounts)!R!
+    echo     !C_TXT!1. Go to Settings -^> Passwords ^& Accounts [or Accounts]!R!
     echo     !C_TXT!2. Temporarily REMOVE all logged-in accounts!R!
-    echo     !C_SUB!3. (You can log back into all accounts right after this step succeeds!)!R!
+    echo     !C_SUB!3. [You can log back into all accounts right after this step succeeds!]!R!
     echo  !C_WARN!---------------------------------------------------------------------------!R!
     echo.
     set /p PROCEED=" !C_PROMPT![?] Have you removed all accounts from the phone? [Y/N]: !R!"
@@ -720,9 +728,9 @@ echo !C_BORDER_HI!==============================================================
 echo  !C_HDR!!B![*] DPCLOCKER :: DIAGNOSTICS ^& TELEMETRY CENTER!R!
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
-echo    !C_NUM![1]!R! !C_TXT!Inspect Device Policy  !C_SUB!(List all suspended packages ^& DPM active policies)!R!
-echo    !C_NUM![2]!R! !C_TXT!Stream Live Logs       !C_SUB!(SecurityLogger / Pipeline / Blockers)!R!
-echo    !C_NUM![3]!R! !C_TXT!Wireless Port Scanner  !C_SUB!(Raw mDNS query ^& network probe)!R!
+echo    !C_NUM![1]!R! !C_TXT!Inspect Device Policy  !C_SUB![List all suspended packages ^& DPM active policies]!R!
+echo    !C_NUM![2]!R! !C_TXT!Stream Live Logs       !C_SUB![SecurityLogger / Pipeline / Blockers]!R!
+echo    !C_NUM![3]!R! !C_TXT!Wireless Port Scanner  !C_SUB![Raw mDNS query ^& network probe]!R!
 echo    !C_NUM![0]!R! !C_SUB!Back to Main Menu!R!
 echo.
 set /p DS=" !C_PROMPT![>] Select Option [0-3]: !R!"
