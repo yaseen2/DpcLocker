@@ -45,7 +45,7 @@ if /i "%1"=="policy" goto INSPECT_POLICY
 cls
 call :DETECT_PRIMARY_TARGET
 echo !C_BORDER_HI!===============================================================================!R!
-echo  !C_HDR!!B![#] DPCLOCKER MASTER SUITE !R!!C_SUB!:: !C_ACCENT!STANDALONE PROTECTION ENGINE v3.5!R!
+echo  !C_HDR!!B![#] DPCLOCKER MASTER SUITE !R!!C_SUB!:: !C_ACCENT!STANDALONE PROTECTION ENGINE v3.6!R!
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
 echo   !C_SUB!ADB Engine   :!R! !C_TXT!!ADB_TYPE!!R!
@@ -60,8 +60,8 @@ echo    !C_NUM![2]!R! !C_TXT!LOCK Test DPC               !C_SUB!(Block device po
 echo.
 echo  !C_SEC![WIRELESS ^& PAIRING]!R!
 echo    !C_NUM![3]!R! !C_TXT!Auto-Scan ^& Connect Wi-Fi   !C_SUB!(Dynamic mDNS Discovery ^& Port Detection)!R!
-echo    !C_NUM![4]!R! !C_TXT!Manual IP:Port Connect      !C_SUB!(Enter IP and Port from phone screen)!R!
-echo    !C_NUM![5]!R! !C_TXT!Pair Phone with 6-Digit Code!C_SUB!(Pairing Wizard after 'Forget PC')!R!
+echo    !C_NUM![4]!R! !C_TXT!1-Click Wireless Pair       !C_SUB!(Auto-detects phone ^& only asks for 6-digit code)!R!
+echo    !C_NUM![5]!R! !C_TXT!Select / Connect Device     !C_SUB!(List available Wi-Fi targets to connect)!R!
 echo    !C_NUM![6]!R! !C_TXT!Reset ADB Subsystem         !C_SUB!(Kill server, purge zombies, restart daemon)!R!
 echo.
 echo  !C_SEC![SETUP ^& DEPLOYMENT]!R!
@@ -80,8 +80,8 @@ set /p CHOICE=" !C_PROMPT![>] Select Option: !R!"
 if "%CHOICE%"=="1" goto UNLOCK_DPC
 if "%CHOICE%"=="2" goto LOCK_DPC
 if "%CHOICE%"=="3" goto AUTO_CONNECT
-if "%CHOICE%"=="4" goto MANUAL_CONNECT
-if "%CHOICE%"=="5" goto PAIR_DEVICE
+if "%CHOICE%"=="4" goto PAIR_DEVICE
+if "%CHOICE%"=="5" goto SELECT_CONNECT_DEVICE
 if "%CHOICE%"=="6" goto RESET_ADB
 if "%CHOICE%"=="7" goto INSTALL_APK
 if "%CHOICE%"=="8" goto SETUP_DEVICE_OWNER
@@ -123,7 +123,7 @@ if %ERRORLEVEL% EQU 0 (
 ) else (
     echo.
     echo  !C_ERR![!] FAILED: Could not deliver unlock payload to phone.!R!
-    echo  !C_WARN![*] Check Wireless Debugging or use option [5] if unpaired.!R!
+    echo  !C_WARN![*] Check Wireless Debugging or use option [4] if unpaired.!R!
 )
 echo.
 pause
@@ -178,7 +178,7 @@ if %ERRORLEVEL% EQU 0 (
 ) else (
     echo.
     echo  !C_ERR![!] FAILED: Could not deliver lock payload to phone.!R!
-    echo  !C_WARN![*] Check Wireless Debugging or use option [5] if unpaired.!R!
+    echo  !C_WARN![*] Check Wireless Debugging or use option [4] if unpaired.!R!
 )
 echo.
 pause
@@ -243,7 +243,7 @@ if not "!TARGET_SERIAL!"=="" (
     echo   !C_WARN![!] CONNECTION REJECTED OR NOT AUTHORIZED!R!
     echo   !C_SUB!-------------------------------------------------------------------------!R!
     echo   !C_TXT!* Did you tap 'Forget PC' in Developer Options?!R!
-    echo   !C_TXT!* If so, Android requires you to re-pair before allowing connections.!R!
+    echo   !C_TXT!* If so, Android requires you to re-pair with a 6-digit code.!R!
     echo  !C_WARN!===========================================================================!R!
     echo.
     set /p REPAIR=" !C_PROMPT![?] Would you like to pair with a 6-digit code now? (Y/N): !R!"
@@ -254,88 +254,104 @@ pause
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
-:: [4] MANUAL CONNECT
-:: --------------------------------------------------------------------------------
-:MANUAL_CONNECT
-cls
-echo !C_BORDER_HI!===============================================================================!R!
-echo  !C_HDR!!B![*] DPCLOCKER :: MANUAL IP ^& PORT CONNECTION!R!
-echo !C_BORDER_HI!===============================================================================!R!
-echo.
-echo  !C_TXT!Look at your phone: Developer Options -^> Wireless Debugging!R!
-echo  !C_SUB!Note the "IP address ^& Port" (e.g. !SAVED_IP!:38747)!R!
-echo.
-set /p TARGET_IP=" !C_PROMPT![?] Enter Phone IP address [!SAVED_IP!]: !R!"
-if "!TARGET_IP!"=="" set TARGET_IP=!SAVED_IP!
-set /p TARGET_PORT=" !C_PROMPT![?] Enter Wireless Debugging Port (5 digits): !R!"
-
-if "%TARGET_PORT%"=="" (
-    echo !C_ERR![!] Port cannot be empty!!R!
-    pause
-    goto MANUAL_CONNECT
-)
-
-call :SAVE_CONFIG "!TARGET_IP!"
-
-echo.
-echo  !C_SUB![*] Initiating TCP handshake with %TARGET_IP%:%TARGET_PORT%...!R!
-"!ADB!" connect %TARGET_IP%:%TARGET_PORT%
-echo.
-call :DETECT_PRIMARY_TARGET
-if not "!TARGET_SERIAL!"=="" (
-    echo  !C_OK![+] SUCCESS: Connected to !TARGET_SERIAL!!R!
-) else (
-    echo  !C_ERR![-] Connection failed. If you forgot this PC on phone, use option [5] to pair.!R!
-)
-echo !C_BORDER_HI!===============================================================================!R!
-pause
-goto MAIN_MENU
-
-:: --------------------------------------------------------------------------------
-:: [5] PAIR NEW DEVICE
+:: [4] 1-CLICK WIRELESS PAIRING WIZARD (AUTO-DETECTS IP & PORT)
 :: --------------------------------------------------------------------------------
 :PAIR_DEVICE
 cls
 echo !C_BORDER_HI!===============================================================================!R!
-echo  !C_HDR!!B![*] DPCLOCKER :: WIRELESS DEBUGGING PAIRING WIZARD!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: 1-CLICK WIRELESS PAIRING WIZARD!R!
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
 echo  !C_SEC!Instructions:!R!
-echo    !C_TXT!1. On phone, go to Developer Options -^> Wireless Debugging!R!
+echo    !C_TXT!1. On phone: Go to Developer Options -^> Wireless Debugging!R!
 echo    !C_TXT!2. Tap "Pair device with pairing code"!R!
-echo    !C_WARN!3. Keep the popup OPEN on your phone screen!!R!
+echo    !C_WARN!3. KEEP THE POPUP OPEN on your phone screen! (Do not close it)!R!
 echo.
+echo  !C_SUB![*] Scanning local Wi-Fi for device pairing broadcast...!R!
+
+set SCAN_COUNT=0
+:RETRY_PAIR_SCAN
+set PAIR_FOUND_COUNT=0
+set PAIR_EP_1=
+set PAIR_EP_2=
+set PAIR_EP_3=
+set PAIR_NAME_1=
+set PAIR_NAME_2=
+set PAIR_NAME_3=
 
 "!ADB!" mdns services > "%TEMP%\dpclocker_pair_mdns.tmp" 2>&1
-set AUTO_PAIR_ENDPOINT=
-for /f "tokens=3" %%P in ('findstr /i "_adb-tls-pairing._tcp" "%TEMP%\dpclocker_pair_mdns.tmp"') do (
-    set AUTO_PAIR_ENDPOINT=%%P
+for /f "tokens=1,2,3" %%A in ('findstr /i "_adb-tls-pairing._tcp" "%TEMP%\dpclocker_pair_mdns.tmp"') do (
+    set /a PAIR_FOUND_COUNT+=1
+    if !PAIR_FOUND_COUNT! EQU 1 (
+        set "PAIR_NAME_1=%%A"
+        set "PAIR_EP_1=%%C"
+    )
+    if !PAIR_FOUND_COUNT! EQU 2 (
+        set "PAIR_NAME_2=%%A"
+        set "PAIR_EP_2=%%C"
+    )
+    if !PAIR_FOUND_COUNT! EQU 3 (
+        set "PAIR_NAME_3=%%A"
+        set "PAIR_EP_3=%%C"
+    )
 )
 if exist "%TEMP%\dpclocker_pair_mdns.tmp" del "%TEMP%\dpclocker_pair_mdns.tmp" > nul 2>&1
 
-if not "!AUTO_PAIR_ENDPOINT!"=="" (
-    echo  !C_OK![+] AUTO-DETECTED Pairing Endpoint: !AUTO_PAIR_ENDPOINT!!R!
+if !PAIR_FOUND_COUNT! EQU 0 (
+    set /a SCAN_COUNT+=1
+    if !SCAN_COUNT! LSS 3 (
+        echo  !C_SUB![*] Waiting for pairing popup to open on phone... (!SCAN_COUNT!/3)!R!
+        ping 127.0.0.1 -n 3 > nul
+        goto RETRY_PAIR_SCAN
+    )
+    echo  !C_WARN![-] No pairing broadcast detected automatically.!R!
+    echo  !C_SUB!    Make sure the "Pair device with pairing code" popup is currently OPEN on phone.!R!
     echo.
-    set /p PAIR_CODE=" !C_PROMPT![?] Enter 6-digit Wi-Fi Pairing Code from popup: !R!"
-    echo  !C_SUB![*] Sending TLS Pairing Request to !AUTO_PAIR_ENDPOINT!... !R!
-    "!ADB!" pair !AUTO_PAIR_ENDPOINT! !PAIR_CODE!
-) else (
-    set /p PAIR_IP=" !C_PROMPT![?] Enter Pairing IP address [!SAVED_IP!]: !R!"
-    if "!PAIR_IP!"=="" set PAIR_IP=!SAVED_IP!
-    set /p PAIR_PORT=" !C_PROMPT![?] Enter Pairing Port shown on the popup: !R!"
-    set /p PAIR_CODE=" !C_PROMPT![?] Enter 6-digit Wi-Fi Pairing Code from popup: !R!"
-    call :SAVE_CONFIG "!PAIR_IP!"
+    echo    !C_NUM![1]!R! !C_TXT!Scan Wi-Fi again!R!
+    echo    !C_NUM![2]!R! !C_TXT!Enter Port manually from popup!R!
+    echo    !C_NUM![0]!R! !C_SUB!Cancel!R!
     echo.
-    echo  !C_SUB![*] Sending TLS Pairing Request to !PAIR_IP!:!PAIR_PORT!... !R!
-    "!ADB!" pair !PAIR_IP!:!PAIR_PORT! !PAIR_CODE!
+    set /p PCHOICE=" !C_PROMPT![>] Select Option: !R!"
+    if "!PCHOICE!"=="1" (
+        set SCAN_COUNT=0
+        goto RETRY_PAIR_SCAN
+    )
+    if "!PCHOICE!"=="2" goto PAIR_MANUAL_ENTRY
+    goto MAIN_MENU
 )
 
+:: If 1 device found -> Auto-select
+if !PAIR_FOUND_COUNT! EQU 1 (
+    set "SELECTED_PAIR_EP=!PAIR_EP_1!"
+    echo  !C_OK![+] AUTO-DETECTED Device: !PAIR_NAME_1! @ !PAIR_EP_1!!R!
+    goto PROMPT_CODE
+)
+
+:: If multiple devices found -> Let user select
+echo  !C_SEC!Multiple devices discovered on Wi-Fi:!R!
+if not "!PAIR_EP_1!"=="" echo    !C_NUM![1]!R! !C_TXT!!PAIR_NAME_1! (!PAIR_EP_1!)!R!
+if not "!PAIR_EP_2!"=="" echo    !C_NUM![2]!R! !C_TXT!!PAIR_NAME_2! (!PAIR_EP_2!)!R!
+if not "!PAIR_EP_3!"=="" echo    !C_NUM![3]!R! !C_TXT!!PAIR_NAME_3! (!PAIR_EP_3!)!R!
 echo.
-echo  !C_SUB![*] Attempting auto-connection to main wireless port...!R!
+set /p DEV_SEL=" !C_PROMPT![?] Select your device [1-!PAIR_FOUND_COUNT!]: !R!"
+if "!DEV_SEL!"=="1" set "SELECTED_PAIR_EP=!PAIR_EP_1!"
+if "!DEV_SEL!"=="2" set "SELECTED_PAIR_EP=!PAIR_EP_2!"
+if "!DEV_SEL!"=="3" set "SELECTED_PAIR_EP=!PAIR_EP_3!"
+
+:PROMPT_CODE
+echo.
+set /p PAIR_CODE=" !C_PROMPT![?] Enter 6-digit Wi-Fi Pairing Code from phone popup: !R!"
+
+echo.
+echo  !C_SUB![*] Sending TLS Pairing Request to !SELECTED_PAIR_EP!... !R!
+"!ADB!" pair !SELECTED_PAIR_EP! !PAIR_CODE!
+
+echo.
+echo  !C_SUB![*] Auto-discovering main connection port and linking device...!R!
 ping 127.0.0.1 -n 2 > nul
 "!ADB!" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
 for /f "tokens=3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
-    echo  !C_SUB![*] Connecting to %%A...!R!
+    echo  !C_SUB![*] Auto-Connecting to %%A...!R!
     "!ADB!" connect %%A
 )
 if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
@@ -344,12 +360,120 @@ echo.
 call :DETECT_PRIMARY_TARGET
 if not "!TARGET_SERIAL!"=="" (
     echo  !C_OK!===========================================================================!R!
-    echo   !C_OK!!B![OK] PAIRING AND CONNECTION SUCCESSFUL: !TARGET_SERIAL!!R!
+    echo   !C_OK!!B![OK] DEVICE PAIRED AND CONNECTED AUTOMATICALLY: !TARGET_SERIAL!!R!
     echo  !C_OK!===========================================================================!R!
 ) else (
-    echo  !C_WARN![*] If auto-connect didn't trigger, check the main Port on phone and use Option [4].!R!
+    echo  !C_WARN![*] Pairing completed. Check your phone's main Wireless Port and connect.!R!
 )
 echo.
+pause
+goto MAIN_MENU
+
+:PAIR_MANUAL_ENTRY
+set /p PAIR_IP=" !C_PROMPT![?] Enter Pairing IP address [!SAVED_IP!]: !R!"
+if "!PAIR_IP!"=="" set PAIR_IP=!SAVED_IP!
+set /p PAIR_PORT=" !C_PROMPT![?] Enter Pairing Port shown on the popup: !R!"
+set /p PAIR_CODE=" !C_PROMPT![?] Enter 6-digit Wi-Fi Pairing Code from popup: !R!"
+call :SAVE_CONFIG "!PAIR_IP!"
+echo.
+echo  !C_SUB![*] Sending TLS Pairing Request to !PAIR_IP!:!PAIR_PORT!... !R!
+"!ADB!" pair !PAIR_IP!:!PAIR_PORT! !PAIR_CODE!
+goto PROMPT_CODE
+
+:: --------------------------------------------------------------------------------
+:: [5] SELECT / CONNECT DEVICE (LISTS DISCOVERED WI-FI TARGETS)
+:: --------------------------------------------------------------------------------
+:SELECT_CONNECT_DEVICE
+cls
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER :: DISCOVERED WI-FI TARGETS!R!
+echo !C_BORDER_HI!===============================================================================!R!
+echo.
+echo  !C_SUB![*] Scanning local network for active Wireless Debugging services...!R!
+"!ADB!" mdns services > "%TEMP%\dpclocker_mdns.tmp" 2>&1
+
+set DEV_COUNT=0
+set DEV_EP_1=
+set DEV_EP_2=
+set DEV_EP_3=
+set DEV_NAME_1=
+set DEV_NAME_2=
+set DEV_NAME_3=
+
+for /f "tokens=1,2,3" %%A in ('findstr /i "_adb-tls-connect._tcp _adb._tcp" "%TEMP%\dpclocker_mdns.tmp"') do (
+    set /a DEV_COUNT+=1
+    if !DEV_COUNT! EQU 1 (
+        set "DEV_NAME_1=%%A"
+        set "DEV_EP_1=%%C"
+    )
+    if !DEV_COUNT! EQU 2 (
+        set "DEV_NAME_2=%%A"
+        set "DEV_EP_2=%%C"
+    )
+    if !DEV_COUNT! EQU 3 (
+        set "DEV_NAME_3=%%A"
+        set "DEV_EP_3=%%C"
+    )
+)
+if exist "%TEMP%\dpclocker_mdns.tmp" del "%TEMP%\dpclocker_mdns.tmp" > nul 2>&1
+
+if !DEV_COUNT! EQU 0 (
+    echo  !C_WARN![-] No active wireless services detected on local Wi-Fi.!R!
+    echo  !C_SUB!    Ensure Wireless Debugging is toggled ON in Developer Options.!R!
+    echo.
+    echo    !C_NUM![1]!R! !C_TXT!Enter IP and Port manually!R!
+    echo    !C_NUM![0]!R! !C_SUB!Back to Main Menu!R!
+    echo.
+    set /p MN_SEL=" !C_PROMPT![>] Select: !R!"
+    if "!MN_SEL!"=="1" goto MANUAL_CONNECT
+    goto MAIN_MENU
+)
+
+echo  !C_SEC!Discovered Active Endpoints:!R!
+if not "!DEV_EP_1!"=="" echo    !C_NUM![1]!R! !C_TXT!!DEV_NAME_1! !C_OK!(!DEV_EP_1!)!R!
+if not "!DEV_EP_2!"=="" echo    !C_NUM![2]!R! !C_TXT!!DEV_NAME_2! !C_OK!(!DEV_EP_2!)!R!
+if not "!DEV_EP_3!"=="" echo    !C_NUM![3]!R! !C_TXT!!DEV_NAME_3! !C_OK!(!DEV_EP_3!)!R!
+echo    !C_NUM![M]!R! !C_TXT!Enter custom IP:Port manually!R!
+echo    !C_NUM![0]!R! !C_SUB!Back to Main Menu!R!
+echo.
+set /p SEL_EP=" !C_PROMPT![?] Select device to connect: !R!"
+
+if /i "!SEL_EP!"=="M" goto MANUAL_CONNECT
+if "!SEL_EP!"=="1" set "CHOSEN_EP=!DEV_EP_1!"
+if "!SEL_EP!"=="2" set "CHOSEN_EP=!DEV_EP_2!"
+if "!SEL_EP!"=="3" set "CHOSEN_EP=!DEV_EP_3!"
+if "!SEL_EP!"=="0" goto MAIN_MENU
+
+if not "!CHOSEN_EP!"=="" (
+    echo.
+    echo  !C_SUB![*] Connecting to !CHOSEN_EP!... !R!
+    "!ADB!" connect !CHOSEN_EP!
+    echo.
+    call :DETECT_PRIMARY_TARGET
+    if not "!TARGET_SERIAL!"=="" (
+        echo  !C_OK![+] CONNECTED: !TARGET_SERIAL!!R!
+    )
+)
+echo !C_BORDER_HI!===============================================================================!R!
+pause
+goto MAIN_MENU
+
+:MANUAL_CONNECT
+echo.
+set /p TARGET_IP=" !C_PROMPT![?] Enter Phone IP address [!SAVED_IP!]: !R!"
+if "!TARGET_IP!"=="" set TARGET_IP=!SAVED_IP!
+set /p TARGET_PORT=" !C_PROMPT![?] Enter Wireless Debugging Port (5 digits): !R!"
+
+if "%TARGET_PORT%"=="" (
+    echo !C_ERR![!] Port cannot be empty!!R!
+    pause
+    goto MAIN_MENU
+)
+
+call :SAVE_CONFIG "!TARGET_IP!"
+echo  !C_SUB![*] Initiating TCP handshake with %TARGET_IP%:%TARGET_PORT%...!R!
+"!ADB!" connect %TARGET_IP%:%TARGET_PORT%
+call :DETECT_PRIMARY_TARGET
 pause
 goto MAIN_MENU
 
@@ -625,12 +749,12 @@ if %ERRORLEVEL% EQU 0 (
 
 REM 4. Auto-Download official Google Platform-Tools
 cls
-echo ===============================================================================
-echo  [*] DPCLOCKER STANDALONE SETUP :: ADB NOT DETECTED
-echo ===============================================================================
+echo !C_BORDER_HI!===============================================================================!R!
+echo  !C_HDR!!B![*] DPCLOCKER STANDALONE SETUP :: ADB NOT DETECTED!R!
+echo !C_BORDER_HI!===============================================================================!R!
 echo.
-echo  No Android SDK or ADB tool was found on this computer.
-echo  Downloading official Google Android Platform-Tools [Portable]...
+echo  !C_WARN!No Android SDK or ADB tool was found on this computer.!R!
+echo  !C_TXT!Downloading official Google Android Platform-Tools [Portable]...!R!
 echo.
 if not exist "%~dp0tools" mkdir "%~dp0tools"
 powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $zip = Join-Path $env:TEMP 'platform-tools.zip'; Write-Host 'Downloading platform-tools from Google CDN...'; Invoke-WebRequest 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' -OutFile $zip; Write-Host 'Extracting portable binaries...'; Expand-Archive -Path $zip -DestinationPath '%~dp0tools' -Force; Remove-Item $zip; Write-Host 'Setup Complete!'"
@@ -639,12 +763,12 @@ if exist "%~dp0tools\platform-tools\adb.exe" (
     set "ADB=%~dp0tools\platform-tools\adb.exe"
     set "ADB_TYPE=PORTABLE AUTO-DOWNLOADED"
     echo.
-    echo  [+] Portable ADB installed successfully to: tools/platform-tools/
+    echo  !C_OK![+] Portable ADB installed successfully to: tools/platform-tools/!R!
     ping 127.0.0.1 -n 2 > nul
     exit /b 0
 ) else (
     echo.
-    echo  [!] Failed to download ADB automatically. Please install platform-tools.
+    echo  !C_ERR![!] Failed to download ADB automatically. Please install platform-tools.!R!
     pause
     exit /b 1
 )
