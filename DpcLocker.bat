@@ -27,6 +27,7 @@ set "C_ACCENT=!ESC![1;38;5;141m"   :: Purple / Violet Accent
 
 call :RESOLVE_ADB
 call :LOAD_CONFIG
+call :ENUMERATE_DEVICES
 
 set "ACTIVE_TARGET_INDEX=1"
 set "ACTIVE_TARGET_MODE=SINGLE"
@@ -741,10 +742,6 @@ goto MAIN_MENU
 
 :INSPECT_POLICY
 cls
-echo !C_BORDER_HI!===============================================================================!R!
-echo  !C_HDR!!B![*] DPCLOCKER :: DEVICE POLICY ^& SUSPENDED PACKAGES INSPECTOR!R!
-echo !C_BORDER_HI!===============================================================================!R!
-echo.
 call :ENSURE_CONNECTION
 if !DEV_TOTAL! EQU 0 (
     echo  !C_ERR![!] No active device found.!R!
@@ -752,15 +749,8 @@ if !DEV_TOTAL! EQU 0 (
     goto MAIN_MENU
 )
 
-echo  !C_SUB![*] Querying Device Policy Manager policies on !CURRENT_TARGET_SERIAL!... !R!
-echo  !C_BORDER!-------------------------------------------------------------------------------!R!
-"!ADB!" -s !CURRENT_TARGET_SERIAL! shell "dumpsys device_policy | grep -E 'mSuspendedPackages|PackageNameSetPolicyValue|dpclocker'"
-echo  !C_BORDER!-------------------------------------------------------------------------------!R!
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\inspect_policy.ps1" -Serial "!CURRENT_TARGET_SERIAL!" -AdbPath "!ADB!"
 echo.
-echo  !C_SUB![*] Checking Global DpcLocker Enabled Status:!R!
-"!ADB!" -s !CURRENT_TARGET_SERIAL! shell settings get global dpclocker_enabled
-echo.
-echo !C_BORDER_HI!===============================================================================!R!
 pause
 goto MAIN_MENU
 
