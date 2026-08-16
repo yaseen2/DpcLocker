@@ -8,7 +8,7 @@ set ADB=C:\Users\ThinkPad\AppData\Local\Android\Sdk\platform-tools\adb.exe
 :MAIN_MENU
 cls
 echo ===============================================================================
-echo  [#] DPCLOCKER CYBER CONTROL CENTER :: WIRELESS ^& POLICY ENGINE v2.7
+echo  [#] DPCLOCKER CYBER CONTROL CENTER :: WIRELESS ^& POLICY ENGINE v3.0
 echo ===============================================================================
 echo.
 echo  [*] ADB CORE STATUS:
@@ -19,38 +19,47 @@ echo.
 echo  [CONNECTION ^& PAIRING]
 echo    [1] Auto-Scan ^& Connect   (Discover dynamic mDNS port ^& connect automatically)
 echo    [2] Manual IP:Port Connect (Enter IP and Port shown on your phone screen)
-echo    [3] Wireless Pair Device   (Initial pairing setup using 6-digit Wi-Fi code)
-echo    [4] Reset ADB Subsystem    (Kill server, purge ghost sockets, restart daemon)
+echo    [3] Instant QR Code Pair   (Point phone camera at screen ^& pair in 1 second!)
+echo    [4] Manual 6-Digit Code    (Pair with 6-digit Wi-Fi code popup)
+echo    [5] Reset ADB Subsystem    (Kill server, purge ghost sockets, restart daemon)
 echo.
 echo  [POLICY ENFORCEMENT]
-echo    [5] UNLOCK Test DPC        (dpclocker_enabled = 0 ^& Launch Policy Manager)
-echo    [6] LOCK Test DPC          (dpclocker_enabled = 1 ^& Force Stop App)
+echo    [6] UNLOCK Test DPC        (dpclocker_enabled = 0 ^& Launch Policy Manager)
+echo    [7] LOCK Test DPC          (dpclocker_enabled = 1 ^& Force Stop App)
 echo.
 echo  [DIAGNOSTICS ^& TOOLS]
-echo    [7] Inspect Device Policy  (View suspended packages ^& active Device Owner rules)
-echo    [8] Stream Live Logs       (SecurityLogger / Pipeline / Blockers telemetry)
-echo    [9] Wireless Network Probe (Raw mDNS service query ^& port scan)
+echo    [8] Inspect Device Policy  (View suspended packages ^& active Device Owner rules)
+echo    [9] Stream Live Logs       (SecurityLogger / Pipeline / Blockers telemetry)
+echo    [P] Wireless Network Probe (Raw mDNS service query ^& port scan)
 echo    [H] Setup ^& Pairing Guide  (Help for first-time users ^& troubleshooting)
 echo.
 echo    [0] Exit Console
 echo.
 echo ===============================================================================
-set /p CHOICE=" [>] Enter Command [0-9 or H]: "
+set /p CHOICE=" [>] Enter Command [0-9, P, or H]: "
 
 if /i "%CHOICE%"=="H" goto HELP_GUIDE
+if /i "%CHOICE%"=="P" goto SCAN_MDNS
 if "%CHOICE%"=="1" goto AUTO_CONNECT
 if "%CHOICE%"=="2" goto MANUAL_CONNECT
-if "%CHOICE%"=="3" goto PAIR_DEVICE
-if "%CHOICE%"=="4" goto RESET_ADB
-if "%CHOICE%"=="5" goto UNLOCK_DPC
-if "%CHOICE%"=="6" goto LOCK_DPC
-if "%CHOICE%"=="7" goto INSPECT_POLICY
-if "%CHOICE%"=="8" goto STREAM_LOGS
-if "%CHOICE%"=="9" goto SCAN_MDNS
+if "%CHOICE%"=="3" goto PAIR_QR
+if "%CHOICE%"=="4" goto PAIR_CODE
+if "%CHOICE%"=="5" goto RESET_ADB
+if "%CHOICE%"=="6" goto UNLOCK_DPC
+if "%CHOICE%"=="7" goto LOCK_DPC
+if "%CHOICE%"=="8" goto INSPECT_POLICY
+if "%CHOICE%"=="9" goto STREAM_LOGS
 if "%CHOICE%"=="0" goto EXIT_PROMPT
 
 echo [!] Invalid option selected.
 ping 127.0.0.1 -n 2 > nul
+goto MAIN_MENU
+
+:: --------------------------------------------------------------------------------
+:: [3] INSTANT QR CODE PAIRING
+:: --------------------------------------------------------------------------------
+:PAIR_QR
+python "adb_qr_pair.py"
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
@@ -67,14 +76,11 @@ echo     * Open Settings -^> System -^> Developer Options.
 echo     * Make sure both "USB Debugging" and "Wireless Debugging" are turned ON.
 echo     * Ensure your phone and computer are connected to the SAME Wi-Fi network.
 echo.
-echo  2. FIRST TIME CONNECTING TO THIS COMPUTER?
-echo     * Tap directly on "Wireless Debugging" text to enter its settings screen.
-echo     * Tap "Pair device with pairing code".
-echo       (Note: Do NOT use 'QR code' unless using Android Studio GUI scanner;
-echo        command-line terminal tools use 'Pair device with pairing code').
-echo     * Select option [3] in this console, which will guide you through entering
-echo       the 6-digit code shown on your phone's screen.
-echo     * Once paired, your phone permanently trusts this PC!
+echo  2. HOW TO PAIR YOUR PHONE (TWO EASY WAYS):
+echo     * OPTION A (Fastest): Choose [3] in this menu ("Instant QR Code Pair").
+echo       On your phone, tap "Pair device with QR code" and point your camera!
+echo     * OPTION B (Manual): Choose [4] in this menu ("Manual 6-Digit Code").
+echo       On your phone, tap "Pair device with pairing code" and enter the code.
 echo.
 echo  3. ALREADY PAIRED PREVIOUSLY?
 echo     * Simply choose option [1] (Auto-Scan) to connect in 1-second.
@@ -126,11 +132,15 @@ if %ERRORLEVEL% EQU 0 (
     echo   -------------------------------------------------------------------------
     echo   * If connecting this phone to this computer for the first time,
     echo     or if the device was forgotten/reset, initial pairing is required.
-    echo   * Make sure phone and PC are on the same Wi-Fi network.
     echo  ===========================================================================
     echo.
-    set /p REPAIR=" [?] Would you like to run the Pairing Wizard now? (Y/N): "
-    if /i "!REPAIR!"=="Y" goto PAIR_DEVICE
+    echo   [1] Pair instantly with QR Code (Recommended)
+    echo   [2] Pair with 6-digit Code
+    echo   [0] Return to Main Menu
+    echo.
+    set /p REPAIR=" [>] Select Pairing Mode [1-2, or 0]: "
+    if "!REPAIR!"=="1" goto PAIR_QR
+    if "!REPAIR!"=="2" goto PAIR_CODE
 )
 echo.
 pause
@@ -166,30 +176,27 @@ echo.
 if %ERRORLEVEL% EQU 0 (
     echo  [+] SUCCESS: Connected to %TARGET_IP%:%TARGET_PORT%
 ) else (
-    echo  [-] Connection failed. If this is a first-time connection or device was forgotten,
-    echo      use option [3] to pair with a 6-digit code.
+    echo  [-] Connection failed. If device is unpaired, use option [3] or [4] to pair.
 )
 echo ===============================================================================
 pause
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
-:: [3] PAIR NEW DEVICE
+:: [4] MANUAL 6-DIGIT CODE PAIRING
 :: --------------------------------------------------------------------------------
-:PAIR_DEVICE
+:PAIR_CODE
 cls
 echo ===============================================================================
-echo  [*] DPCLOCKER :: WIRELESS DEBUGGING PAIRING WIZARD
+echo  [*] DPCLOCKER :: WIRELESS DEBUGGING 6-DIGIT CODE PAIRING
 echo ===============================================================================
 echo.
 echo  Follow these quick steps on your phone:
 echo    1. Open Settings -^> Developer Options -^> Wireless Debugging
 echo    2. Tap "Pair device with pairing code"
-echo       (Do NOT choose 'QR code'; select 'Pair device with pairing code')
 echo    3. KEEP THE POPUP OPEN on your phone screen until pairing finishes!
 echo.
 
-REM Scan if pairing service is broadcasting
 "%ADB%" mdns services > "%TEMP%\dpclocker_pair_mdns.tmp" 2>&1
 set AUTO_PAIR_ENDPOINT=
 for /f "tokens=3" %%P in ('findstr /i "_adb-tls-pairing._tcp" "%TEMP%\dpclocker_pair_mdns.tmp"') do (
@@ -241,7 +248,7 @@ pause
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
-:: [4] RESET ADB SUBSYSTEM
+:: [5] RESET ADB SUBSYSTEM
 :: --------------------------------------------------------------------------------
 :RESET_ADB
 cls
@@ -263,7 +270,7 @@ pause
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
-:: [5] UNLOCK TEST DPC
+:: [6] UNLOCK TEST DPC
 :: --------------------------------------------------------------------------------
 :UNLOCK_DPC
 cls
@@ -295,14 +302,14 @@ if %ERRORLEVEL% EQU 0 (
 ) else (
     echo.
     echo  [!] FAILED: Could not deliver unlock payload to phone.
-    echo  [*] Check that Wireless Debugging is ON and use option [3] if unpaired.
+    echo  [*] Check that Wireless Debugging is ON and use option [3] or [4] if unpaired.
 )
 echo.
 pause
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
-:: [6] LOCK TEST DPC
+:: [7] LOCK TEST DPC
 :: --------------------------------------------------------------------------------
 :LOCK_DPC
 cls
@@ -334,14 +341,14 @@ if %ERRORLEVEL% EQU 0 (
 ) else (
     echo.
     echo  [!] FAILED: Could not deliver lock payload to phone.
-    echo  [*] Check that Wireless Debugging is ON and use option [3] if unpaired.
+    echo  [*] Check that Wireless Debugging is ON and use option [3] or [4] if unpaired.
 )
 echo.
 pause
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
-:: [7] INSPECT DEVICE POLICY
+:: [8] INSPECT DEVICE POLICY
 :: --------------------------------------------------------------------------------
 :INSPECT_POLICY
 cls
@@ -362,7 +369,7 @@ pause
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
-:: [8] STREAM LIVE LOGS
+:: [9] STREAM LIVE LOGS
 :: --------------------------------------------------------------------------------
 :STREAM_LOGS
 cls
@@ -374,7 +381,7 @@ echo.
 goto MAIN_MENU
 
 :: --------------------------------------------------------------------------------
-:: [9] SCAN MDNS
+:: [P] SCAN MDNS
 :: --------------------------------------------------------------------------------
 :SCAN_MDNS
 cls
