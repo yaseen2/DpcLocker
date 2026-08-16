@@ -792,22 +792,30 @@ echo !C_BORDER_HI!==============================================================
 echo  !C_HDR!!B![*] DPCLOCKER :: WINDOWS BROWSER INCOGNITO LOCKDOWN!R!
 echo !C_BORDER_HI!===============================================================================!R!
 echo.
-echo  !C_TXT!This tool locks down Windows browsers (Chrome, Edge, Brave):!R!
+echo  !C_TXT!This tool locks down Windows browsers [Chrome, Edge, Brave]:!R!
 echo    !C_TXT!* Disables Incognito / InPrivate Mode!R!
 echo    !C_TXT!* Enforces SafeSearch across Google, Bing, YouTube!R!
+echo    !C_TXT!* Sets Cloudflare Family-Filtered DNS [1.1.1.3]!R!
+echo    !C_TXT!* Blocks Adult, Notorious ^& Proxy Domains in Hosts!R!
 echo.
 echo  !C_SEC!Options:!R!
-echo    !C_NUM![1]!R! !C_TXT!Enable Windows Incognito Lockdown (Run PowerShell Engine)!R!
-echo    !C_NUM![2]!R! !C_TXT!Apply Direct Registry Policies (.reg)!R!
+echo    !C_NUM![1]!R! !C_TXT!Enable Full Windows Protection [Elevated PowerShell Engine]!R!
+echo    !C_NUM![2]!R! !C_TXT!Audit / Inspect Windows Protection Status!R!
+echo    !C_NUM![3]!R! !C_TXT!Apply Direct Registry Policies [.reg]!R!
 echo    !C_NUM![0]!R! !C_SUB!Back to Main Menu!R!
 echo.
-set /p WIN_OPT=" !C_PROMPT![>] Select Option [0-2]: !R!"
+set /p WIN_OPT=" !C_PROMPT![>] Select Option [0-3]: !R!"
 if "%WIN_OPT%"=="1" (
-    powershell -ExecutionPolicy Bypass -File "%~dp0enable_windows_protection.ps1"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \"\"%~dp0enable_windows_protection.ps1\"\"'"
     pause
     goto MAIN_MENU
 )
 if "%WIN_OPT%"=="2" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\inspect_windows_protection.ps1"
+    pause
+    goto MAIN_MENU
+)
+if "%WIN_OPT%"=="3" (
     reg import "%~dp0enable_windows_protection.reg"
     echo !C_OK![+] Registry policies imported successfully.!R!
     pause
