@@ -276,12 +276,12 @@ public class FalconsVisionGuardEngine {
                 sBitmapVerdictCache.clear();
             }
 
-            String logEntry = String.format(Locale.US, "[%s] Falcons.ai Vision (%dms): NSFW=%.1f%%, Normal=%.1f%% -> %s",
-                    packageName, latencyMs, probNsfw * 100f, probNormal * 100f, isNsfw ? "ADULT BLOCKED" : "SAFE PASS");
+            String logEntry = String.format(Locale.US, "[%s] ViT Scan (%dms): NSFW=%.1f%%, Normal=%.1f%% (Cutoff: %d%%) -> %s",
+                    packageName, latencyMs, probNsfw * 100f, probNormal * 100f, Math.round(threshold * 100), isNsfw ? "🚨 ADULT BLOCKED" : "✅ SAFE PASS");
             Log.i(TAG, logEntry);
 
+            appendLog(context, logEntry);
             if (isNsfw) {
-                appendLog(context, logEntry);
                 SecurityLogger.log(context, "[FALCONS_NSFW]", logEntry);
             }
 

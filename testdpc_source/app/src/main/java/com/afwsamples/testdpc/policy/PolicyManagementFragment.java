@@ -4465,6 +4465,22 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         });
         layout.addView(falconsTestBtn);
 
+        Button falconsLogsBtn = new Button(context);
+        falconsLogsBtn.setText("👁️ View Live Falcons.ai Visual Audit Logs");
+        falconsLogsBtn.setOnClickListener(v -> {
+            String logs = FalconsVisionGuardEngine.getLogs(context);
+            new AlertDialog.Builder(context)
+                    .setTitle("Falcons.ai Visual Audit Logs 🦅")
+                    .setMessage(logs)
+                    .setNeutralButton("Clear Logs", (d, w) -> {
+                        FalconsVisionGuardEngine.clearLogs(context);
+                        Toast.makeText(context, "Falcons logs cleared", Toast.LENGTH_SHORT).show();
+                    })
+                    .setPositiveButton("OK", null)
+                    .show();
+        });
+        layout.addView(falconsLogsBtn);
+
         Button pickerBtn = new Button(context);
         pickerBtn.setText("📲 Manage Monitored Apps List");
         pickerBtn.setOnClickListener(v -> showMonitoredAppPickerDialog());
