@@ -435,25 +435,11 @@ public class ImpulseGuardService extends AccessibilityService {
                                         hardwareBuffer.close();
 
                                         if (softwareBitmap != null) {
-                                            // Save last captured frame for temporary debug inspection
-                                            try {
-                                                File debugFile = new File(getFilesDir(), "falcons_debug_last_frame.jpg");
-                                                try (FileOutputStream fos = new FileOutputStream(debugFile)) {
-                                                    softwareBitmap.compress(Bitmap.CompressFormat.JPEG, 80, fos);
-                                                }
-                                            } catch (Exception ignored) {}
-
                                             FalconsVisionGuardEngine.VisionResult result =
                                                     FalconsVisionGuardEngine.evaluateBitmap(ImpulseGuardService.this, packageName, softwareBitmap);
+                                            softwareBitmap.recycle();
 
                                             if (result.isNsfw) {
-                                                try {
-                                                    File violationFile = new File(getFilesDir(), "falcons_last_violation.jpg");
-                                                    try (FileOutputStream fos = new FileOutputStream(violationFile)) {
-                                                        softwareBitmap.compress(Bitmap.CompressFormat.JPEG, 80, fos);
-                                                    }
-                                                } catch (Exception ignored) {}
-
                                                 Log.w(TAG, "🚨 FALCONS.AI VISUAL NSFW VIOLATION in [" + packageName + "] (NSFW=" + String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100) + ") -> ENFORCING SUSPENSION!");
                                                 mHandler.post(new Runnable() {
                                                     @Override
@@ -462,7 +448,6 @@ public class ImpulseGuardService extends AccessibilityService {
                                                     }
                                                 });
                                             }
-                                            softwareBitmap.recycle();
                                         }
                                     }
                                 } catch (Exception e) {

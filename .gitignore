@@ -15,3 +15,12 @@ DpcLocker/build/obj/
 testdpc_source/.gradle/
 testdpc_source/build/
 testdpc_source/app/build/
+
+# Ignore images and media
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.bmp
+models/
+temp_*
