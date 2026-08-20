@@ -179,7 +179,7 @@ public class ImpulseGuardService extends AccessibilityService {
             long now = System.currentTimeMillis();
             SharedPreferences.Editor editor = prefs.edit();
 
-            boolean isEngineActive = GeminiGuardEngine.isEnabled(this);
+            boolean isEngineActive = GeminiGuardEngine.isEnabled(this) || FalconsVisionGuardEngine.isEnabled(this);
 
             for (Map.Entry<String, ?> entry : allEntries.entrySet()) {
                 String pkg = entry.getKey();
