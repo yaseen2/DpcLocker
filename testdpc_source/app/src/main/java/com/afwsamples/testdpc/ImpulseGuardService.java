@@ -430,23 +430,31 @@ public class ImpulseGuardService extends AccessibilityService {
                                     ColorSpace colorSpace = screenshotResult.getColorSpace();
                                     Bitmap bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace);
                                     if (bitmap != null) {
-                                        Bitmap softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false);
+                                        // High-speed downscale directly from hardware buffer to 224x224 before copy (eliminates 10MB software copy lag)
+                                        Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 224, 224, false);
                                         bitmap.recycle();
                                         hardwareBuffer.close();
 
-                                        if (softwareBitmap != null) {
-                                            FalconsVisionGuardEngine.VisionResult result =
-                                                    FalconsVisionGuardEngine.evaluateBitmap(ImpulseGuardService.this, packageName, softwareBitmap);
-                                            softwareBitmap.recycle();
+                                        if (scaledBitmap != null) {
+                                            Bitmap softwareBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, false);
+                                            if (scaledBitmap != softwareBitmap) {
+                                                scaledBitmap.recycle();
+                                            }
 
-                                            if (result.isNsfw) {
-                                                Log.w(TAG, "🚨 FALCONS.AI VISUAL NSFW VIOLATION in [" + packageName + "] (NSFW=" + String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100) + ") -> ENFORCING SUSPENSION!");
-                                                mHandler.post(new Runnable() {
-                                                    @Override
-                                                    public void run() {
-                                                        enforcePackageSuspension(packageName, "FALCONS_AI_VISUAL_NSFW");
-                                                    }
-                                                });
+                                            if (softwareBitmap != null) {
+                                                FalconsVisionGuardEngine.VisionResult result =
+                                                        FalconsVisionGuardEngine.evaluateBitmap(ImpulseGuardService.this, packageName, softwareBitmap);
+                                                softwareBitmap.recycle();
+
+                                                if (result.isNsfw) {
+                                                    Log.w(TAG, "🚨 FALCONS.AI VISUAL NSFW VIOLATION in [" + packageName + "] (NSFW=" + String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100) + ") -> ENFORCING SUSPENSION!");
+                                                    mHandler.post(new Runnable() {
+                                                        @Override
+                                                        public void run() {
+                                                            enforcePackageSuspension(packageName, "FALCONS_AI_VISUAL_NSFW");
+                                                        }
+                                                    });
+                                                }
                                             }
                                         }
                                     }

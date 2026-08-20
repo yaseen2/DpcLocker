@@ -211,29 +211,17 @@ public class FalconsVisionGuardEngine {
                     sOrtEnv = OrtEnvironment.getEnvironment();
                 }
 
-                // 1. First attempt: NNAPI Hardware Acceleration (Google Tensor TPU / Qualcomm NPU)
-                try {
-                    OrtSession.SessionOptions nnapiOpts = new OrtSession.SessionOptions();
-                    nnapiOpts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-                    nnapiOpts.addNnapi();
-                    sOrtSession = sOrtEnv.createSession(modelFile.getAbsolutePath(), nnapiOpts);
-                    sActiveExecutionProvider = "NNAPI_NPU_ACCELERATED";
-                    Log.i(TAG, "Falcons.ai Vision Transformer session initialized successfully with NNAPI TPU/NPU Acceleration!");
-                    return true;
-                } catch (Exception nnapiEx) {
-                    Log.w(TAG, "NNAPI acceleration not supported for this graph/driver, falling back to 4-thread CPU: " + nnapiEx.getMessage());
-                }
-
-                // 2. Fallback: Multi-Threaded Intra-Op CPU Execution
                 OrtSession.SessionOptions cpuOpts = new OrtSession.SessionOptions();
                 cpuOpts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
                 int threads = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors()));
                 cpuOpts.setIntraOpNumThreads(threads);
+                cpuOpts.setInterOpNumThreads(2);
+                cpuOpts.setMemoryPatternOptimization(true);
                 cpuOpts.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL);
 
                 sOrtSession = sOrtEnv.createSession(modelFile.getAbsolutePath(), cpuOpts);
-                sActiveExecutionProvider = "CPU_INTRAOP_" + threads + "_THREADS";
-                Log.i(TAG, "Falcons.ai Vision Transformer session initialized successfully with " + threads + " CPU threads!");
+                sActiveExecutionProvider = "ARM_NEON_CPU_" + threads + "_THREADS";
+                Log.i(TAG, "Falcons.ai Vision Transformer session initialized with ARM NEON (" + threads + " threads)!");
                 return true;
 
             } catch (Exception e) {
