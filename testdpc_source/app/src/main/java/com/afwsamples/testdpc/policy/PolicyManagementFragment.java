@@ -27,9 +27,11 @@ import com.afwsamples.testdpc.SecurityPipelineManager;
 import android.text.InputType;
 import android.view.ViewGroup;
 import java.util.Locale;
+import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -4365,6 +4367,57 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         falconsVisionSwitch.setChecked(FalconsVisionGuardEngine.isEnabled(context));
         layout.addView(falconsVisionSwitch);
 
+        // Falcons.ai Sensitivity Threshold Control
+        final TextView thresholdLabel = new TextView(context);
+        float currentThreshold = FalconsVisionGuardEngine.getThreshold(context);
+        int currentProgress = Math.round(currentThreshold * 100);
+
+        thresholdLabel.setText(String.format(Locale.US, "\n🦅 Falcons.ai Sensitivity Threshold: %d%%\n%s",
+                currentProgress, getFalconsSensitivityDescription(currentProgress)));
+        thresholdLabel.setTextSize(13);
+        layout.addView(thresholdLabel);
+
+        final SeekBar thresholdSeekBar = new SeekBar(context);
+        thresholdSeekBar.setMax(70); // 20% to 90% (progress + 20)
+        thresholdSeekBar.setProgress(Math.max(0, Math.min(70, currentProgress - 20)));
+
+        thresholdSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int percent = progress + 20;
+                thresholdLabel.setText(String.format(Locale.US, "\n🦅 Falcons.ai Sensitivity Threshold: %d%%\n%s",
+                        percent, getFalconsSensitivityDescription(percent)));
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        layout.addView(thresholdSeekBar);
+
+        // Preset Shortcut Buttons Row
+        LinearLayout presetRow = new LinearLayout(context);
+        presetRow.setOrientation(LinearLayout.HORIZONTAL);
+        presetRow.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        Button presetMonk = new Button(context);
+        presetMonk.setText("🔥 Strict (50%)");
+        presetMonk.setTextSize(11);
+        presetMonk.setOnClickListener(v -> thresholdSeekBar.setProgress(50 - 20));
+        presetRow.addView(presetMonk);
+
+        Button presetStandard = new Button(context);
+        presetStandard.setText("🛡️ Standard (70%)");
+        presetStandard.setTextSize(11);
+        presetStandard.setOnClickListener(v -> thresholdSeekBar.setProgress(70 - 20));
+        presetRow.addView(presetStandard);
+
+        Button presetUltra = new Button(context);
+        presetUltra.setText("⚡ Ultra (35%)");
+        presetUltra.setTextSize(11);
+        presetUltra.setOnClickListener(v -> thresholdSeekBar.setProgress(35 - 20));
+        presetRow.addView(presetUltra);
+
+        layout.addView(presetRow);
+
         final TextView keyLabel = new TextView(context);
         keyLabel.setText("\nGemini API Key (Free tier via Google AI Studio):");
         layout.addView(keyLabel);
@@ -4516,6 +4569,10 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                     GeminiGuardEngine.setEnabled(context, enabled);
                     GeminiGuardEngine.setScreenGuardEnabled(context, screenEnabled);
                     FalconsVisionGuardEngine.setEnabled(context, falconsEnabled);
+
+                    float newThreshold = (thresholdSeekBar.getProgress() + 20) / 100.0f;
+                    FalconsVisionGuardEngine.setThreshold(context, newThreshold);
+
                     GeminiGuardEngine.setApiKey(context, key);
 
                     try {
@@ -4527,10 +4584,22 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                     } catch (Exception ignored) {
                     }
 
-                    Toast.makeText(context, "AI Guard settings saved!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, String.format(Locale.US, "AI Guard settings saved! (Sensitivity: %d%%)", Math.round(newThreshold * 100)), Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private String getFalconsSensitivityDescription(int percent) {
+        if (percent <= 40) {
+            return "⚡ Ultra Strict (Bikinis, Swimwear & Exposed Skin)";
+        } else if (percent <= 55) {
+            return "🔥 Strict / Monk (Lingerie, Revealing Reels & Suggestive Dance)";
+        } else if (percent <= 75) {
+            return "🛡️ Standard (Adult Porn, Heavy Nudity & Provocative Feeds)";
+        } else {
+            return "🌱 Lenient (Only Explicit Full Nudity)";
+        }
     }
 
     private void showMonitoredAppPickerDialog() {
