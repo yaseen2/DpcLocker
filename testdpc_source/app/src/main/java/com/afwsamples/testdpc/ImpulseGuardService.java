@@ -719,7 +719,10 @@ public class ImpulseGuardService extends AccessibilityService {
     }
 
     private void enforcePackageSuspension(final String packageName, String typedText) {
-        if (!GeminiGuardEngine.isEnabled(this) || packageName == null || SYSTEM_WHITELIST.contains(packageName) || packageName.startsWith("com.afwsamples.testdpc") || packageName.equals("test.sandbox")) {
+        boolean geminiActive = GeminiGuardEngine.isEnabled(this);
+        boolean falconsActive = FalconsVisionGuardEngine.isEnabled(this);
+
+        if ((!geminiActive && !falconsActive) || packageName == null || SYSTEM_WHITELIST.contains(packageName) || packageName.startsWith("com.afwsamples.testdpc") || packageName.equals("test.sandbox")) {
             Log.i(TAG, "Ignoring suspension for protected or disabled package: " + packageName);
             return;
         }
@@ -752,17 +755,24 @@ public class ImpulseGuardService extends AccessibilityService {
         long now = System.currentTimeMillis();
         long expiryTimestamp = now + penalty.durationMs;
 
-        Log.w(TAG, "SUSPENDING TARGET PACKAGE [" + packageName + "] FOR " + penalty.durationMinutes + " MINUTE(S) (VIOLATION #" + penalty.violationCount + ")! Query: \"" + typedText + "\"");
+        Log.w(TAG, "SUSPENDING TARGET PACKAGE [" + packageName + "] FOR " + penalty.durationMinutes + " MINUTE(S) (VIOLATION #" + penalty.violationCount + ")! Reason/Query: \"" + typedText + "\"");
 
         try {
             final DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
             if (dpm != null && dpm.isDeviceOwnerApp(getPackageName())) {
-                // 1. Suspend the target app immediately
+                // 1. Suspend the target app immediately in Device Policy Manager
                 dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(this), new String[]{packageName}, true);
                 recordPackageSuspension(packageName, expiryTimestamp);
                 showSuspensionNotification(packageName, penalty.violationCount, penalty.durationMinutes);
 
-                // 2. Schedule automatic unsuspend check
+                // 2. Immediately close foreground violating activity by returning to Home Screen
+                try {
+                    performGlobalAction(GLOBAL_ACTION_HOME);
+                } catch (Exception homeEx) {
+                    Log.w(TAG, "Could not send GLOBAL_ACTION_HOME: " + homeEx.getMessage());
+                }
+
+                // 3. Schedule automatic unsuspend check
                 mHandler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
