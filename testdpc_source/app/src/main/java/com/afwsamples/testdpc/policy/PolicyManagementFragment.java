@@ -4418,6 +4418,23 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
 
         layout.addView(presetRow);
 
+        // Daily Strike Counter Display & Administrative Reset
+        final TextView strikeStatusLabel = new TextView(context);
+        int currentStrikes = ImpulseGuardService.getDailyStrikes(context);
+        strikeStatusLabel.setText(String.format(Locale.US, "\n🎯 Today's Warnings Used: %d / 2\n(Strike 1: Back | Strike 2: Back+Haptic | Strike 3: 10m Suspension)", currentStrikes));
+        strikeStatusLabel.setTextSize(12);
+        layout.addView(strikeStatusLabel);
+
+        Button resetStrikesBtn = new Button(context);
+        resetStrikesBtn.setText("🔄 Reset Today's Strikes to 0");
+        resetStrikesBtn.setTextSize(11);
+        resetStrikesBtn.setOnClickListener(v -> {
+            ImpulseGuardService.resetDailyStrikes(context);
+            strikeStatusLabel.setText(String.format(Locale.US, "\n🎯 Today's Warnings Used: 0 / 2 (Reset Successful!)\n(Strike 1: Back | Strike 2: Back+Haptic | Strike 3: 10m Suspension)"));
+            Toast.makeText(context, "Today's strikes reset to 0", Toast.LENGTH_SHORT).show();
+        });
+        layout.addView(resetStrikesBtn);
+
         final TextView keyLabel = new TextView(context);
         keyLabel.setText("\nGemini API Key (Free tier via Google AI Studio):");
         layout.addView(keyLabel);

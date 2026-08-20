@@ -22,12 +22,16 @@ import android.util.Log;
 import android.view.Display;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.os.Vibrator;
+import android.os.VibrationEffect;
 import android.widget.Toast;
 import androidx.core.app.NotificationCompat;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -49,6 +53,39 @@ public class ImpulseGuardService extends AccessibilityService {
     private static final String PREF_SUSPENSIONS = "impulse_guard_active_suspensions";
     private static final String PREF_MONITORED_APPS = "impulse_guard_monitored_apps";
     private static final String PREF_NEVER_ASK_APPS = "impulse_guard_never_ask_apps";
+    private static final String PREF_KEY_DAILY_STRIKES = "falcons_daily_strikes";
+    private static final String PREF_KEY_LAST_STRIKE_DATE = "falcons_last_strike_date";
+    private static long sLastStrikeTimestamp = 0;
+
+    public static int getDailyStrikes(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences("falcons_vision_guard_prefs", Context.MODE_PRIVATE);
+        String today = new SimpleDateFormat("yyyyMMdd", Locale.US).format(new Date());
+        String lastDate = prefs.getString(PREF_KEY_LAST_STRIKE_DATE, "");
+        if (!today.equals(lastDate)) {
+            prefs.edit().putInt(PREF_KEY_DAILY_STRIKES, 0).putString(PREF_KEY_LAST_STRIKE_DATE, today).apply();
+            return 0;
+        }
+        return prefs.getInt(PREF_KEY_DAILY_STRIKES, 0);
+    }
+
+    public static int incrementDailyStrikes(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences("falcons_vision_guard_prefs", Context.MODE_PRIVATE);
+        String today = new SimpleDateFormat("yyyyMMdd", Locale.US).format(new Date());
+        String lastDate = prefs.getString(PREF_KEY_LAST_STRIKE_DATE, "");
+        int currentStrikes = 0;
+        if (today.equals(lastDate)) {
+            currentStrikes = prefs.getInt(PREF_KEY_DAILY_STRIKES, 0);
+        }
+        int newStrikes = currentStrikes + 1;
+        prefs.edit().putInt(PREF_KEY_DAILY_STRIKES, newStrikes).putString(PREF_KEY_LAST_STRIKE_DATE, today).apply();
+        return newStrikes;
+    }
+
+    public static void resetDailyStrikes(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences("falcons_vision_guard_prefs", Context.MODE_PRIVATE);
+        String today = new SimpleDateFormat("yyyyMMdd", Locale.US).format(new Date());
+        prefs.edit().putInt(PREF_KEY_DAILY_STRIKES, 0).putString(PREF_KEY_LAST_STRIKE_DATE, today).apply();
+    }
 
     public static final String ACTION_MONITOR_APP = "com.afwsamples.testdpc.ACTION_MONITOR_APP";
     public static final String ACTION_WHITELIST_APP = "com.afwsamples.testdpc.ACTION_WHITELIST_APP";
@@ -442,18 +479,34 @@ public class ImpulseGuardService extends AccessibilityService {
                                             }
 
                                             if (softwareBitmap != null) {
+                                                try {
+                                                    File debugFile = new File(getFilesDir(), "falcons_debug_last_frame.jpg");
+                                                    try (FileOutputStream fos = new FileOutputStream(debugFile)) {
+                                                        softwareBitmap.compress(Bitmap.CompressFormat.JPEG, 85, fos);
+                                                    }
+                                                } catch (Exception ignored) {}
+
                                                 FalconsVisionGuardEngine.VisionResult result =
                                                         FalconsVisionGuardEngine.evaluateBitmap(ImpulseGuardService.this, packageName, softwareBitmap);
                                                 softwareBitmap.recycle();
 
                                                 if (result.isNsfw) {
-                                                    Log.w(TAG, "🚨 FALCONS.AI VISUAL NSFW VIOLATION in [" + packageName + "] (NSFW=" + String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100) + ") -> ENFORCING SUSPENSION!");
-                                                    mHandler.post(new Runnable() {
-                                                        @Override
-                                                        public void run() {
-                                                            enforcePackageSuspension(packageName, "FALCONS_AI_VISUAL_NSFW");
-                                                        }
-                                                    });
+                                                    long now = System.currentTimeMillis();
+                                                    // 5-second grace cooldown to avoid multiple strikes on the same screen frame transition
+                                                    if (now - sLastStrikeTimestamp < 5000) {
+                                                        Log.i(TAG, "Falcons NSFW detected inside 5s grace cooldown. Skipping duplicate strike.");
+                                                    } else {
+                                                        sLastStrikeTimestamp = now;
+                                                        final int strikeCount = incrementDailyStrikes(ImpulseGuardService.this);
+                                                        Log.w(TAG, "🚨 FALCONS.AI VISUAL NSFW VIOLATION in [" + packageName + "] (NSFW=" + String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100) + ") -> STRIKE #" + strikeCount + " TODAY!");
+
+                                                        mHandler.post(new Runnable() {
+                                                            @Override
+                                                            public void run() {
+                                                                handleVisualNsfwStrike(packageName, strikeCount);
+                                                            }
+                                                        });
+                                                    }
                                                 }
                                             }
                                         }
@@ -725,6 +778,44 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         } catch (Exception e) {
             Log.e(TAG, "Error in triggerPostSearchScreenAudit", e);
+        }
+    }
+
+    private void handleVisualNsfwStrike(final String packageName, int strikeCount) {
+        if (strikeCount == 1) {
+            // Strike 1: Press BACK button + Warning Toast (1/2)
+            performGlobalAction(GLOBAL_ACTION_BACK);
+            Toast.makeText(this, "⚠️ Content Warning (1/2) - Exiting content", Toast.LENGTH_SHORT).show();
+            SecurityLogger.log(this, "[FALCONS_STRIKE_1]", "Strike 1 in [" + packageName + "]: Triggered BACK action.");
+
+        } else if (strikeCount == 2) {
+            // Strike 2: Press BACK button + Double Haptic Pulse + Final Warning Toast (2/2)
+            performGlobalAction(GLOBAL_ACTION_BACK);
+            triggerHapticFeedback();
+            Toast.makeText(this, "🚨 Final Warning (2/2) - Next violation locks app", Toast.LENGTH_LONG).show();
+            SecurityLogger.log(this, "[FALCONS_STRIKE_2]", "Strike 2 in [" + packageName + "]: Triggered BACK action & Haptic Warning.");
+
+        } else {
+            // Strike 3+: Enforce 10-minute app suspension via Device Policy Manager
+            Toast.makeText(this, "🔒 Content Blocked - App locked for 10 minutes", Toast.LENGTH_LONG).show();
+            enforcePackageSuspension(packageName, "FALCONS_AI_3RD_STRIKE_LOCKOUT");
+            SecurityLogger.log(this, "[FALCONS_STRIKE_3]", "Strike 3 in [" + packageName + "]: Enforced 10-min suspension lockout.");
+        }
+    }
+
+    private void triggerHapticFeedback() {
+        try {
+            Vibrator vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            if (vibrator != null && vibrator.hasVibrator()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    // Double pulse: 150ms on, 100ms off, 200ms on
+                    vibrator.vibrate(VibrationEffect.createWaveform(new long[]{0, 150, 100, 200}, -1));
+                } else {
+                    vibrator.vibrate(new long[]{0, 150, 100, 200}, -1);
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not trigger haptic vibration: " + e.getMessage());
         }
     }
 
