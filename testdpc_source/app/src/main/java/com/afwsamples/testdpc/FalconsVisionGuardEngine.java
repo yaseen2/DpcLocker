@@ -233,6 +233,13 @@ public class FalconsVisionGuardEngine {
             // 1. Resize to ViT patch input: 224 x 224
             scaledBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, false);
 
+            try {
+                File vitInputFile = new File(context.getFilesDir(), "falcons_debug_input_224.jpg");
+                try (FileOutputStream fos = new FileOutputStream(vitInputFile)) {
+                    scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 90, fos);
+                }
+            } catch (Exception ignored) {}
+
             int channelSize = INPUT_SIZE * INPUT_SIZE;
             int[] pixels = new int[channelSize];
             scaledBitmap.getPixels(pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE);
