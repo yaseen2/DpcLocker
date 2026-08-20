@@ -253,67 +253,70 @@ public class ImpulseGuardService extends AccessibilityService {
             return;
         }
 
-        String extractedText = extractActiveText(event);
-        if (extractedText != null && extractedText.trim().length() >= 3) {
-            final String typedText = extractedText.trim();
-            if (!typedText.equalsIgnoreCase("Search or type URL") && !typedText.equalsIgnoreCase("Search Google or type URL") &&
-                    !typedText.startsWith("http://") && !typedText.startsWith("https://") && !typedText.startsWith("www.")) {
+        // 4. STRICT TYPED SEARCH QUERY INSPECTOR (Only on Text Change or Direct Search Click)
+        boolean isTextInputEvent = (eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED);
+        boolean isClickInputEvent = (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isSearchOrInputNode(event.getSource()));
 
-                // Instant trigger on Search Button / Suggestion Click (TYPE_VIEW_CLICKED)
-                boolean isDirectClick = (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED);
+        if (isTextInputEvent || isClickInputEvent) {
+            String extractedText = extractActiveText(event);
+            if (extractedText != null && extractedText.trim().length() >= 3) {
+                final String typedText = extractedText.trim();
+                if (!typedText.equalsIgnoreCase("Search or type URL") && !typedText.equalsIgnoreCase("Search Google or type URL") &&
+                        !typedText.startsWith("http://") && !typedText.startsWith("https://") && !typedText.startsWith("www.")) {
 
-                // 0ms Fast Path for Local Cache Risky Items
-                Boolean localCached = GeminiGuardEngine.getCachedVerdict(this, typedText);
-                if (localCached != null && localCached) {
-                    mBgExecutor.execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            evaluateAndEnforceImpulseGuard(packageName, typedText);
-                        }
-                    });
-                } else if (isDirectClick) {
-                    // Instant evaluation when user taps Search / Suggestion
-                    mBgExecutor.execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            evaluateAndEnforceImpulseGuard(packageName, typedText);
-                        }
-                    });
-                } else {
-                    // Typing Completion Trigger: Wait 1200ms idle pause after typing stops to ensure user finishes complete query
-                    if (mPendingAuditRunnable != null) {
-                        mHandler.removeCallbacks(mPendingAuditRunnable);
-                    }
-
-                    mPendingAuditRunnable = new Runnable() {
-                        @Override
-                        public void run() {
-                            String lastTextForPkg = mLastEvaluatedTextMap.get(packageName);
-                            if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(typedText)) {
-                                mLastEvaluatedTextMap.put(packageName, typedText);
-                                Log.d(TAG, "Captured complete search query in [" + packageName + "]: \"" + typedText + "\"");
-
-                                mBgExecutor.execute(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        evaluateAndEnforceImpulseGuard(packageName, typedText);
-                                    }
-                                });
+                    // 0ms Fast Path for Local Cache Risky Items
+                    Boolean localCached = GeminiGuardEngine.getCachedVerdict(this, typedText);
+                    if (localCached != null && localCached) {
+                        mBgExecutor.execute(new Runnable() {
+                            @Override
+                            public void run() {
+                                evaluateAndEnforceImpulseGuard(packageName, typedText);
                             }
+                        });
+                    } else if (isClickInputEvent) {
+                        // Instant evaluation when user taps Search / Suggestion
+                        mBgExecutor.execute(new Runnable() {
+                            @Override
+                            public void run() {
+                                evaluateAndEnforceImpulseGuard(packageName, typedText);
+                            }
+                        });
+                    } else {
+                        // Typing Completion Trigger: Wait 1200ms idle pause after typing stops to ensure user finishes complete query
+                        if (mPendingAuditRunnable != null) {
+                            mHandler.removeCallbacks(mPendingAuditRunnable);
                         }
-                    };
 
-                    mHandler.postDelayed(mPendingAuditRunnable, 1200);
+                        mPendingAuditRunnable = new Runnable() {
+                            @Override
+                            public void run() {
+                                String lastTextForPkg = mLastEvaluatedTextMap.get(packageName);
+                                if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(typedText)) {
+                                    mLastEvaluatedTextMap.put(packageName, typedText);
+                                    Log.d(TAG, "Captured complete search query in [" + packageName + "]: \"" + typedText + "\"");
+
+                                    mBgExecutor.execute(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            evaluateAndEnforceImpulseGuard(packageName, typedText);
+                                        }
+                                    });
+                                }
+                            }
+                        };
+
+                        mHandler.postDelayed(mPendingAuditRunnable, 1200);
+                    }
                 }
             }
         }
 
-        // 5. Anti-Bypass Full Screen Text Scan on Render / Scroll / Switch
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-                eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
-                eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        // 5. Anti-Bypass Full Screen Text Scan (ONLY active if Screen Guard is enabled in Settings)
+        if (GeminiGuardEngine.isScreenGuardEnabled(this)) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                    eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+                    eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
 
-            if (GeminiGuardEngine.isScreenGuardEnabled(this)) {
                 if (mPendingScreenAuditRunnable != null) {
                     mHandler.removeCallbacks(mPendingScreenAuditRunnable);
                 }
@@ -344,7 +347,7 @@ public class ImpulseGuardService extends AccessibilityService {
                     }
                 };
 
-                mHandler.postDelayed(mPendingScreenAuditRunnable, 300);
+                mHandler.postDelayed(mPendingScreenAuditRunnable, 400);
             }
         }
     }
@@ -373,8 +376,11 @@ public class ImpulseGuardService extends AccessibilityService {
             if (node.isPassword()) return;
 
             CharSequence className = node.getClassName();
-            if (className != null && className.toString().toLowerCase(Locale.US).contains("password")) {
-                return;
+            if (className != null) {
+                String cls = className.toString().toLowerCase(Locale.US);
+                if (cls.contains("password") || cls.contains("subtitle") || cls.contains("caption")) {
+                    return;
+                }
             }
 
             CharSequence text = node.getText();
@@ -384,7 +390,7 @@ public class ImpulseGuardService extends AccessibilityService {
 
             if (text != null && text.length() > 2) {
                 String str = text.toString().trim();
-                if (!str.equalsIgnoreCase("Search or type URL") && !str.startsWith("http://") && !str.startsWith("https://")) {
+                if (!str.startsWith(">>") && !str.equalsIgnoreCase("Search or type URL") && !str.startsWith("http://") && !str.startsWith("https://")) {
                     sb.append(str).append(" ");
                 }
             }
@@ -436,6 +442,33 @@ public class ImpulseGuardService extends AccessibilityService {
         return false;
     }
 
+    private boolean isSearchOrInputNode(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        try {
+            if (node.isEditable()) return true;
+
+            CharSequence className = node.getClassName();
+            if (className != null) {
+                String cls = className.toString().toLowerCase(Locale.US);
+                if (cls.contains("edittext") || cls.contains("autocompletetextview")) {
+                    return true;
+                }
+            }
+
+            CharSequence viewId = node.getViewIdResourceName();
+            if (viewId != null) {
+                String id = viewId.toString().toLowerCase(Locale.US);
+                if (id.contains("search") || id.contains("url_bar") || id.contains("search_box") ||
+                        id.contains("omnibox") || id.contains("query") || id.contains("search_src_text") ||
+                        id.contains("search_button") || id.contains("search_plate")) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
     private boolean isLikelyBrowserOrSearchApp(String packageName) {
         String lower = packageName.toLowerCase(Locale.US);
         return lower.contains("browser") || lower.contains("chrome") || lower.contains("firefox") ||
@@ -445,7 +478,8 @@ public class ImpulseGuardService extends AccessibilityService {
     private boolean isMeaningfulSearchText(String str) {
         if (str == null || str.length() < 3) return false;
         String lower = str.toLowerCase(Locale.US);
-        if (lower.equals("search with meta ai") || lower.equals("search google or type url") ||
+        if (str.startsWith(">>") || lower.startsWith(">>") ||
+                lower.equals("search with meta ai") || lower.equals("search google or type url") ||
                 lower.equals("search or type url") || lower.equals("search youtube") ||
                 lower.equals("search") || lower.equals("application icon") ||
                 lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("www.")) {
@@ -455,6 +489,11 @@ public class ImpulseGuardService extends AccessibilityService {
     }
 
     private String extractActiveText(AccessibilityEvent event) {
+        AccessibilityNodeInfo source = event.getSource();
+        if (source != null && !isSearchOrInputNode(source)) {
+            return null; // Ignore non-input / non-search nodes completely
+        }
+
         if (event.getText() != null && !event.getText().isEmpty()) {
             StringBuilder sb = new StringBuilder();
             for (CharSequence seq : event.getText()) {
@@ -470,7 +509,6 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         }
 
-        AccessibilityNodeInfo source = event.getSource();
         if (source != null) {
             String textFromNode = findSearchNodeText(source);
             if (textFromNode != null) {
@@ -485,11 +523,13 @@ public class ImpulseGuardService extends AccessibilityService {
             return null;
         }
 
-        CharSequence text = node.getText();
-        if (text != null && text.length() >= 3) {
-            String str = text.toString().trim();
-            if (isMeaningfulSearchText(str)) {
-                return str;
+        if (isSearchOrInputNode(node)) {
+            CharSequence text = node.getText();
+            if (text != null && text.length() >= 3) {
+                String str = text.toString().trim();
+                if (isMeaningfulSearchText(str)) {
+                    return str;
+                }
             }
         }
 
