@@ -244,7 +244,10 @@ public class ImpulseGuardService extends AccessibilityService {
     public void onAccessibilityEvent(AccessibilityEvent event) {
         checkAndCleanExpiredSuspensions();
 
-        if (!GeminiGuardEngine.isEnabled(this) || event == null) {
+        boolean geminiActive = GeminiGuardEngine.isEnabled(this);
+        boolean falconsActive = FalconsVisionGuardEngine.isEnabled(this);
+
+        if ((!geminiActive && !falconsActive) || event == null) {
             return;
         }
 
@@ -280,58 +283,60 @@ public class ImpulseGuardService extends AccessibilityService {
         }
 
         // 4. STRICT TYPED SEARCH QUERY INSPECTOR (Only on Text Change or Direct Search Click)
-        boolean isTextInputEvent = (eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED);
-        boolean isClickInputEvent = (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isSearchOrInputNode(event.getSource()));
+        if (geminiActive) {
+            boolean isTextInputEvent = (eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED);
+            boolean isClickInputEvent = (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isSearchOrInputNode(event.getSource()));
 
-        if (isTextInputEvent || isClickInputEvent) {
-            String extractedText = extractActiveText(event);
-            if (extractedText != null && extractedText.trim().length() >= 3) {
-                final String typedText = extractedText.trim();
-                if (!typedText.equalsIgnoreCase("Search or type URL") && !typedText.equalsIgnoreCase("Search Google or type URL") &&
-                        !typedText.startsWith("http://") && !typedText.startsWith("https://") && !typedText.startsWith("www.")) {
+            if (isTextInputEvent || isClickInputEvent) {
+                String extractedText = extractActiveText(event);
+                if (extractedText != null && extractedText.trim().length() >= 3) {
+                    final String typedText = extractedText.trim();
+                    if (!typedText.equalsIgnoreCase("Search or type URL") && !typedText.equalsIgnoreCase("Search Google or type URL") &&
+                            !typedText.startsWith("http://") && !typedText.startsWith("https://") && !typedText.startsWith("www.")) {
 
-                    // 0ms Fast Path for Local Cache Risky Items
-                    Boolean localCached = GeminiGuardEngine.getCachedVerdict(this, typedText);
-                    if (localCached != null && localCached) {
-                        mBgExecutor.execute(new Runnable() {
-                            @Override
-                            public void run() {
-                                evaluateAndEnforceImpulseGuard(packageName, typedText);
-                            }
-                        });
-                    } else if (isClickInputEvent) {
-                        // Instant evaluation when user taps Search / Suggestion
-                        mBgExecutor.execute(new Runnable() {
-                            @Override
-                            public void run() {
-                                evaluateAndEnforceImpulseGuard(packageName, typedText);
-                            }
-                        });
-                    } else {
-                        // Typing Completion Trigger: Wait 1200ms idle pause after typing stops to ensure user finishes complete query
-                        if (mPendingAuditRunnable != null) {
-                            mHandler.removeCallbacks(mPendingAuditRunnable);
-                        }
-
-                        mPendingAuditRunnable = new Runnable() {
-                            @Override
-                            public void run() {
-                                String lastTextForPkg = mLastEvaluatedTextMap.get(packageName);
-                                if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(typedText)) {
-                                    mLastEvaluatedTextMap.put(packageName, typedText);
-                                    Log.d(TAG, "Captured complete search query in [" + packageName + "]: \"" + typedText + "\"");
-
-                                    mBgExecutor.execute(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            evaluateAndEnforceImpulseGuard(packageName, typedText);
-                                        }
-                                    });
+                        // 0ms Fast Path for Local Cache Risky Items
+                        Boolean localCached = GeminiGuardEngine.getCachedVerdict(this, typedText);
+                        if (localCached != null && localCached) {
+                            mBgExecutor.execute(new Runnable() {
+                                @Override
+                                public void run() {
+                                    evaluateAndEnforceImpulseGuard(packageName, typedText);
                                 }
+                            });
+                        } else if (isClickInputEvent) {
+                            // Instant evaluation when user taps Search / Suggestion
+                            mBgExecutor.execute(new Runnable() {
+                                @Override
+                                public void run() {
+                                    evaluateAndEnforceImpulseGuard(packageName, typedText);
+                                }
+                            });
+                        } else {
+                            // Typing Completion Trigger: Wait 1200ms idle pause after typing stops to ensure user finishes complete query
+                            if (mPendingAuditRunnable != null) {
+                                mHandler.removeCallbacks(mPendingAuditRunnable);
                             }
-                        };
 
-                        mHandler.postDelayed(mPendingAuditRunnable, 1200);
+                            mPendingAuditRunnable = new Runnable() {
+                                @Override
+                                public void run() {
+                                    String lastTextForPkg = mLastEvaluatedTextMap.get(packageName);
+                                    if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(typedText)) {
+                                        mLastEvaluatedTextMap.put(packageName, typedText);
+                                        Log.d(TAG, "Captured complete search query in [" + packageName + "]: \"" + typedText + "\"");
+
+                                        mBgExecutor.execute(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                evaluateAndEnforceImpulseGuard(packageName, typedText);
+                                            }
+                                        });
+                                    }
+                                }
+                            };
+
+                            mHandler.postDelayed(mPendingAuditRunnable, 1200);
+                        }
                     }
                 }
             }
@@ -381,7 +386,9 @@ public class ImpulseGuardService extends AccessibilityService {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && FalconsVisionGuardEngine.isEnabled(this)) {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                     eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
-                    eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                    eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+                    eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
 
                 scheduleFalconsVisualDwellAudit(packageName);
             }
@@ -390,20 +397,26 @@ public class ImpulseGuardService extends AccessibilityService {
 
     private Runnable mPendingFalconsVisualAuditRunnable;
     private long mLastFalconsScanTimestamp = 0;
+    private volatile boolean mIsFalconsScanInFlight = false;
 
     private void scheduleFalconsVisualDwellAudit(final String packageName) {
+        long now = System.currentTimeMillis();
+        if (now - mLastFalconsScanTimestamp < 1500 || mIsFalconsScanInFlight) {
+            return;
+        }
+
         if (mPendingFalconsVisualAuditRunnable != null) {
-            mHandler.removeCallbacks(mPendingFalconsVisualAuditRunnable);
+            return; // Already pending, let it fire without resetting
         }
 
         mPendingFalconsVisualAuditRunnable = new Runnable() {
             @Override
             public void run() {
-                long now = System.currentTimeMillis();
-                if (now - mLastFalconsScanTimestamp < 3000) {
-                    return; // Throttle to maximum 1 visual scan every 3 seconds per app
-                }
+                mPendingFalconsVisualAuditRunnable = null;
+                if (mIsFalconsScanInFlight) return;
+                mIsFalconsScanInFlight = true;
 
+                Log.i(TAG, "Triggering Falcons.ai visual screenshot audit for [" + packageName + "]...");
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     try {
                         takeScreenshot(Display.DEFAULT_DISPLAY, mBgExecutor, new TakeScreenshotCallback() {
@@ -425,6 +438,7 @@ public class ImpulseGuardService extends AccessibilityService {
                                             softwareBitmap.recycle();
 
                                             if (result.isNsfw) {
+                                                Log.w(TAG, "🚨 FALCONS.AI VISUAL NSFW VIOLATION in [" + packageName + "] (NSFW=" + String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100) + ") -> ENFORCING SUSPENSION!");
                                                 mHandler.post(new Runnable() {
                                                     @Override
                                                     public void run() {
@@ -436,23 +450,28 @@ public class ImpulseGuardService extends AccessibilityService {
                                     }
                                 } catch (Exception e) {
                                     Log.e(TAG, "Error processing Falcons visual screenshot", e);
+                                } finally {
+                                    mIsFalconsScanInFlight = false;
                                 }
                             }
 
                             @Override
                             public void onFailure(int errorCode) {
-                                Log.w(TAG, "Falcons takeScreenshot failed with code: " + errorCode);
+                                mIsFalconsScanInFlight = false;
+                                Log.w(TAG, "Falcons takeScreenshot failed with error code: " + errorCode);
                             }
                         });
                     } catch (Exception e) {
-                        Log.e(TAG, "Error calling takeScreenshot for Falcons", e);
+                        mIsFalconsScanInFlight = false;
+                        Log.e(TAG, "Error requesting visual screenshot", e);
                     }
+                } else {
+                    mIsFalconsScanInFlight = false;
                 }
             }
         };
 
-        // 2500ms Dwell-Time Gate
-        mHandler.postDelayed(mPendingFalconsVisualAuditRunnable, 2500);
+        mHandler.postDelayed(mPendingFalconsVisualAuditRunnable, 1000);
     }
 
     private String extractFullScreenText(AccessibilityNodeInfo root) {

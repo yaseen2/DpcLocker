@@ -39,7 +39,7 @@ public class FalconsVisionGuardEngine {
     private static final String KEY_LOGS = "falcons_vision_logs";
 
     public static final String MODEL_FILE_NAME = "falcons_nsfw_quantized.onnx";
-    public static final float DEFAULT_THRESHOLD = 0.85f;
+    public static final float DEFAULT_THRESHOLD = 0.70f;
 
     private static final int INPUT_SIZE = 224;
     private static final float[] MEAN = new float[]{0.5f, 0.5f, 0.5f};
