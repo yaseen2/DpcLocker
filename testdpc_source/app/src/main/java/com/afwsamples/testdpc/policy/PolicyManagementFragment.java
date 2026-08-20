@@ -4394,12 +4394,21 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         layout.addView(testBtn);
 
         Button falconsTestBtn = new Button(context);
-        falconsTestBtn.setText("🦅 Test Local Falcons.ai Vision Engine");
+        falconsTestBtn.setText("🦅 Run On-Device Falcons.ai Hardware Diagnostics");
         falconsTestBtn.setOnClickListener(v -> {
-            Bitmap testBmp = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888);
-            FalconsVisionGuardEngine.VisionResult vr = FalconsVisionGuardEngine.evaluateBitmap(context, "test.app", testBmp);
-            testBmp.recycle();
-            Toast.makeText(context, "Falcons.ai Result (" + vr.latencyMs + "ms): " + vr.reason + " (NSFW=" + String.format(Locale.US, "%.1f%%", vr.nsfwProbability * 100) + ")", Toast.LENGTH_LONG).show();
+            Toast.makeText(context, "Running Falcons.ai benchmarks on hardware...", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                String report = FalconsVisionGuardEngine.runSelfDiagnostics(context);
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> {
+                        new AlertDialog.Builder(context)
+                                .setTitle("Falcons.ai Vision Diagnostics 🦅")
+                                .setMessage(report)
+                                .setPositiveButton("OK", null)
+                                .show();
+                    });
+                }
+            }).start();
         });
         layout.addView(falconsTestBtn);
 

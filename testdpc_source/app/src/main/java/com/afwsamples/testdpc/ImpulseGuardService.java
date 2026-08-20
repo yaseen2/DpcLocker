@@ -8,6 +8,7 @@ import android.app.admin.DevicePolicyManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -49,6 +50,7 @@ public class ImpulseGuardService extends AccessibilityService {
 
     public static final String ACTION_MONITOR_APP = "com.afwsamples.testdpc.ACTION_MONITOR_APP";
     public static final String ACTION_WHITELIST_APP = "com.afwsamples.testdpc.ACTION_WHITELIST_APP";
+    public static final String ACTION_RUN_FALCONS_DIAGNOSTICS = "com.afwsamples.testdpc.ACTION_RUN_FALCONS_DIAGNOSTICS";
     public static final String EXTRA_PACKAGE_NAME = "extra_package_name";
 
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -216,6 +218,26 @@ public class ImpulseGuardService extends AccessibilityService {
         Log.i(TAG, "ImpulseGuardService Accessibility Service CONNECTED & RUNNING!");
         createNotificationChannels();
         checkAndCleanExpiredSuspensions();
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(ACTION_MONITOR_APP);
+        filter.addAction(ACTION_WHITELIST_APP);
+        filter.addAction(ACTION_RUN_FALCONS_DIAGNOSTICS);
+
+        registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent == null) return;
+                String action = intent.getAction();
+                if (ACTION_RUN_FALCONS_DIAGNOSTICS.equals(action)) {
+                    Log.i(TAG, "Received ACTION_RUN_FALCONS_DIAGNOSTICS. Triggering hardware benchmarks...");
+                    mBgExecutor.execute(() -> {
+                        String report = FalconsVisionGuardEngine.runSelfDiagnostics(ImpulseGuardService.this);
+                        Log.i("FalconsDiagnostic", "\n" + report);
+                    });
+                }
+            }
+        }, filter);
     }
 
     @Override
