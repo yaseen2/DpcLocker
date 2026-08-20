@@ -16,6 +16,8 @@
 
 package com.afwsamples.testdpc.policy;
 
+import android.graphics.Bitmap;
+import com.afwsamples.testdpc.FalconsVisionGuardEngine;
 import com.afwsamples.testdpc.GeminiGuardEngine;
 import com.afwsamples.testdpc.ImpulseGuardService;
 import com.afwsamples.testdpc.PenaltyManager;
@@ -4358,6 +4360,11 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         screenEnableSwitch.setChecked(GeminiGuardEngine.isScreenGuardEnabled(context));
         layout.addView(screenEnableSwitch);
 
+        final Switch falconsVisionSwitch = new Switch(context);
+        falconsVisionSwitch.setText("Enable Falcons.ai Visual Guard (100% Offline)");
+        falconsVisionSwitch.setChecked(FalconsVisionGuardEngine.isEnabled(context));
+        layout.addView(falconsVisionSwitch);
+
         final TextView keyLabel = new TextView(context);
         keyLabel.setText("\nGemini API Key (Free tier via Google AI Studio):");
         layout.addView(keyLabel);
@@ -4385,6 +4392,16 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
             });
         });
         layout.addView(testBtn);
+
+        Button falconsTestBtn = new Button(context);
+        falconsTestBtn.setText("🦅 Test Local Falcons.ai Vision Engine");
+        falconsTestBtn.setOnClickListener(v -> {
+            Bitmap testBmp = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888);
+            FalconsVisionGuardEngine.VisionResult vr = FalconsVisionGuardEngine.evaluateBitmap(context, "test.app", testBmp);
+            testBmp.recycle();
+            Toast.makeText(context, "Falcons.ai Result (" + vr.latencyMs + "ms): " + vr.reason + " (NSFW=" + String.format(Locale.US, "%.1f%%", vr.nsfwProbability * 100) + ")", Toast.LENGTH_LONG).show();
+        });
+        layout.addView(falconsTestBtn);
 
         Button pickerBtn = new Button(context);
         pickerBtn.setText("📲 Manage Monitored Apps List");
@@ -4480,14 +4497,16 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         scrollView.addView(layout);
 
         new AlertDialog.Builder(context)
-                .setTitle("Gemini 3.6 Flash AI Content Guard 🔒")
+                .setTitle("AI Content Guard 🔒")
                 .setView(scrollView)
                 .setPositiveButton("Save Settings", (d, w) -> {
                     boolean enabled = enableSwitch.isChecked();
                     boolean screenEnabled = screenEnableSwitch.isChecked();
+                    boolean falconsEnabled = falconsVisionSwitch.isChecked();
                     String key = keyInput.getText().toString().trim();
                     GeminiGuardEngine.setEnabled(context, enabled);
                     GeminiGuardEngine.setScreenGuardEnabled(context, screenEnabled);
+                    FalconsVisionGuardEngine.setEnabled(context, falconsEnabled);
                     GeminiGuardEngine.setApiKey(context, key);
 
                     try {
@@ -4499,7 +4518,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                     } catch (Exception ignored) {
                     }
 
-                    Toast.makeText(context, "Gemini AI Guard settings saved!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, "AI Guard settings saved!", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("Cancel", null)
                 .show();

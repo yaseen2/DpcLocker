@@ -12,9 +12,13 @@ import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.graphics.Bitmap;
+import android.graphics.ColorSpace;
+import android.hardware.HardwareBuffer;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.Display;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Toast;
@@ -350,6 +354,83 @@ public class ImpulseGuardService extends AccessibilityService {
                 mHandler.postDelayed(mPendingScreenAuditRunnable, 400);
             }
         }
+
+        // 6. ON-DEVICE FALCONS.AI VISUAL GUARD (100% Offline ViT Vision Transformer via API 30+ takeScreenshot)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && FalconsVisionGuardEngine.isEnabled(this)) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                    eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+                    eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+
+                scheduleFalconsVisualDwellAudit(packageName);
+            }
+        }
+    }
+
+    private Runnable mPendingFalconsVisualAuditRunnable;
+    private long mLastFalconsScanTimestamp = 0;
+
+    private void scheduleFalconsVisualDwellAudit(final String packageName) {
+        if (mPendingFalconsVisualAuditRunnable != null) {
+            mHandler.removeCallbacks(mPendingFalconsVisualAuditRunnable);
+        }
+
+        mPendingFalconsVisualAuditRunnable = new Runnable() {
+            @Override
+            public void run() {
+                long now = System.currentTimeMillis();
+                if (now - mLastFalconsScanTimestamp < 3000) {
+                    return; // Throttle to maximum 1 visual scan every 3 seconds per app
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        takeScreenshot(Display.DEFAULT_DISPLAY, mBgExecutor, new TakeScreenshotCallback() {
+                            @Override
+                            public void onSuccess(ScreenshotResult screenshotResult) {
+                                try {
+                                    mLastFalconsScanTimestamp = System.currentTimeMillis();
+                                    HardwareBuffer hardwareBuffer = screenshotResult.getHardwareBuffer();
+                                    ColorSpace colorSpace = screenshotResult.getColorSpace();
+                                    Bitmap bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace);
+                                    if (bitmap != null) {
+                                        Bitmap softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false);
+                                        bitmap.recycle();
+                                        hardwareBuffer.close();
+
+                                        if (softwareBitmap != null) {
+                                            FalconsVisionGuardEngine.VisionResult result =
+                                                    FalconsVisionGuardEngine.evaluateBitmap(ImpulseGuardService.this, packageName, softwareBitmap);
+                                            softwareBitmap.recycle();
+
+                                            if (result.isNsfw) {
+                                                mHandler.post(new Runnable() {
+                                                    @Override
+                                                    public void run() {
+                                                        enforcePackageSuspension(packageName, "FALCONS_AI_VISUAL_NSFW");
+                                                    }
+                                                });
+                                            }
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error processing Falcons visual screenshot", e);
+                                }
+                            }
+
+                            @Override
+                            public void onFailure(int errorCode) {
+                                Log.w(TAG, "Falcons takeScreenshot failed with code: " + errorCode);
+                            }
+                        });
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error calling takeScreenshot for Falcons", e);
+                    }
+                }
+            }
+        };
+
+        // 2500ms Dwell-Time Gate
+        mHandler.postDelayed(mPendingFalconsVisualAuditRunnable, 2500);
     }
 
     private String extractFullScreenText(AccessibilityNodeInfo root) {
