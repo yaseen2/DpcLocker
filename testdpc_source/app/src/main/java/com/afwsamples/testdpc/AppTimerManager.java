@@ -14,9 +14,12 @@ import android.os.Build;
 import android.util.Log;
 
 import java.lang.reflect.Method;
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -24,15 +27,67 @@ public class AppTimerManager {
     private static final String TAG = "AppTimerManager";
     private static final String PREF_NAME = "dpclocker_app_timers";
     private static final String KEY_TIMER_PREFIX = "timer_min_";
+    public static final String KEY_EXCEEDED_PREFIX = "exceeded_today_";
 
     public static SharedPreferences getPrefs(Context context) {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+    }
+
+    private static String getTodayKey() {
+        return new SimpleDateFormat("yyyyMMdd", Locale.US).format(new Date());
+    }
+
+    public static boolean isDailyLimitExceeded(Context context, String packageName) {
+        if (packageName == null || packageName.isEmpty()) return false;
+        SharedPreferences prefs = getPrefs(context);
+        String today = getTodayKey();
+        String savedDate = prefs.getString(KEY_EXCEEDED_PREFIX + packageName, "");
+        if (today.equals(savedDate)) {
+            return true;
+        }
+
+        // Also check real-time usage vs limit
+        int limitMins = getAppLimitMinutes(context, packageName);
+        if (limitMins > 0) {
+            long limitMillis = limitMins * 60 * 1000L;
+            long usedMillis = getTodayUsageMillis(context, packageName);
+            if (usedMillis >= limitMillis) {
+                setDailyLimitExceeded(context, packageName, true);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static void setDailyLimitExceeded(Context context, String packageName, boolean exceeded) {
+        if (packageName == null || packageName.isEmpty()) return;
+        SharedPreferences prefs = getPrefs(context);
+        if (exceeded) {
+            prefs.edit().putString(KEY_EXCEEDED_PREFIX + packageName, getTodayKey()).apply();
+            Log.i(TAG, "LOCKED FOR TODAY: App " + packageName + " marked daily limit exceeded for " + getTodayKey());
+        } else {
+            prefs.edit().remove(KEY_EXCEEDED_PREFIX + packageName).apply();
+            Log.i(TAG, "UNLOCKED: App " + packageName + " daily limit exceeded flag removed.");
+        }
+    }
+
+    public static void clearDailyExceededFlags(Context context) {
+        SharedPreferences prefs = getPrefs(context);
+        SharedPreferences.Editor editor = prefs.edit();
+        for (String key : prefs.getAll().keySet()) {
+            if (key.startsWith(KEY_EXCEEDED_PREFIX)) {
+                editor.remove(key);
+            }
+        }
+        editor.apply();
+        Log.i(TAG, "Cleared all daily exceeded flags for midnight rollover.");
     }
 
     public static void setAppLimitMinutes(Context context, String packageName, int limitMinutes) {
         SharedPreferences prefs = getPrefs(context);
         if (limitMinutes <= 0) {
             prefs.edit().remove(KEY_TIMER_PREFIX + packageName).apply();
+            setDailyLimitExceeded(context, packageName, false);
             setUninstallBlocked(context, packageName, false);
         } else {
             prefs.edit().putInt(KEY_TIMER_PREFIX + packageName, limitMinutes).apply();
@@ -86,6 +141,16 @@ public class AppTimerManager {
             long startTime = calendar.getTimeInMillis();
             long endTime = System.currentTimeMillis();
 
+            // 1. Primary: High-precision queryAndAggregateUsageStats
+            Map<String, UsageStats> statsMap = usm.queryAndAggregateUsageStats(startTime, endTime);
+            if (statsMap != null && statsMap.containsKey(packageName)) {
+                UsageStats stats = statsMap.get(packageName);
+                if (stats != null && stats.getTotalTimeInForeground() > 0) {
+                    return stats.getTotalTimeInForeground();
+                }
+            }
+
+            // 2. Fallback: queryUsageStats interval
             List<UsageStats> statsList = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime);
             if (statsList != null) {
                 long totalTime = 0;
@@ -121,14 +186,21 @@ public class AppTimerManager {
                 // Enforce un-uninstallable state for apps with active timers
                 setUninstallBlocked(context, pkg, true);
 
-                Log.i(TAG, "App " + pkg + " used " + (usedMillis / 60000) + " mins today / limit " + limitMins + " mins");
+                boolean exceededToday = isDailyLimitExceeded(context, pkg);
 
-                if (usedMillis >= limitMillis) {
+                Log.i(TAG, "App " + pkg + " used " + (usedMillis / 60000) + " mins today / limit " + limitMins + " mins | ExceededToday=" + exceededToday);
+
+                if (usedMillis >= limitMillis || exceededToday) {
+                    setDailyLimitExceeded(context, pkg, true);
                     dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{pkg}, true);
-                    Log.i(TAG, "EXCEEDED LIMIT: Suspended package " + pkg);
+                    Log.i(TAG, "EXCEEDED LIMIT: Suspended package " + pkg + " for the remainder of today.");
                 } else {
-                    // Unsuspend if limit not exceeded (e.g. new day or increased limit)
-                    dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{pkg}, false);
+                    // Only unsuspend if NOT prohibited by security policy and NOT under temporary visual penalty
+                    if (!SecurityPipelineManager.isPermanentlyProhibited(context, pkg) &&
+                            !ImpulseGuardService.isTemporarilySuspended(context, pkg)) {
+                        dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{pkg}, false);
+                        Log.i(TAG, "Limit not exceeded: App " + pkg + " active.");
+                    }
                 }
             }
         } catch (Exception e) {

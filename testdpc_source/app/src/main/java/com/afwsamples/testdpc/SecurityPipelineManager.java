@@ -226,9 +226,18 @@ public class SecurityPipelineManager {
                         dpm.setPackagesSuspended(admin, packagesToSuspend.toArray(new String[0]), true);
                     }
 
-                    // Bulk unsuspend innocent rescued apps
+                    // Bulk unsuspend innocent rescued apps (only if not timer-locked)
                     if (isDeviceOwner && !packagesToUnsuspend.isEmpty()) {
-                        dpm.setPackagesSuspended(admin, packagesToUnsuspend.toArray(new String[0]), false);
+                        List<String> validUnsuspend = new java.util.ArrayList<>();
+                        for (String p : packagesToUnsuspend) {
+                            if (!AppTimerManager.isDailyLimitExceeded(context, p) &&
+                                    !ImpulseGuardService.isTemporarilySuspended(context, p)) {
+                                validUnsuspend.add(p);
+                            }
+                        }
+                        if (!validUnsuspend.isEmpty()) {
+                            dpm.setPackagesSuspended(admin, validUnsuspend.toArray(new String[0]), false);
+                        }
                     }
 
                     SecurityLogger.log(context, "[BOOT_OPTIMIZER]", "Boot complete: " + skippedSafeCount + " safe apps skipped (0ms) | " +

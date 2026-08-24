@@ -175,6 +175,13 @@ public class ImpulseGuardService extends AccessibilityService {
                 .apply();
     }
 
+    public static boolean isTemporarilySuspended(Context context, String packageName) {
+        if (packageName == null || packageName.isEmpty()) return false;
+        SharedPreferences prefs = context.getSharedPreferences(PREF_SUSPENSIONS, Context.MODE_PRIVATE);
+        long expiry = prefs.getLong(packageName, 0L);
+        return expiry > System.currentTimeMillis();
+    }
+
     public static void unsuspendAllImpulseSuspendedPackages(Context context) {
         try {
             DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
@@ -188,6 +195,10 @@ public class ImpulseGuardService extends AccessibilityService {
             for (String pkg : allEntries.keySet()) {
                 if (SecurityPipelineManager.isPermanentlyProhibited(context, pkg)) {
                     Log.i(TAG, "Preserving permanent prohibition for [" + pkg + "] during master unsuspend.");
+                    continue;
+                }
+                if (AppTimerManager.isDailyLimitExceeded(context, pkg)) {
+                    Log.i(TAG, "Preserving daily timer limit suspension for [" + pkg + "] during master unsuspend.");
                     continue;
                 }
                 try {
@@ -231,6 +242,12 @@ public class ImpulseGuardService extends AccessibilityService {
                 if (!isEngineActive || (now >= expiryTimestamp)) {
                     if (SecurityPipelineManager.isPermanentlyProhibited(this, pkg)) {
                         Log.i(TAG, "Preserving permanent prohibition for [" + pkg + "] during auto-unsuspend cycle.");
+                        editor.remove(pkg);
+                        continue;
+                    }
+
+                    if (AppTimerManager.isDailyLimitExceeded(this, pkg)) {
+                        Log.i(TAG, "Preserving daily timer limit suspension for [" + pkg + "] during auto-unsuspend cycle.");
                         editor.remove(pkg);
                         continue;
                     }

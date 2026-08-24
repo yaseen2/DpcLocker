@@ -4266,7 +4266,17 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 int currentLimit = AppTimerManager.getAppLimitMinutes(context, app.packageName);
                 long usedMillis = AppTimerManager.getTodayUsageMillis(context, app.packageName);
                 long usedMins = usedMillis / 60000;
-                String status = currentLimit > 0 ? (usedMins + "m used / " + currentLimit + "m limit") : "No limit";
+                boolean isExceeded = AppTimerManager.isDailyLimitExceeded(context, app.packageName);
+                String status;
+                if (currentLimit > 0) {
+                    if (isExceeded || usedMins >= currentLimit) {
+                        status = "🔒 " + usedMins + "m / " + currentLimit + "m (LOCKED FOR TODAY)";
+                    } else {
+                        status = usedMins + "m / " + currentLimit + "m limit";
+                    }
+                } else {
+                    status = "No limit";
+                }
                 appLabels.add(label + "\n(" + status + ")");
             }
         }
