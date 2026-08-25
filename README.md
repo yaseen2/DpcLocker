@@ -1,102 +1,364 @@
-# DPC Locker 🔒
+# DPC Locker 🔒 & ImpulseGuard AI System
 
-**Zero-Trust, Impulse-Proof Android Device Owner Lock & Cross-Platform Self-Control System**
+**Zero-Trust, Impulse-Proof Android Device Owner Security, On-Device Vision Transformer (ViT) Content Moderation, and Cross-Platform Self-Control Engine.**
 
-DPC Locker is a unified Android protection system paired with Windows Registry policies. It merges **Test DPC (Device Policy Controller)** with an **Impulse-Proof USB ADB Guard**, an **AI-Powered Real-Time App Security Auditor**, a **Pure Dynamic Non-Chrome Browser Blocker**, and an **Impulse-Proof Daily App Timer System (Family Link style)**. 
+DPC Locker is an advanced device-level protection system combining **Android Device Owner (DPM) enterprise policies**, **real-time on-device Vision Transformer (ViT) neural inference**, **cloud-assisted Gemini AI app auditing**, **dynamic browser interception**, and **hardened Windows Registry & DNS policies**.
 
-Policy modifications, app timer changes, or disabling protection **can only be performed when physically connected to a PC via USB ADB cable**.
-
----
-
-## 🎯 Key Features & Architecture
-
-### 🤖 1. Real-Time Gemini AI App Security Auditor Engine
-* **Automated Installation Inspection:** Uses Android's native `LauncherApps.Callback` engine to inspect every newly installed package in real time upon installation from Google Play Store or APK.
-* **Deep Structural Payload Analysis:** Extracts complete package metadata: Package Name, App Title, Declared Category (`ApplicationInfo.category`), Requested Permissions list (`PackageInfo.requestedPermissions`), and Internal Activity Classnames (`PackageInfo.activities`).
-* **High-Context Gemini 1.5/2.0 Flash REST API:** Asynchronously queries Google's Gemini Flash API using `response_mime_type: "application/json"`. The prompt incorporates explicit system roles detailing the high-stakes impact of classification (preventing false positives on WhatsApp, banking, utilities, and games vs. catching hidden adult browsers and video downloaders).
-* **Sub-Second Auto-Freeze:** If Gemini returns `is_risky: true`, DPC Locker executes `dpm.setPackagesSuspended([packageName], true)` in under 1 second, freezing the app before it can ever be opened.
-* **Zero Daily Phone Latency:** Runs only once at app installation; daily browsing, streaming, and app usage run at 100% full native speed.
-* **UI API Key Preference:** Includes a configuration dialog in Test DPC settings to set/update your free Gemini API Key from Google AI Studio.
+Policy adjustments, app timer modifications, or guard state changes **can only be performed when physically connected to an authorized PC over USB via ADB**.
 
 ---
 
-### 📱 2. Unified Android DPC Protection Architecture
-* **Single Unified DPC App:** Test DPC and DPC Locker guard are merged into a single Android Device Owner application (`com.afwsamples.testdpc`).
-* **Zero Accessibility Service Required:** Eliminates the need for external accessibility watchdogs or extra app permissions. 100% native Device Owner protection.
-* **Laser-Targeted Protection:** 
-  * Prevents accessing policy configuration screens inside Test DPC when locked.
-  * **Leaves 100% of standard phone settings (Wi-Fi, Bluetooth, Display, Sound, Battery, Storage, Apps, etc.) completely accessible.**
-* **USB ADB State Control:** Lock state is toggled via system setting `dpclocker_enabled` using 1-click batch scripts over USB ADB (`Lock_TestDPC.bat` and `Unlock_TestDPC.bat`).
-* **100% Offline & Private:** Zero third-party telemetry; 0% data tracking.
+## 📑 Table of Contents
+
+- [DPC Locker 🔒 \& ImpulseGuard AI System](#dpc-locker--impulseguard-ai-system)
+  - [📑 Table of Contents](#-table-of-contents)
+  - [🏛️ System Architecture Overview](#️-system-architecture-overview)
+  - [🧠 1. On-Device Falcons.AI Vision Transformer (ViT) Engine](#-1-on-device-falconsai-vision-transformer-vit-engine)
+    - [⚡ Latency \& Performance Engineering](#-latency--performance-engineering)
+    - [🎯 Detection Flow](#-detection-flow)
+  - [🚨 2. Daily 3-Strike Progressive Warning System](#-2-daily-3-strike-progressive-warning-system)
+    - [Disciplinary Flow Matrix](#disciplinary-flow-matrix)
+  - [🛡️ 3. ImpulseGuard Sequential Text \& Screen Audit Engine](#️-3-impulseguard-sequential-text--screen-audit-engine)
+    - [Phase 1: Search Query Inspection (Pre-Search)](#phase-1-search-query-inspection-pre-search)
+    - [Phase 2: Post-Search / Feed Visual Audit](#phase-2-post-search--feed-visual-audit)
+    - [Dynamic Penalty Scaling](#dynamic-penalty-scaling)
+  - [🔍 4. 3-Tier App Installation \& Boot Optimizer Pipeline](#-4-3-tier-app-installation--boot-optimizer-pipeline)
+    - [The 3-Tier Pipeline](#the-3-tier-pipeline)
+    - [0ms Boot Optimizer](#0ms-boot-optimizer)
+  - [⏱️ 5. Impulse-Proof Daily App Usage Timers](#️-5-impulse-proof-daily-app-usage-timers)
+    - [Cross-Guard Suspension Authority](#cross-guard-suspension-authority)
+  - [💻 6. Windows PC Protection Architecture](#-6-windows-pc-protection-architecture)
+  - [📁 Repository File Tree](#-repository-file-tree)
+  - [🔨 Build \& Deployment Instructions](#-build--deployment-instructions)
+    - [1. Prerequisites](#1-prerequisites)
+    - [2. Building the APK](#2-building-the-apk)
+    - [3. Setting up Device Owner via ADB](#3-setting-up-device-owner-via-adb)
+    - [4. Enabling Windows PC Protection](#4-enabling-windows-pc-protection)
+  - [🐞 Debugging \& Troubleshooting Guide](#-debugging--troubleshooting-guide)
+    - [Real-Time Logcat Inspection](#real-time-logcat-inspection)
+    - [Inspecting Internal State \& Caches via ADB](#inspecting-internal-state--caches-via-adb)
+    - [Manual Override / Reset Commands](#manual-override--reset-commands)
 
 ---
 
-### 🌐 3. Pure Dynamic Auto Non-Chrome Browser Blocker
-* **Real-time `LauncherApps.Callback` Engine:** Uses Android's native system callback to inspect new app installations in real time.
-* **Pure Dynamic Intent Filter Inspection (`MATCH_ALL`):** Dynamically detects third-party web browsers (Opera Mini, Firefox, Brave, UC Browser, Phoenix Browser, DuckDuckGo, Tor, Vivaldi, Kiwi, etc.) by inspecting generic `http://` and `https://` `BROWSABLE` intent filters **without relying on hardcoded package lists**.
-* **Instant Auto-Freeze:** Automatically suspends third-party browsers (`dpm.setPackagesSuspended([packageName], true)`) immediately upon installation, graying out their app icons.
-* **100% Freedom for Normal Apps:** Games, social media, shopping apps, tools, banking apps, and messaging apps (WhatsApp, Telegram, etc.) do not claim generic web intents and remain **100% active and unrestricted**.
-* **Chrome & Google App Whitelist:** Google Chrome (`com.android.chrome`), Google App (`com.google.android.googlequicksearchbox`), and Play Store (`com.android.vending`) remain fully functional while guarded by Strict SafeSearch and SafeSites adult filtering.
+## 🏛️ System Architecture Overview
 
----
+```mermaid
+graph TD
+    subgraph Android OS [Android 14/15 Device Owner Sandbox]
+        DPM[DevicePolicyManager Enterprise Authority]
+        ACC[ImpulseGuardService - Accessibility API]
+        USM[UsageStatsManager - Daily Foreground Timers]
+        LAPP[LauncherApps.Callback - Install Interceptor]
+        
+        subgraph Neural & AI Engines
+            VIT[Falcons.AI ViT INT8 - Local ARM NEON Engine]
+            GEM[Gemini Flash REST Engine - Cloud Auditing]
+        end
+        
+        subgraph Core Pipelines
+            PIPE[SecurityPipelineManager - 3-Tier Pipeline]
+            TIMER[AppTimerManager - Persistent Lockouts]
+            PEN[PenaltyManager - Exponential Backoff]
+        end
+    end
 
-### ⏱️ 4. Impulse-Proof App Daily Usage Timers (Family Link Style)
-* **Native Android System Observers (`UsageStatsManager`):** Monitors daily foreground screen-on usage per package using Android's native `registerAppUsageObserver` system API.
-* **Zero Battery Drain (0% CPU):** The Android OS kernel tracks foreground app usage natively. No background polling loops or timers are used.
-* **Automatic App Suspension on Limit:** The moment an app reaches its configured daily limit (e.g., 30 minutes for YouTube, 15 minutes for Instagram), Android OS notifies Test DPC, which **instantly freezes the app**.
-* **12:00 AM Midnight Auto-Reset:** An `AlarmManager` daily alarm automatically resets usage counters and unsuspends all apps every night at midnight (12:00 AM).
+    subgraph Desktop / USB Control
+        ADB[USB ADB Key Vault: Lock_TestDPC.bat / Unlock_TestDPC.bat]
+        WIN[Windows Incognito & Cloudflare Family DNS Blocker]
+    end
 
----
-
-### 💻 5. Windows 10/11 PC Protection Architecture
-* **Google & Bing SafeSearch Hardening (`hosts` File):** Maps Google & Bing to Strict SafeSearch IP (`216.239.38.120`).
-* **Total Notorious Domain Lockdown:** Maps X (`x.com`, `twitter.com`), Reddit (`reddit.com`, `redd.it`), Tumblr (`tumblr.com`), Telegram Web (`telegram.org`), and Web Proxies (`croxyproxy.com`, `proxysite.com`, `hide.me`, `blockaway.net`) to `0.0.0.0` in system `hosts` file and adds wildcard entries to Chrome & Edge `URLBlocklist`. *(Discord is allowed)*.
-* **Chrome & Edge Direct Connection Lockdown:**
-  * **`ProxyMode` = `"direct"`**: Forces direct connections in Chrome and Edge, preventing proxy/VPN extensions from overriding browser network settings.
-  * **`ForceYouTubeRestrict` = `0`**: Disables YouTube Restricted Mode so YouTube comments and live chats load 100% normally.
-* **Windows VPN & Proxy Lock (`DISALLOW_CONFIG_VPN`):** Disables adding new VPN connections or proxy servers in Windows Settings, and disables the Windows `RasMan` Remote Access VPN service.
-
----
-
-## 📁 Repository Structure
-
-```text
-├── testdpc_source/                     # Merged Single App Source Code (Test DPC + Guard + Blocker + Timers + AI Auditor)
-│   └── app/src/main/java/com/afwsamples/testdpc/
-│       ├── PolicyManagementActivity.java # Main DPC Activity with USB ADB Lock Guard
-│       ├── SetupManagementActivity.java  # Setup Activity with USB ADB Lock Guard
-│       ├── AiAppAuditor.java             # Real-Time Gemini AI App Security Auditor Engine
-│       ├── BrowserBlocker.java           # Pure Dynamic Auto Non-Chrome Browser Blocker Engine
-│       ├── NotoriousAppBlocker.java      # Notorious App Auto-Freezer Engine
-│       ├── ChromePolicyManager.java      # Default Chrome Managed Policies & Proxy Direct Engine
-│       ├── AppTimerManager.java          # Impulse-Proof App Usage Limits & System Observers Engine
-│       ├── AppTimerReceiver.java         # Daily Limit Exceeded & Midnight Reset Receiver
-│       └── policy/
-│           └── PolicyManagementFragment.java # Test DPC UI with Auto-Blocker Switch, AI Auditor & App Timers Dialog
-├── Lock_TestDPC.bat                    # 1-Click USB ADB Script: Lock Test DPC & Protection
-├── Unlock_TestDPC.bat                  # 1-Click USB ADB Script: Unlock Test DPC for Maintenance
-├── Enable_Windows_Protection.bat       # 1-Click Administrator Script: Apply Windows Protection Policies
-├── build_merged_dpc.ps1                # PowerShell Script to compile Test DPC APK
-├── enable_windows_protection.ps1       # Windows PowerShell Script (SafeSearch, Cloudflare Family DNS & Proxy Direct)
-├── enable_windows_protection.reg       # Windows Registry (.reg) Policy Export
-└── README.md                           # Comprehensive Documentation
+    LAPP --> PIPE
+    PIPE -->|Tier 1| PASS[Whitelisted / 0ms Pass]
+    PIPE -->|Tier 2| DPM
+    PIPE -->|Tier 3| GEM
+    
+    ACC -->|Text Search Audit| GEM
+    ACC -->|Screen Frame Capture| VIT
+    VIT -->|Violations| ACC
+    ACC -->|Strike 1 & 2: BACK Action| ACC
+    ACC -->|Strike 3: Suspension Lockout| DPM
+    
+    USM --> TIMER
+    TIMER -->|Daily Limit Exceeded| DPM
+    
+    ADB -.->|Physical USB Toggle| DPM
 ```
 
 ---
 
-## 🔨 Building Test DPC from Source
+## 🧠 1. On-Device Falcons.AI Vision Transformer (ViT) Engine
 
-You can build the merged APK directly from PowerShell using local Gradle:
+[`FalconsVisionGuardEngine.java`](testdpc_source/app/src/main/java/com/afwsamples/testdpc/FalconsVisionGuardEngine.java) executes an on-device quantized **Vision Transformer (ViT)** neural network powered by **Microsoft ONNX Runtime** (`com.microsoft.onnxruntime:onnxruntime-android:1.17.0`).
 
+### ⚡ Latency & Performance Engineering
+
+Scanning a live $1080 \times 2400$ OLED display on a mobile CPU previously required ~1400ms. Through hardware-level optimizations, end-to-end latency was reduced to **~430ms**:
+
+1. **Direct `HardwareBuffer` Slicing:**
+   * Instead of copying an uncompressed $1080 \times 2400$ 32-bit ARGB software bitmap (a $10.36\text{ MB}$ raw allocation), the system downscales directly from the GPU `HardwareBuffer` to $224 \times 224$ ($0.2\text{ MB}$), eliminating 950ms of memory bus overhead.
+2. **$O(1)$ Static Normalization Look-Up Table (`NORM_LUT`):**
+   * Replaced 150,528 floating-point division and subtraction operations per frame with a pre-computed 256-element lookup table for ImageNet normalization (`(pixel / 255.0 - mean) / std`).
+3. **Zero-GC Memory Allocation Pooling:**
+   * Uses `ThreadLocal<float[]>` and `ThreadLocal<int[]>` reusable memory buffers. Heap churn during live screen inference is **0 bytes**, preventing Android garbage collection (GC) stutter.
+4. **4-Thread ARM NEON Vector SIMD Acceleration:**
+   * Configured `OrtSession` with 4 intra-op threads utilizing ARM NEON vector instructions (`MatMulInteger` acceleration). Pure inference execution finishes in **~130–140ms**.
+
+### 🎯 Detection Flow
+
+* **Model:** `falconsai_nsfw_image_detection_quantized.onnx` (stored in `assets/models/`).
+* **Input Size:** $1 \times 3 \times 224 \times 224$ (NCHW format, RGB normalized).
+* **Output:** 2 Logits (`[Normal, NSFW]`) $\rightarrow$ Softmax probability distribution.
+* **Cutoff Threshold:** Configurable via UI (`35%` Ultra, `70%` Standard, or custom $20\%-90\%$).
+* **Target Monitored Apps:** Instagram, YouTube/ReVanced, Reddit, Browsers, Video Downloaders, etc.
+
+---
+
+## 🚨 2. Daily 3-Strike Progressive Warning System
+
+Implemented in [`ImpulseGuardService.java`](testdpc_source/app/src/main/java/com/afwsamples/testdpc/ImpulseGuardService.java), the system enforces progressive disciplinary actions when visual NSFW content is detected:
+
+```mermaid
+flowchart TD
+    A[Visual NSFW Detected] --> B{5s Grace Cooldown Active?}
+    B -->|Yes| C[Ignore Duplicate Frame]
+    B -->|No| D[Increment Daily Strike Counter]
+    D --> E{Daily Strike Number}
+    E -->|Strike 1| F[GLOBAL_ACTION_BACK + Warning Toast 1/2]
+    E -->|Strike 2| G[GLOBAL_ACTION_BACK + Double Haptic Pulse + Final Warning Toast 2/2]
+    E -->|Strike 3+| H[10-Minute DPM Suspension Lockout + Home Screen Ejection]
+    
+    I[Midnight 00:00 Rollover] --> J[Reset Daily Strikes to 0]
+```
+
+### Disciplinary Flow Matrix
+
+| Strike | Trigger Condition | System Action | Haptics | Notification Toast |
+| :---: | :---: | :---: | :---: | :--- |
+| **Strike 1** | 1st NSFW frame of the day | `GLOBAL_ACTION_BACK` (Exits content/reel) | None | `⚠️ Content Warning (1/2) - Exiting content` |
+| **Strike 2** | 2nd NSFW frame of the day | `GLOBAL_ACTION_BACK` (Exits content/reel) | Double Pulse | `🚨 Final Warning (2/2) - Next violation locks app` |
+| **Strike 3** | 3rd+ NSFW frame of the day | `dpm.setPackagesSuspended(..., true)` + `GLOBAL_ACTION_HOME` | Long Pulse | `🔒 Content Blocked - App locked for 10 minutes` |
+
+* **5-Second Grace Cooldown:** Prevents multi-frame detections of the same video/post during screen transitions from burning multiple strikes.
+* **Midnight Automatic Rollover:** Strikes reset to `0` daily at `00:00`.
+* **Administrative Reset:** Includes a `🔄 Reset Today's Strikes to 0` button in Test DPC settings for manual testing.
+
+---
+
+## 🛡️ 3. ImpulseGuard Sequential Text & Screen Audit Engine
+
+[`ImpulseGuardService.java`](testdpc_source/app/src/main/java/com/afwsamples/testdpc/ImpulseGuardService.java) monitors search boxes, suggestions, and feed displays:
+
+### Phase 1: Search Query Inspection (Pre-Search)
+1. **Debounced Typing Capture:** Captures typed search text with a 1200ms debounce pause after typing ceases, or instantly upon tapping a search button/suggestion.
+2. **0ms Local Risky Cache:** Evaluates search queries against a local database of known violations in `0ms`.
+3. **Cloud Gemini Flash API:** If not cached, queries Gemini Flash with strict binary JSON output (`is_risky: true/false`).
+4. **Immediate Action:** If risky, cancels search, ejects to Home Screen (`GLOBAL_ACTION_HOME`), and suspends the target app.
+
+### Phase 2: Post-Search / Feed Visual Audit
+* If a search query is allowed, the engine schedules a visual audit 400ms later to scan the resulting feed using the on-device ViT engine.
+
+### Dynamic Penalty Scaling
+Managed by [`PenaltyManager.java`](testdpc_source/app/src/main/java/com/afwsamples/testdpc/PenaltyManager.java):
+* **Violation 1:** 10 minutes suspension.
+* **Violation 2:** 30 minutes suspension.
+* **Violation 3:** 60 minutes suspension.
+* **Violation 4+:** 120 minutes suspension.
+
+---
+
+## 🔍 4. 3-Tier App Installation & Boot Optimizer Pipeline
+
+Managed by [`SecurityPipelineManager.java`](testdpc_source/app/src/main/java/com/afwsamples/testdpc/SecurityPipelineManager.java), every newly installed app or system boot is processed through a deterministic 3-tier pipeline:
+
+### The 3-Tier Pipeline
+
+```mermaid
+graph TD
+    A[App Installed / Discovered] --> B{Tier 1: Whitelist Check}
+    B -->|Match| C[0ms Pass & Cache Safe]
+    B -->|No Match| D{Tier 2: Explicit Blocklist?}
+    D -->|Match User Blocklist| E[Permanent Lockout: Suspend & Mark Blocked]
+    D -->|Match Browser Intent| F[Heuristic Suspend -> Send to AI Rescue]
+    D -->|No Match| G[Tier 3: Gray-Area Manifest AI Scanner]
+    
+    F --> H{Gemini AI Rescue Audit}
+    H -->|Verified Clean| I[Unsuspend & Mark Safe]
+    H -->|Confirmed Risky| J[Maintain Suspension & Mark Blocked]
+
+    G --> K{Gemini AI Deep Manifest Audit}
+    K -->|Risky| L[Suspend & Mark Blocked]
+    K -->|Safe| M[Pass & Mark Safe]
+```
+
+1. **Tier 1: User Whitelist Override (0ms):**
+   * Checks [`SecurityConfig.java`](testdpc_source/app/src/main/java/com/afwsamples/testdpc/SecurityConfig.java). Core packages (`WhatsApp`, `AnkiDroid`, `Duolingo`, `ReVanced`, `Phone`, `Settings`) pass instantly.
+2. **Tier 2: Deterministic Fast-Path (<2ms):**
+   * **Explicit Blocklist (Hard Block):** Notorious apps (`TikTok`, `Twitter/X`, `Reddit`, `Tumblr`, `Telegram`, `YouTube`) are suspended immediately and **never sent to AI rescue**.
+   * **Heuristic Browser Match:** Apps claiming generic `http://` or `https://` `BROWSABLE` intents without an explicit category are provisionally suspended and sent to background AI rescue verification.
+3. **Tier 3: Gray-Area Deep Manifest AI Scanner:**
+   * [`AiAppAuditor.java`](testdpc_source/app/src/main/java/com/afwsamples/testdpc/AiAppAuditor.java) extracts package manifest metadata (permissions, activities, receivers) and audits the app via Gemini Flash to identify hidden porn browsers or video downloaders.
+
+### 0ms Boot Optimizer
+* On device boot, cached packages in `dpclocker_package_state_cache.xml` are verified in `0ms` without re-running network calls.
+* **Safe-Cache Write Protection:** Explicitly blocklisted apps can never be written to `cache_verified_safe_packages`.
+
+---
+
+## ⏱️ 5. Impulse-Proof Daily App Usage Timers
+
+Managed by [`AppTimerManager.java`](testdpc_source/app/src/main/java/com/afwsamples/testdpc/AppTimerManager.java) and [`AppTimerReceiver.java`](testdpc_source/app/src/main/java/com/afwsamples/testdpc/AppTimerReceiver.java):
+
+1. **Native OS Observers:**
+   * Uses Android's `UsageStatsManager.registerAppUsageObserver()` API to track foreground runtime with **0% battery/CPU drain**.
+2. **Persistent Daily Lockouts:**
+   * When an app reaches its limit (e.g., 20 mins for Instagram), Android triggers `ACTION_LIMIT_EXCEEDED`.
+   * The app is suspended via DPM, and a persistent record `exceeded_today_[pkg] = [YYYYMMDD]` is saved.
+3. **High-Precision Foreground Tracking:**
+   * Calculates usage with `UsageStatsManager.queryAndAggregateUsageStats(startTime, endTime)` for exact millisecond accuracy.
+4. **Anti-Tamper Lock:**
+   * Apps with configured timers have `dpm.setUninstallBlocked(admin, pkg, true)` automatically enforced.
+5. **Midnight Rollover:**
+   * At `00:00`, `ACTION_MIDNIGHT_RESET` clears daily exceeded flags, re-registers observers, and unsuspends apps for the new day.
+
+### Cross-Guard Suspension Authority
+`ImpulseGuardService` and `SecurityPipelineManager` check `AppTimerManager.isDailyLimitExceeded()` before un-suspending any app. **No 10-minute AI penalty cleanup or policy sync will ever unsuspend an app that has exceeded its daily usage limit.**
+
+---
+
+## 💻 6. Windows PC Protection Architecture
+
+Configured via [`enable_windows_protection.ps1`](enable_windows_protection.ps1) and [`enable_windows_protection.reg`](enable_windows_protection.reg):
+
+1. **Browser Incognito & InPrivate Lock:**
+   * Google Chrome: `IncognitoModeAvailability` = `1` (Disabled).
+   * Microsoft Edge: `InPrivateModeAvailability` = `1` (Disabled).
+   * Brave Browser: `IncognitoModeAvailability` = `1` (Disabled).
+2. **Network Direct Lockdown (`ProxyMode = "direct"`):**
+   * Enforces direct browser connections, preventing proxy/VPN extensions from rerouting traffic.
+3. **Cloudflare Family DNS over HTTPS (DoH):**
+   * Forces CleanBrowsing / Cloudflare Family DNS (`1.1.1.3` / `security.cloudflare-dns.com`) at both OS and browser levels.
+4. **SafeSearch & Adult Domain Redirection (`hosts` file):**
+   * Maps Google and Bing to Strict SafeSearch VIPs (`216.239.38.120`).
+   * Maps notorious adult and proxy domains (`x.com`, `reddit.com`, `croxyproxy.com`, etc.) to `0.0.0.0`.
+5. **Windows VPN & Adapter Lock:**
+   * Disables VPN configuration in Windows Settings (`DISALLOW_CONFIG_VPN`).
+   * Disables the Windows Remote Access Connection Manager (`RasMan`) service.
+
+---
+
+## 📁 Repository File Tree
+
+```text
+├── TestDPC.apk                           # Pre-compiled, ready-to-deploy Device Owner APK
+├── build_merged_dpc.ps1                  # 1-Click PowerShell script to compile APK
+├── Lock_TestDPC.bat                      # 1-Click USB ADB script: Lock Test DPC UI
+├── Unlock_TestDPC.bat                    # 1-Click USB ADB script: Unlock Test DPC UI
+├── Enable_Windows_Protection.bat         # 1-Click admin script for Windows PC policies
+├── enable_windows_protection.ps1         # Windows PowerShell security configuration
+├── enable_windows_protection.reg         # Windows Registry policy template
+├── testdpc_source/                       # Complete Android Source Code
+│   └── app/src/main/
+│       ├── assets/models/                # ONNX Quantized Neural Network Models
+│       │   └── falconsai_nsfw_image_detection_quantized.onnx
+│       └── java/com/afwsamples/testdpc/
+│           ├── FalconsVisionGuardEngine.java # On-Device ViT ONNX Runtime Inference Engine
+│           ├── ImpulseGuardService.java      # Accessibility Service, 3-Strike Handler, Screen Capture
+│           ├── SecurityPipelineManager.java  # 3-Tier Interception & 0ms Boot Optimizer
+│           ├── SecurityConfig.java           # Central Vault (API Keys, Whitelists, Blocklists)
+│           ├── SecurityLogger.java           # Local Circular Security Audit Logger
+│           ├── AiAppAuditor.java             # Gemini Flash REST Manifest Scanner & False-Positive Rescue
+│           ├── AppTimerManager.java          # Persistent Daily App Limits & Usage Tracking
+│           ├── AppTimerReceiver.java         # AlarmManager Midnight Reset & Limit Handler
+│           ├── BrowserBlocker.java           # Dynamic BROWSABLE Intent Interceptor
+│           ├── NotoriousAppBlocker.java      # Hard Blocklist Enforcement Engine
+│           ├── PenaltyManager.java           # Progressive Penalty Duration Calculator
+│           ├── PolicyManagementActivity.java # Main Activity with USB ADB Lock Guard
+│           ├── DeviceAdminReceiver.java      # Device Administrator & Owner Component
+│           └── policy/
+│               └── PolicyManagementFragment.java # Settings UI, Strike Badge, Timer Dialogs
+└── README.md                             # Complete Engineering Documentation
+```
+
+---
+
+## 🔨 Build & Deployment Instructions
+
+### 1. Prerequisites
+* **Android Device:** Android 9.0+ (Tested on Android 14/15, Google Pixel 6 Pro).
+* **Development Environment:** Android Studio Jellyfish/Koala or JDK 17+.
+* **Android SDK Platform Tools:** `adb` installed and accessible in system PATH.
+
+### 2. Building the APK
+
+Run the automated PowerShell build script:
 ```powershell
 powershell -ExecutionPolicy Bypass -File "build_merged_dpc.ps1"
 ```
+The compiled APK will be output to:
+`testdpc_source\app\build\outputs\apk\normal\debug\TestDPC-normal-debug.apk` and copied to the root directory as `TestDPC.apk`.
 
-The compiled APK will be created at:
-`testdpc_source\app\build\outputs\apk\normal\debug\TestDPC-normal-debug.apk`
+### 3. Setting up Device Owner via ADB
+
+1. Factory reset your Android device or remove all Google accounts from Settings.
+2. Install the APK:
+   ```bash
+   adb install -r TestDPC.apk
+   ```
+3. Set Test DPC as Device Owner:
+   ```bash
+   adb shell dpm set-device-owner com.afwsamples.testdpc/.DeviceAdminReceiver
+   ```
+4. Enable the ImpulseGuard Accessibility Service:
+   ```bash
+   adb shell settings put secure enabled_accessibility_services com.afwsamples.testdpc/com.afwsamples.testdpc.ImpulseGuardService
+   ```
+
+### 4. Enabling Windows PC Protection
+
+Right-click `Enable_Windows_Protection.bat` and select **Run as Administrator**.
 
 ---
 
-## 📄 License
+## 🐞 Debugging & Troubleshooting Guide
 
-Open-source under the MIT License. Designed for personal self-control, digital wellness, and enterprise policy enforcement.
+### Real-Time Logcat Inspection
+
+Filter logs for all DPC Locker subsystems:
+```bash
+adb logcat -v time -s FalconsVision:V ImpulseGuardService:V SecurityPipeline:V AiAppAuditor:V AppTimerManager:V AppTimerReceiver:V SecurityLogger:V
+```
+
+### Inspecting Internal State & Caches via ADB
+
+Read the live Security Audit Log:
+```bash
+adb shell "run-as com.afwsamples.testdpc cat /data/user/0/com.afwsamples.testdpc/shared_prefs/dpclocker_security_logs.xml"
+```
+
+Inspect the 0ms Package State Cache:
+```bash
+adb shell "run-as com.afwsamples.testdpc cat /data/user/0/com.afwsamples.testdpc/shared_prefs/dpclocker_package_state_cache.xml"
+```
+
+Inspect Active App Daily Timers and Exceeded Flags:
+```bash
+adb shell "run-as com.afwsamples.testdpc cat /data/user/0/com.afwsamples.testdpc/shared_prefs/dpclocker_app_timers.xml"
+```
+
+### Manual Override / Reset Commands
+
+Simulate Midnight Reset (Resets strikes & app timers):
+```bash
+adb shell am broadcast -a com.afwsamples.testdpc.ACTION_MIDNIGHT_RESET -p com.afwsamples.testdpc
+```
+
+Unlock Test DPC UI for Maintenance via USB:
+```bash
+Unlock_TestDPC.bat
+```
+
+Lock Test DPC UI via USB:
+```bash
+Lock_TestDPC.bat
+```
