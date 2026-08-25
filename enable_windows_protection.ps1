@@ -1,5 +1,5 @@
 # ==============================================================================
-# DPCLOCKER :: WINDOWS BROWSER, EXTENSION & PROXY LOCKDOWN ENGINE
+# DPCLOCKER :: WINDOWS GENERIC ANTI-PROXY & BROWSER HARDENING ENGINE
 # ==============================================================================
 
 $esc = [char]27
@@ -14,7 +14,7 @@ $R     = "$esc[0m"
 
 Clear-Host
 Write-Host "$C_HDR===============================================================================$R"
-Write-Host " $C_HDR[#] DPCLOCKER :: WINDOWS ANTI-PROXY & BROWSER HARDENING ENGINE$R"
+Write-Host " $C_HDR[#] DPCLOCKER :: GENERIC ANTI-PROXY & CONTENT LOCKDOWN ENGINE$R"
 Write-Host "$C_HDR===============================================================================$R`n"
 
 # ------------------------------------------------------------------------------
@@ -32,16 +32,22 @@ try {
 }
 
 # ------------------------------------------------------------------------------
-# 2. UPDATE HOSTS FILE FOR SAFESEARCH, WEB PROXIES & RELAY NETWORKS
+# 2. UPDATE HOSTS FILE FOR SAFESEARCH & KNOWN PROXY NETWORKS
 # ------------------------------------------------------------------------------
 Write-Host "`n$C_SEC[2/6] Updating Windows Hosts File (SafeSearch & Web Proxy Blacklist)...$R"
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 
 $hostsEntries = @(
-    # Strict SafeSearch VIPs
+    # Strict SafeSearch VIPs for Global & Regional Search Engines
     "216.239.38.120 www.google.com",
     "216.239.38.120 google.com",
     "216.239.38.120 forcesafesearch.google.com",
+    "216.239.38.120 www.google.co.id",
+    "216.239.38.120 google.co.id",
+    "216.239.38.120 www.google.com.pk",
+    "216.239.38.120 google.com.pk",
+    "216.239.38.120 www.google.co.uk",
+    "216.239.38.120 google.co.uk",
     "216.239.38.120 www.bing.com",
     "216.239.38.120 strict.bing.com",
 
@@ -82,17 +88,15 @@ $hostsEntries = @(
     # Web Proxy Engines & Dynamic Relay Nodes
     "0.0.0.0 azureserv.com",
     "0.0.0.0 www.azureserv.com",
-    "0.0.0.0 api.azureserv.com",
-    "0.0.0.0 v.azureserv.com",
     "0.0.0.0 proxypal.net",
     "0.0.0.0 www.proxypal.net",
     "0.0.0.0 hide.me",
     "0.0.0.0 www.hide.me",
-    "0.0.0.0 api.hide.me",
     "0.0.0.0 croxyproxy.com",
     "0.0.0.0 www.croxyproxy.com",
     "0.0.0.0 croxyproxy.net",
     "0.0.0.0 croxyproxy.rocks",
+    "0.0.0.0 www.croxyproxy.rocks",
     "0.0.0.0 croxy.network",
     "0.0.0.0 croxy.org",
     "0.0.0.0 blockaway.net",
@@ -106,41 +110,18 @@ $hostsEntries = @(
     "0.0.0.0 www.proxyium.com",
     "0.0.0.0 proxyium.net",
     "0.0.0.0 kproxy.com",
-    "0.0.0.0 www.kproxy.com",
     "0.0.0.0 vpnbook.com",
-    "0.0.0.0 www.vpnbook.com",
     "0.0.0.0 hidester.com",
-    "0.0.0.0 www.hidester.com",
     "0.0.0.0 plainproxies.com",
-    "0.0.0.0 www.plainproxies.com",
     "0.0.0.0 hidemyass.com",
-    "0.0.0.0 www.hidemyass.com",
     "0.0.0.0 whoer.net",
-    "0.0.0.0 www.whoer.net",
     "0.0.0.0 zalmos.com",
-    "0.0.0.0 www.zalmos.com",
     "0.0.0.0 filterbypass.me",
-    "0.0.0.0 www.filterbypass.me",
     "0.0.0.0 4everproxy.com",
-    "0.0.0.0 www.4everproxy.com",
     "0.0.0.0 toolur.com",
-    "0.0.0.0 www.toolur.com",
     "0.0.0.0 webproxy.to",
-    "0.0.0.0 www.webproxy.to",
     "0.0.0.0 turbohide.org",
-    "0.0.0.0 www.turbohide.org",
     "0.0.0.0 freeproxy.win",
-    "0.0.0.0 www.freeproxy.win",
-    "0.0.0.0 my-proxy.com",
-    "0.0.0.0 free-proxy.cz",
-    "0.0.0.0 spys.one",
-    "0.0.0.0 zend2.com",
-    "0.0.0.0 megaproxy.com",
-    "0.0.0.0 proxfree.com",
-    "0.0.0.0 newipnow.com",
-    "0.0.0.0 dontfilter.us",
-    "0.0.0.0 blewpass.com",
-    "0.0.0.0 interstellar-proxy.org",
     "0.0.0.0 nodeunblocker.net",
     "0.0.0.0 rammerhead.org",
     "0.0.0.0 ultraviolet.dev",
@@ -174,7 +155,7 @@ try {
 # ------------------------------------------------------------------------------
 # 3. APPLY ENTERPRISE BROWSER POLICIES (CHROME, EDGE, BRAVE - HKLM & HKCU)
 # ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[3/6] Enforcing Strict Enterprise Policies in Chrome, Edge & Brave...$R"
+Write-Host "`n$C_SEC[3/6] Enforcing Generic Anti-Proxy & Content Policies in Browsers...$R"
 
 $browserConfigs = @(
     @{ Name = "Google Chrome";  Roots = @("HKLM:\SOFTWARE\Policies\Google\Chrome", "HKCU:\SOFTWARE\Policies\Google\Chrome"); IncognitoProp = "IncognitoModeAvailability" },
@@ -182,44 +163,59 @@ $browserConfigs = @(
     @{ Name = "Brave Browser";  Roots = @("HKLM:\SOFTWARE\Policies\BraveSoftware\Brave", "HKCU:\SOFTWARE\Policies\BraveSoftware\Brave"); IncognitoProp = "IncognitoModeAvailability" }
 )
 
-# Comprehensive URLBlocklist with wildcards for Domains & Generic Proxy Parameters
-$blockedUrls = @(
-    # Notorious Social & Streaming
-    "*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*", "*redd.it*",
-    "*tumblr.com*", "*telegram.org*", "*t.me*", "*tiktok.com*",
-
-    # Known Web Proxy Domains
-    "*azureserv.com*", "*proxypal.net*", "*hide.me*", "*croxyproxy.com*",
-    "*croxyproxy.rocks*", "*croxyproxy.net*", "*croxy.network*", "*croxy.org*",
-    "*proxysite.com*", "*proxysite.cloud*", "*proxysite.site*", "*proxysite.one*",
-    "*blockaway.net*", "*kproxy.com*", "*vpnbook.com*", "*hidester.com*",
-    "*plainproxies.com*", "*hidemyass.com*", "*proxyium.com*", "*proxyium.net*",
-    "*whoer.net*", "*zalmos.com*", "*filterbypass.me*", "*4everproxy.com*",
-    "*toolur.com*", "*webproxy.to*", "*turbohide.org*", "*freeproxy.win*",
-    "*nodeunblocker.net*", "*rammerhead.org*", "*ultraviolet.dev*",
-
-    # Generic Web Proxy Query & URL Parameter Interceptions (Blocks unknown proxy domains!)
-    "*__cpo=*",
-    "*__cpr=*",
-    "*&__cpo=*",
-    "*?url=http*",
-    "*&url=http*",
-    "*?q=http*",
-    "*&q=http*",
-    "*&u=a1aHR0c*",
-    "*&u=aHR0c*",
-    "*?__proxy=*",
-    "*&__proxy=*",
-    "*/service/gateway*",
-    "*/uv/service/*",
-    "*/bare/*",
-
-    # Proxy Extension Web Store Pages
-    "*chromewebstore.google.com/detail/hideme*",
-    "*chromewebstore.google.com/detail/hide-me*",
-    "*chromewebstore.google.com/detail/vpn*",
-    "*chromewebstore.google.com/detail/proxy*"
+# A. URLAllowlist: Local LAN & Development (Overrides IP Blocklist)
+$allowedUrls = @(
+    "*://192.168.*",
+    "*://10.*",
+    "*://127.*",
+    "*://localhost*",
+    "*://172.16.*", "*://172.17.*", "*://172.18.*", "*://172.19.*",
+    "*://172.20.*", "*://172.21.*", "*://172.22.*", "*://172.23.*",
+    "*://172.24.*", "*://172.25.*", "*://172.26.*", "*://172.27.*",
+    "*://172.28.*", "*://172.29.*", "*://172.30.*", "*://172.31.*",
+    "https://www.google.com*"
 )
+
+# B. URLBlocklist:
+# 1. Generic Raw Public IPv4 Blocking (1.x.x.x through 255.x.x.x)
+$rawIpBlockList = @(1..255 | ForEach-Object { "*://$_.*" })
+
+# 2. Generic Proxy Engine Signatures (CroxyProxy, Ultraviolet, Rammerhead, Glype, etc.)
+$genericProxyPatterns = @(
+    "*://*/*__cpo*",
+    "*://*/*__cpi*",
+    "*://*/*__cpr*",
+    "*://*/__cpi.php*",
+    "*://*/*?*__cpo*",
+    "*://*/*&__cpo*",
+    "*://*/*/uv/service/*",
+    "*://*/*/service/gateway*",
+    "*://*/*/bare/*",
+    "*://*/*&u=a1aHR0c*",
+    "*://*/*&u=aHR0c*",
+    "*://*/*?*u=a1aHR0c*",
+    "*://*/*?*u=aHR0c*",
+    "*://*/*__proxy*",
+    "*://*/*croxyproxy*",
+    "*://*/*proxypal*",
+    "*://*/*proxysite*",
+    "*://*/*blockaway*",
+    "*://*/*lumiproxy*",
+    "*://*/*p23hxejm1.com*",
+    "*://*/*rm358.com*"
+)
+
+# 3. Notorious Platforms & Regional Google Bypasses
+$notoriousAndSearchBypasses = @(
+    "*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*", "*redd.it*", "*reddit.com*",
+    "*tumblr.com*", "*telegram.org*", "*t.me*", "*tiktok.com*",
+    "*://*.google.co.*", "*://*.google.com.*", "*://*.google.ca*", "*://*.google.de*",
+    "*://*.google.fr*", "*://*.google.it*", "*://*.google.es*", "*://*.google.nl*",
+    "*://*.google.ru*", "*://*.google.pl*"
+)
+
+# Combine into master blocklist
+$masterBlockedUrls = $rawIpBlockList + $genericProxyPatterns + $notoriousAndSearchBypasses
 
 foreach ($b in $browserConfigs) {
     foreach ($rootKey in $b.Roots) {
@@ -232,23 +228,31 @@ foreach ($b in $browserConfigs) {
             Set-ItemProperty -Path $rootKey -Name "DnsOverHttpsMode" -Value "off" -Type String -Force -ErrorAction SilentlyContinue
             Set-ItemProperty -Path $rootKey -Name "ProxyMode" -Value "direct" -Type String -Force -ErrorAction SilentlyContinue
 
-            # Purge any extension installation blocklists so extensions can be freely installed
+            # Purge any extension blocklists so extensions remain freely usable
             $extBlockKey = "$rootKey\ExtensionInstallBlocklist"
             if (Test-Path $extBlockKey) { Remove-Item -Path $extBlockKey -Recurse -Force -ErrorAction SilentlyContinue }
             Remove-ItemProperty -Path $rootKey -Name "BlockExternalExtensions" -Force -ErrorAction SilentlyContinue
 
-            # 2. Enforce Comprehensive URLBlocklist
+            # 1. Enforce URLAllowlist (LAN & Localhost)
+            $urlAllowKey = "$rootKey\URLAllowlist"
+            if (-not (Test-Path $urlAllowKey)) { New-Item -Path $urlAllowKey -Force -ErrorAction SilentlyContinue | Out-Null }
+            for ($i = 0; $i -lt $allowedUrls.Count; $i++) {
+                $num = $i + 1
+                Set-ItemProperty -Path $urlAllowKey -Name "$num" -Value $allowedUrls[$i] -Type String -Force -ErrorAction SilentlyContinue
+            }
+
+            # 2. Enforce Generic Master URLBlocklist (Raw IPs + Proxy Engines + Notorious)
             $urlBlockKey = "$rootKey\URLBlocklist"
             if (-not (Test-Path $urlBlockKey)) { New-Item -Path $urlBlockKey -Force -ErrorAction SilentlyContinue | Out-Null }
-            for ($i = 0; $i -lt $blockedUrls.Count; $i++) {
+            for ($i = 0; $i -lt $masterBlockedUrls.Count; $i++) {
                 $num = $i + 1
-                Set-ItemProperty -Path $urlBlockKey -Name "$num" -Value $blockedUrls[$i] -Type String -Force -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $urlBlockKey -Name "$num" -Value $masterBlockedUrls[$i] -Type String -Force -ErrorAction SilentlyContinue
             }
         } catch {
-            # Catch any individual key creation error gracefully
+            # Catch individual key errors gracefully
         }
     }
-    Write-Host "  $C_OK[+] $($b.Name): Incognito Disabled | Extensions Allowed | Anti-Proxy URLBlocklist Active ($($blockedUrls.Count) rules)$R"
+    Write-Host "  $C_OK[+] $($b.Name): Incognito Disabled | Raw IP Block Active | Generic Proxy Interception Active ($($masterBlockedUrls.Count) rules)$R"
 }
 
 # ------------------------------------------------------------------------------
@@ -257,12 +261,12 @@ foreach ($b in $browserConfigs) {
 Write-Host "`n$C_SEC[4/6] Disabling Windows VPN Connections & RasMan Remote Access Service...$R"
 try {
     $netConnKey = "HKLM:\SOFTWARE\Policies\Microsoft\Network Connections"
-    if (-not (Test-Path $netConnKey)) { New-Item -Path $netConnKey -Force | Out-Null }
+    if (-not (Test-Path $netConnKey)) { New-Item -Path $netConnKey -Force -ErrorAction SilentlyContinue | Out-Null }
     Set-ItemProperty -Path $netConnKey -Name "NC_NewConnectionWizard" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
     Set-ItemProperty -Path $netConnKey -Name "NC_DeleteAllUserConnection" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 
     $ieControlKey = "HKLM:\SOFTWARE\Policies\Microsoft\Internet Explorer\Control Panel"
-    if (-not (Test-Path $ieControlKey)) { New-Item -Path $ieControlKey -Force | Out-Null }
+    if (-not (Test-Path $ieControlKey)) { New-Item -Path $ieControlKey -Force -ErrorAction SilentlyContinue | Out-Null }
     Set-ItemProperty -Path $ieControlKey -Name "Proxy" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
     Set-ItemProperty -Path $ieControlKey -Name "Connwiz Admin Lock" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 
@@ -303,5 +307,5 @@ if ($runningBrowsers) {
 }
 
 Write-Host "`n$C_HDR===============================================================================$R"
-Write-Host " $C_OK[OK] WINDOWS ANTI-PROXY & CONTENT LOCKDOWN IS NOW 100% ACTIVE!$R"
+Write-Host " $C_OK[OK] GENERIC ANTI-PROXY & CONTENT LOCKDOWN IS NOW 100% ACTIVE!$R"
 Write-Host "$C_HDR===============================================================================$R`n"
