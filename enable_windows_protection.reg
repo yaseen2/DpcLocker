@@ -1,8 +1,15 @@
 Windows Registry Editor Version 5.00
 
 ; ========================================================
-; PURGE ALL FORCED EXTENSIONS FROM CHROME, EDGE & BRAVE
+; PURGE EXTENSION INSTALL BLOCKLISTS (ALLOW EXTENSIONS)
 ; ========================================================
+[-HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallBlocklist]
+[-HKEY_CURRENT_USER\SOFTWARE\Policies\Google\Chrome\ExtensionInstallBlocklist]
+[-HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist]
+[-HKEY_CURRENT_USER\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist]
+[-HKEY_LOCAL_MACHINE\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionInstallBlocklist]
+[-HKEY_CURRENT_USER\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionInstallBlocklist]
+
 [-HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist]
 [-HKEY_CURRENT_USER\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist]
 [-HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist]
@@ -11,7 +18,7 @@ Windows Registry Editor Version 5.00
 [-HKEY_CURRENT_USER\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionInstallForcelist]
 
 ; ========================================================
-; GOOGLE CHROME - INCOGNITO LOCK, SAFESEARCH, PROXY DIRECT, EXTENSION LOCK
+; GOOGLE CHROME - INCOGNITO LOCK, SAFESEARCH, PROXY DIRECT
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
 "IncognitoModeAvailability"=dword:00000001
@@ -20,13 +27,9 @@ Windows Registry Editor Version 5.00
 "ForceYouTubeRestrict"=dword:00000000
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
-"BlockExternalExtensions"=dword:00000001
 
 [HKEY_CURRENT_USER\SOFTWARE\Policies\Google\Chrome]
 "IncognitoModeAvailability"=dword:00000001
-
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallBlocklist]
-"1"="*"
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\URLBlocklist]
 "1"="*fboxtv.org*"
@@ -83,13 +86,9 @@ Windows Registry Editor Version 5.00
 "52"="*/service/gateway*"
 "53"="*/uv/service/*"
 "54"="*/bare/*"
-"55"="*chromewebstore.google.com/detail/hideme*"
-"56"="*chromewebstore.google.com/detail/hide-me*"
-"57"="*chromewebstore.google.com/detail/vpn*"
-"58"="*chromewebstore.google.com/detail/proxy*"
 
 ; ========================================================
-; MICROSOFT EDGE - INPRIVATE LOCK, SAFESEARCH, PROXY DIRECT, EXTENSION LOCK
+; MICROSOFT EDGE - INPRIVATE LOCK, SAFESEARCH, PROXY DIRECT
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
@@ -97,13 +96,9 @@ Windows Registry Editor Version 5.00
 "ForceYouTubeRestrict"=dword:00000000
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
-"BlockExternalExtensions"=dword:00000001
 
 [HKEY_CURRENT_USER\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
-
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist]
-"1"="*"
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist]
 "1"="*fboxtv.org*"
@@ -160,13 +155,9 @@ Windows Registry Editor Version 5.00
 "52"="*/service/gateway*"
 "53"="*/uv/service/*"
 "54"="*/bare/*"
-"55"="*chromewebstore.google.com/detail/hideme*"
-"56"="*chromewebstore.google.com/detail/hide-me*"
-"57"="*chromewebstore.google.com/detail/vpn*"
-"58"="*chromewebstore.google.com/detail/proxy*"
 
 ; ========================================================
-; BRAVE BROWSER - INCOGNITO LOCK, SAFESEARCH, PROXY DIRECT, EXTENSION LOCK
+; BRAVE BROWSER - INCOGNITO LOCK, SAFESEARCH, PROXY DIRECT
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\BraveSoftware\Brave]
 "IncognitoModeAvailability"=dword:00000001
@@ -175,13 +166,9 @@ Windows Registry Editor Version 5.00
 "ForceYouTubeRestrict"=dword:00000000
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
-"BlockExternalExtensions"=dword:00000001
 
 [HKEY_CURRENT_USER\SOFTWARE\Policies\BraveSoftware\Brave]
 "IncognitoModeAvailability"=dword:00000001
-
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionInstallBlocklist]
-"1"="*"
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\BraveSoftware\Brave\URLBlocklist]
 "1"="*fboxtv.org*"
@@ -238,10 +225,6 @@ Windows Registry Editor Version 5.00
 "52"="*/service/gateway*"
 "53"="*/uv/service/*"
 "54"="*/bare/*"
-"55"="*chromewebstore.google.com/detail/hideme*"
-"56"="*chromewebstore.google.com/detail/hide-me*"
-"57"="*chromewebstore.google.com/detail/vpn*"
-"58"="*chromewebstore.google.com/detail/proxy*"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES

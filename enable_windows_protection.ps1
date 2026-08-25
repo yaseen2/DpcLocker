@@ -231,12 +231,11 @@ foreach ($b in $browserConfigs) {
             Set-ItemProperty -Path $rootKey -Name "ForceYouTubeRestrict" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
             Set-ItemProperty -Path $rootKey -Name "DnsOverHttpsMode" -Value "off" -Type String -Force -ErrorAction SilentlyContinue
             Set-ItemProperty -Path $rootKey -Name "ProxyMode" -Value "direct" -Type String -Force -ErrorAction SilentlyContinue
-            Set-ItemProperty -Path $rootKey -Name "BlockExternalExtensions" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 
-            # 1. Enforce Extension Install Blocklist (Blocks installing ANY proxy/VPN extension)
+            # Purge any extension installation blocklists so extensions can be freely installed
             $extBlockKey = "$rootKey\ExtensionInstallBlocklist"
-            if (-not (Test-Path $extBlockKey)) { New-Item -Path $extBlockKey -Force -ErrorAction SilentlyContinue | Out-Null }
-            Set-ItemProperty -Path $extBlockKey -Name "1" -Value "*" -Type String -Force -ErrorAction SilentlyContinue
+            if (Test-Path $extBlockKey) { Remove-Item -Path $extBlockKey -Recurse -Force -ErrorAction SilentlyContinue }
+            Remove-ItemProperty -Path $rootKey -Name "BlockExternalExtensions" -Force -ErrorAction SilentlyContinue
 
             # 2. Enforce Comprehensive URLBlocklist
             $urlBlockKey = "$rootKey\URLBlocklist"
@@ -249,7 +248,7 @@ foreach ($b in $browserConfigs) {
             # Catch any individual key creation error gracefully
         }
     }
-    Write-Host "  $C_OK[+] $($b.Name): Incognito Disabled | Extensions Blocked (*) | Anti-Proxy URLBlocklist Active ($($blockedUrls.Count) rules)$R"
+    Write-Host "  $C_OK[+] $($b.Name): Incognito Disabled | Extensions Allowed | Anti-Proxy URLBlocklist Active ($($blockedUrls.Count) rules)$R"
 }
 
 # ------------------------------------------------------------------------------
