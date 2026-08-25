@@ -311,7 +311,10 @@ public class AiAppAuditor {
 
                                     if (isRescueMode) {
                                         // Tier 2 Rescue Check
-                                        if (!isRisky) {
+                                        if (SecurityConfig.isBlocklisted(context, packageName)) {
+                                            SecurityPipelineManager.markPackageBlocked(context, packageName);
+                                            SecurityLogger.log(context, "[AI_BLOCKLIST_PRESERVED]", packageName + " -> Explicit Blocklist Match -> Maintained Suspended");
+                                        } else if (!isRisky) {
                                             // False positive rescued!
                                             unsuspendPackage(context, packageName);
                                             SecurityPipelineManager.markPackageSafe(context, packageName);
@@ -323,7 +326,7 @@ public class AiAppAuditor {
                                         }
                                     } else {
                                         // Tier 3 Gray-Area Scan
-                                        if (isRisky) {
+                                        if (isRisky || SecurityConfig.isBlocklisted(context, packageName)) {
                                             suspendPackage(context, packageName, "Gemini AI (" + modelName + "): " + reason);
                                             SecurityPipelineManager.markPackageBlocked(context, packageName);
                                             SecurityLogger.log(context, "[AI_RISKY_SUSPEND]", packageName + " -> Suspended by Gemini AI (" + modelName + "): " + reason);
@@ -349,7 +352,10 @@ public class AiAppAuditor {
         // If AI is offline or failed, enqueue for deferred background review when network connects
         if (!aiSuccess) {
             enqueuePendingAudit(context, packageName);
-            if (!isRescueMode) {
+            if (SecurityConfig.isBlocklisted(context, packageName)) {
+                SecurityPipelineManager.markPackageBlocked(context, packageName);
+                SecurityLogger.log(context, "[AI_OFFLINE]", packageName + " -> Explicit Blocklist Match maintained");
+            } else if (!isRescueMode) {
                 SecurityPipelineManager.markPackageSafe(context, packageName);
                 SecurityLogger.log(context, "[OFFLINE_DEFERRED]", packageName + " -> Allowed temporarily (Enqueued for Gemini AI audit upon network connection)");
             } else {
@@ -372,6 +378,15 @@ public class AiAppAuditor {
     }
 
     private static void unsuspendPackage(Context context, String packageName) {
+        if (packageName == null || packageName.isEmpty()) return;
+        if (SecurityConfig.isBlocklisted(context, packageName)) {
+            Log.w(TAG, "Refusing to unsuspend explicitly blocklisted package: " + packageName);
+            return;
+        }
+        if (AppTimerManager.isDailyLimitExceeded(context, packageName)) {
+            Log.w(TAG, "Refusing to unsuspend timer-exceeded package: " + packageName);
+            return;
+        }
         try {
             DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
             ComponentName admin = DeviceAdminReceiver.getComponentName(context);

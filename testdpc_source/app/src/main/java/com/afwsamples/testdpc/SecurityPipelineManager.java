@@ -47,6 +47,14 @@ public class SecurityPipelineManager {
     public static void markPackageSafe(Context context, String packageName) {
         if (packageName == null) return;
         String lower = packageName.trim().toLowerCase();
+
+        // Hard Blocklist Protection: Never cache an explicitly blocklisted package as safe!
+        if (SecurityConfig.isBlocklisted(context, lower)) {
+            Log.w(TAG, "Attempted to mark explicitly blocklisted package as safe: " + lower + " -> REJECTED");
+            markPackageBlocked(context, lower);
+            return;
+        }
+
         Set<String> safeSet = getCachedSafePackages(context);
         safeSet.add(lower);
         Set<String> blockedSet = getCachedBlockedPackages(context);
@@ -134,18 +142,25 @@ public class SecurityPipelineManager {
         boolean isBlocklisted = SecurityConfig.isBlocklisted(context, packageName);
         boolean isBrowser = BrowserBlocker.isAutoBlockEnabled(context) && BrowserBlocker.isNonChromeBrowser(context, packageName);
 
-        if (isBlocklisted || isBrowser) {
-            String triggerReason = isBrowser ? "Browser Intent Match" : "Notorious Social Blocklist";
+        if (isBlocklisted) {
+            // HARD DEFINITIVE BLOCK: Explicit User / Notorious Blocklist (TikTok, Twitter, Reddit, YouTube, etc.)
+            // NEVER send to AI for rescue!
             markPackageBlocked(context, packageName);
-
             if (isDeviceOwner) {
                 dpm.setPackagesSuspended(admin, new String[]{packageName}, true);
             }
+            SecurityLogger.log(context, "[TIER2_HARD_BLOCK]", packageName + " -> Explicit Blocklist Match -> Permanently Suspended");
+            return;
+        }
 
-            SecurityLogger.log(context, "[TIER2_SUSPEND]", packageName + " -> " + triggerReason + " -> Provisionally Suspended");
-
-            // Asynchronous AI False-Positive Rescue Verification
-            AiAppAuditor.verifyAndRescuePackageAsync(context, packageName, triggerReason);
+        if (isBrowser) {
+            // HEURISTIC BROWSER DETECTION: Flagged by broad intent filters -> Provisionally Suspend + AI Rescue
+            markPackageBlocked(context, packageName);
+            if (isDeviceOwner) {
+                dpm.setPackagesSuspended(admin, new String[]{packageName}, true);
+            }
+            SecurityLogger.log(context, "[TIER2_BROWSER_SUSPEND]", packageName + " -> Heuristic Browser Intent Match -> Provisionally Suspended");
+            AiAppAuditor.verifyAndRescuePackageAsync(context, packageName, "Browser Intent Match");
             return;
         }
 
