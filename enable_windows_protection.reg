@@ -11,7 +11,7 @@ Windows Registry Editor Version 5.00
 [-HKEY_CURRENT_USER\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionInstallForcelist]
 
 ; ========================================================
-; GOOGLE CHROME - INCOGNITO LOCK, SAFESEARCH, DOH DISABLE
+; GOOGLE CHROME - INCOGNITO LOCK, SAFESEARCH, PROXY DIRECT, EXTENSION LOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
 "IncognitoModeAvailability"=dword:00000001
@@ -20,9 +20,13 @@ Windows Registry Editor Version 5.00
 "ForceYouTubeRestrict"=dword:00000000
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
+"BlockExternalExtensions"=dword:00000001
 
 [HKEY_CURRENT_USER\SOFTWARE\Policies\Google\Chrome]
 "IncognitoModeAvailability"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallBlocklist]
+"1"="*"
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\URLBlocklist]
 "1"="*fboxtv.org*"
@@ -33,14 +37,59 @@ Windows Registry Editor Version 5.00
 "6"="*tumblr.com*"
 "7"="*telegram.org*"
 "8"="*t.me*"
-"9"="*croxyproxy.com*"
-"10"="*proxysite.com*"
-"11"="*hide.me*"
-"12"="*blockaway.net*"
-"13"="*tiktok.com*"
+"9"="*tiktok.com*"
+"10"="*azureserv.com*"
+"11"="*proxypal.net*"
+"12"="*hide.me*"
+"13"="*croxyproxy.com*"
+"14"="*croxyproxy.rocks*"
+"15"="*croxyproxy.net*"
+"16"="*croxy.network*"
+"17"="*croxy.org*"
+"18"="*proxysite.com*"
+"19"="*proxysite.cloud*"
+"20"="*proxysite.site*"
+"21"="*proxysite.one*"
+"22"="*blockaway.net*"
+"23"="*kproxy.com*"
+"24"="*vpnbook.com*"
+"25"="*hidester.com*"
+"26"="*plainproxies.com*"
+"27"="*hidemyass.com*"
+"28"="*proxyium.com*"
+"29"="*proxyium.net*"
+"30"="*whoer.net*"
+"31"="*zalmos.com*"
+"32"="*filterbypass.me*"
+"33"="*4everproxy.com*"
+"34"="*toolur.com*"
+"35"="*webproxy.to*"
+"36"="*turbohide.org*"
+"37"="*freeproxy.win*"
+"38"="*nodeunblocker.net*"
+"39"="*rammerhead.org*"
+"40"="*ultraviolet.dev*"
+"41"="*__cpo=*"
+"42"="*__cpr=*"
+"43"="*&__cpo=*"
+"44"="*?url=http*"
+"45"="*&url=http*"
+"46"="*?q=http*"
+"47"="*&q=http*"
+"48"="*&u=a1aHR0c*"
+"49"="*&u=aHR0c*"
+"50"="*?__proxy=*"
+"51"="*&__proxy=*"
+"52"="*/service/gateway*"
+"53"="*/uv/service/*"
+"54"="*/bare/*"
+"55"="*chromewebstore.google.com/detail/hideme*"
+"56"="*chromewebstore.google.com/detail/hide-me*"
+"57"="*chromewebstore.google.com/detail/vpn*"
+"58"="*chromewebstore.google.com/detail/proxy*"
 
 ; ========================================================
-; MICROSOFT EDGE - INPRIVATE LOCK, SAFESEARCH, DOH DISABLE
+; MICROSOFT EDGE - INPRIVATE LOCK, SAFESEARCH, PROXY DIRECT, EXTENSION LOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
@@ -48,9 +97,13 @@ Windows Registry Editor Version 5.00
 "ForceYouTubeRestrict"=dword:00000000
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
+"BlockExternalExtensions"=dword:00000001
 
 [HKEY_CURRENT_USER\SOFTWARE\Policies\Microsoft\Edge]
 "InPrivateModeAvailability"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist]
+"1"="*"
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\URLBlocklist]
 "1"="*fboxtv.org*"
@@ -61,14 +114,59 @@ Windows Registry Editor Version 5.00
 "6"="*tumblr.com*"
 "7"="*telegram.org*"
 "8"="*t.me*"
-"9"="*croxyproxy.com*"
-"10"="*proxysite.com*"
-"11"="*hide.me*"
-"12"="*blockaway.net*"
-"13"="*tiktok.com*"
+"9"="*tiktok.com*"
+"10"="*azureserv.com*"
+"11"="*proxypal.net*"
+"12"="*hide.me*"
+"13"="*croxyproxy.com*"
+"14"="*croxyproxy.rocks*"
+"15"="*croxyproxy.net*"
+"16"="*croxy.network*"
+"17"="*croxy.org*"
+"18"="*proxysite.com*"
+"19"="*proxysite.cloud*"
+"20"="*proxysite.site*"
+"21"="*proxysite.one*"
+"22"="*blockaway.net*"
+"23"="*kproxy.com*"
+"24"="*vpnbook.com*"
+"25"="*hidester.com*"
+"26"="*plainproxies.com*"
+"27"="*hidemyass.com*"
+"28"="*proxyium.com*"
+"29"="*proxyium.net*"
+"30"="*whoer.net*"
+"31"="*zalmos.com*"
+"32"="*filterbypass.me*"
+"33"="*4everproxy.com*"
+"34"="*toolur.com*"
+"35"="*webproxy.to*"
+"36"="*turbohide.org*"
+"37"="*freeproxy.win*"
+"38"="*nodeunblocker.net*"
+"39"="*rammerhead.org*"
+"40"="*ultraviolet.dev*"
+"41"="*__cpo=*"
+"42"="*__cpr=*"
+"43"="*&__cpo=*"
+"44"="*?url=http*"
+"45"="*&url=http*"
+"46"="*?q=http*"
+"47"="*&q=http*"
+"48"="*&u=a1aHR0c*"
+"49"="*&u=aHR0c*"
+"50"="*?__proxy=*"
+"51"="*&__proxy=*"
+"52"="*/service/gateway*"
+"53"="*/uv/service/*"
+"54"="*/bare/*"
+"55"="*chromewebstore.google.com/detail/hideme*"
+"56"="*chromewebstore.google.com/detail/hide-me*"
+"57"="*chromewebstore.google.com/detail/vpn*"
+"58"="*chromewebstore.google.com/detail/proxy*"
 
 ; ========================================================
-; BRAVE BROWSER - INCOGNITO LOCK, SAFESEARCH, DOH DISABLE
+; BRAVE BROWSER - INCOGNITO LOCK, SAFESEARCH, PROXY DIRECT, EXTENSION LOCK
 ; ========================================================
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\BraveSoftware\Brave]
 "IncognitoModeAvailability"=dword:00000001
@@ -77,9 +175,13 @@ Windows Registry Editor Version 5.00
 "ForceYouTubeRestrict"=dword:00000000
 "DnsOverHttpsMode"="off"
 "ProxyMode"="direct"
+"BlockExternalExtensions"=dword:00000001
 
 [HKEY_CURRENT_USER\SOFTWARE\Policies\BraveSoftware\Brave]
 "IncognitoModeAvailability"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionInstallBlocklist]
+"1"="*"
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\BraveSoftware\Brave\URLBlocklist]
 "1"="*fboxtv.org*"
@@ -90,11 +192,56 @@ Windows Registry Editor Version 5.00
 "6"="*tumblr.com*"
 "7"="*telegram.org*"
 "8"="*t.me*"
-"9"="*croxyproxy.com*"
-"10"="*proxysite.com*"
-"11"="*hide.me*"
-"12"="*blockaway.net*"
-"13"="*tiktok.com*"
+"9"="*tiktok.com*"
+"10"="*azureserv.com*"
+"11"="*proxypal.net*"
+"12"="*hide.me*"
+"13"="*croxyproxy.com*"
+"14"="*croxyproxy.rocks*"
+"15"="*croxyproxy.net*"
+"16"="*croxy.network*"
+"17"="*croxy.org*"
+"18"="*proxysite.com*"
+"19"="*proxysite.cloud*"
+"20"="*proxysite.site*"
+"21"="*proxysite.one*"
+"22"="*blockaway.net*"
+"23"="*kproxy.com*"
+"24"="*vpnbook.com*"
+"25"="*hidester.com*"
+"26"="*plainproxies.com*"
+"27"="*hidemyass.com*"
+"28"="*proxyium.com*"
+"29"="*proxyium.net*"
+"30"="*whoer.net*"
+"31"="*zalmos.com*"
+"32"="*filterbypass.me*"
+"33"="*4everproxy.com*"
+"34"="*toolur.com*"
+"35"="*webproxy.to*"
+"36"="*turbohide.org*"
+"37"="*freeproxy.win*"
+"38"="*nodeunblocker.net*"
+"39"="*rammerhead.org*"
+"40"="*ultraviolet.dev*"
+"41"="*__cpo=*"
+"42"="*__cpr=*"
+"43"="*&__cpo=*"
+"44"="*?url=http*"
+"45"="*&url=http*"
+"46"="*?q=http*"
+"47"="*&q=http*"
+"48"="*&u=a1aHR0c*"
+"49"="*&u=aHR0c*"
+"50"="*?__proxy=*"
+"51"="*&__proxy=*"
+"52"="*/service/gateway*"
+"53"="*/uv/service/*"
+"54"="*/bare/*"
+"55"="*chromewebstore.google.com/detail/hideme*"
+"56"="*chromewebstore.google.com/detail/hide-me*"
+"57"="*chromewebstore.google.com/detail/vpn*"
+"58"="*chromewebstore.google.com/detail/proxy*"
 
 ; ========================================================
 ; WINDOWS NETWORK - BLOCK ADDING VPN CONNECTIONS & PROXIES
