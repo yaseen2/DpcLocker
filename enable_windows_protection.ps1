@@ -1,5 +1,5 @@
 # ==============================================================================
-# DPCLOCKER :: WINDOWS GENERIC ANTI-PROXY & BROWSER HARDENING ENGINE
+# DPCLOCKER :: WINDOWS ENTERPRISE CONTENT & PROXY LOCKDOWN ENGINE
 # ==============================================================================
 
 $esc = [char]27
@@ -14,7 +14,7 @@ $R     = "$esc[0m"
 
 Clear-Host
 Write-Host "$C_HDR===============================================================================$R"
-Write-Host " $C_HDR[#] DPCLOCKER :: GENERIC ANTI-PROXY & CONTENT LOCKDOWN ENGINE$R"
+Write-Host " $C_HDR[#] DPCLOCKER :: ENTERPRISE PROXY & CONTENT LOCKDOWN ENGINE$R"
 Write-Host "$C_HDR===============================================================================$R`n"
 
 # ------------------------------------------------------------------------------
@@ -86,17 +86,17 @@ $hostsEntries = @(
     "0.0.0.0 v19-webapp-prime.tiktok.com",
 
     # Web Proxy Engines & Dynamic Relay Nodes
-    "0.0.0.0 uproxy.online",
-    "0.0.0.0 www.uproxy.online",
-    "0.0.0.0 api.uproxy.online",
-    "0.0.0.0 vtransmit.com",
-    "0.0.0.0 www.vtransmit.com",
-    "0.0.0.0 azureserv.com",
-    "0.0.0.0 www.azureserv.com",
-    "0.0.0.0 proxypal.net",
-    "0.0.0.0 www.proxypal.net",
-    "0.0.0.0 hide.me",
-    "0.0.0.0 www.hide.me",
+    "0.0.0.0 proxysite.com",
+    "0.0.0.0 www.proxysite.com",
+    "0.0.0.0 proxysite.cloud",
+    "0.0.0.0 proxysite.site",
+    "0.0.0.0 proxysite.one",
+    "0.0.0.0 hidester.one",
+    "0.0.0.0 www.hidester.one",
+    "0.0.0.0 proxy.hidester.one",
+    "0.0.0.0 www-proxy.hidester.one",
+    "0.0.0.0 hidester.com",
+    "0.0.0.0 www.hidester.com",
     "0.0.0.0 croxyproxy.com",
     "0.0.0.0 www.croxyproxy.com",
     "0.0.0.0 croxyproxy.net",
@@ -104,29 +104,29 @@ $hostsEntries = @(
     "0.0.0.0 www.croxyproxy.rocks",
     "0.0.0.0 croxy.network",
     "0.0.0.0 croxy.org",
-    "0.0.0.0 blockaway.net",
-    "0.0.0.0 www.blockaway.net",
-    "0.0.0.0 proxysite.com",
-    "0.0.0.0 www.proxysite.com",
-    "0.0.0.0 proxysite.cloud",
-    "0.0.0.0 proxysite.site",
-    "0.0.0.0 proxysite.one",
-    "0.0.0.0 proxyium.com",
-    "0.0.0.0 www.proxyium.com",
-    "0.0.0.0 proxyium.net",
-    "0.0.0.0 kproxy.com",
-    "0.0.0.0 vpnbook.com",
-    "0.0.0.0 hidester.com",
-    "0.0.0.0 www.hidester.com",
-    "0.0.0.0 hidester.one",
-    "0.0.0.0 www.hidester.one",
-    "0.0.0.0 proxy.hidester.one",
-    "0.0.0.0 www-proxy.hidester.one",
+    "0.0.0.0 uproxy.online",
+    "0.0.0.0 www.uproxy.online",
+    "0.0.0.0 api.uproxy.online",
+    "0.0.0.0 vtransmit.com",
+    "0.0.0.0 www.vtransmit.com",
     "0.0.0.0 extremevpn.com",
     "0.0.0.0 www.extremevpn.com",
     "0.0.0.0 proxy-ca.extremevpn.com",
     "0.0.0.0 proxy-us.extremevpn.com",
     "0.0.0.0 proxy-nl.extremevpn.com",
+    "0.0.0.0 azureserv.com",
+    "0.0.0.0 www.azureserv.com",
+    "0.0.0.0 proxypal.net",
+    "0.0.0.0 www.proxypal.net",
+    "0.0.0.0 hide.me",
+    "0.0.0.0 www.hide.me",
+    "0.0.0.0 blockaway.net",
+    "0.0.0.0 www.blockaway.net",
+    "0.0.0.0 proxyium.com",
+    "0.0.0.0 www.proxyium.com",
+    "0.0.0.0 proxyium.net",
+    "0.0.0.0 kproxy.com",
+    "0.0.0.0 vpnbook.com",
     "0.0.0.0 plainproxies.com",
     "0.0.0.0 hidemyass.com",
     "0.0.0.0 whoer.net",
@@ -143,7 +143,13 @@ $hostsEntries = @(
     "0.0.0.0 anarchyproxy.com",
     "0.0.0.0 hyperproxy.network",
     "0.0.0.0 shuttleproxy.com",
-    "0.0.0.0 alohabrowser.com"
+    "0.0.0.0 alohabrowser.com",
+    "0.0.0.0 shadowproxy.org",
+    "0.0.0.0 interstellarproxy.com",
+    "0.0.0.0 incognitoproxy.com",
+    "0.0.0.0 nebula.net",
+    "0.0.0.0 titaniumnetwork.org",
+    "0.0.0.0 womginx.org"
 )
 
 try {
@@ -170,7 +176,7 @@ try {
 # ------------------------------------------------------------------------------
 # 3. APPLY ENTERPRISE BROWSER POLICIES (CHROME, EDGE, BRAVE - HKLM & HKCU)
 # ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[3/6] Enforcing Generic Anti-Proxy & Content Policies in Browsers...$R"
+Write-Host "`n$C_SEC[3/6] Enforcing 100% Valid Chromium URLBlocklist Policies...$R"
 
 $browserConfigs = @(
     @{ Name = "Google Chrome";  Roots = @("HKLM:\SOFTWARE\Policies\Google\Chrome", "HKCU:\SOFTWARE\Policies\Google\Chrome"); IncognitoProp = "IncognitoModeAvailability" },
@@ -178,90 +184,71 @@ $browserConfigs = @(
     @{ Name = "Brave Browser";  Roots = @("HKLM:\SOFTWARE\Policies\BraveSoftware\Brave", "HKCU:\SOFTWARE\Policies\BraveSoftware\Brave"); IncognitoProp = "IncognitoModeAvailability" }
 )
 
-# A. URLAllowlist: Local LAN & Development (Overrides IP Blocklist)
-$allowedUrls = @(
-    "*://192.168.*",
-    "*://10.*",
-    "*://127.*",
-    "*://localhost*",
-    "*://172.16.*", "*://172.17.*", "*://172.18.*", "*://172.19.*",
-    "*://172.20.*", "*://172.21.*", "*://172.22.*", "*://172.23.*",
-    "*://172.24.*", "*://172.25.*", "*://172.26.*", "*://172.27.*",
-    "*://172.28.*", "*://172.29.*", "*://172.30.*", "*://172.31.*"
+# 100% Valid Chromium URLBlocklist (Domain matching: "example.com" blocks example.com, www, and all subdomains)
+$blockedDomains = @(
+    # Top Online Web Proxies & Unblockers
+    "proxysite.com",
+    "proxysite.cloud",
+    "proxysite.site",
+    "proxysite.one",
+    "hidester.one",
+    "hidester.com",
+    "croxyproxy.com",
+    "croxyproxy.net",
+    "croxyproxy.rocks",
+    "croxy.network",
+    "croxy.org",
+    "uproxy.online",
+    "extremevpn.com",
+    "azureserv.com",
+    "proxypal.net",
+    "hide.me",
+    "blockaway.net",
+    "proxyium.com",
+    "proxyium.net",
+    "kproxy.com",
+    "vpnbook.com",
+    "plainproxies.com",
+    "hidemyass.com",
+    "whoer.net",
+    "zalmos.com",
+    "filterbypass.me",
+    "4everproxy.com",
+    "toolur.com",
+    "webproxy.to",
+    "turbohide.org",
+    "freeproxy.win",
+    "nodeunblocker.net",
+    "rammerhead.org",
+    "ultraviolet.dev",
+    "anarchyproxy.com",
+    "hyperproxy.network",
+    "shuttleproxy.com",
+    "alohabrowser.com",
+    "vtransmit.com",
+    "p23hxejm1.com",
+    "rm358.com",
+    "azureserv.net",
+    "shadowproxy.org",
+    "interstellarproxy.com",
+    "incognitoproxy.com",
+    "nebula.net",
+    "titaniumnetwork.org",
+    "womginx.org",
+
+    # Notorious Streaming & Social Media
+    "fboxtv.org",
+    "x.com",
+    "twitter.com",
+    "twimg.com",
+    "reddit.com",
+    "redd.it",
+    "redditmedia.com",
+    "tumblr.com",
+    "telegram.org",
+    "t.me",
+    "tiktok.com"
 )
-
-# B. URLBlocklist:
-# 1. Generic Raw Public IPv4 Blocking (1.x.x.x through 255.x.x.x)
-$rawIpBlockList = @(1..255 | ForEach-Object { "*://$_.*" })
-
-# 2. Generic Proxy Engine Signatures (Ultraviolet, DIP, Osana, Stomp, CroxyProxy, Rammerhead, Glype, etc.)
-$genericProxyPatterns = @(
-    # Precision Proxy Engine Bundle & Endpoint Signatures (0 False Positives)
-    "*://*/uv/uv.bundle.js*",
-    "*://*/uv/uv.config.js*",
-    "*://*/uv/uv.client.js*",
-    "*://*/uv/uv.handler.js*",
-    "*://*/uv/uv.sw.js*",
-    "*://*/dip/dip.config.js*",
-    "*://*/osana/config.js*",
-    "*://*/stomp/bootstrapper.js*",
-    "*://*/*__cpo*",
-    "*://*/*__cpi*",
-    "*://*/*__cpr*",
-    "*://*/__cpi.php*",
-    "*://*/*?*__cpo*",
-    "*://*/*&__cpo*",
-    "*://*/*/uv/service/*",
-    "*://*/*/service/gateway*",
-    "*://*/*/bare/*",
-    "*://*/*aHR0cHM6Ly9*",
-    "*://*/*aHR0cDovL*",
-    "*://*/*&u=a1aHR0c*",
-    "*://*/*&u=aHR0c*",
-    "*://*/*?*u=a1aHR0c*",
-    "*://*/*?*u=aHR0c*",
-    "*://*/*evp-target*",
-    "*://*/*__proxy*",
-    "*://*/*uproxy*",
-    "*://*/*vtransmit*",
-    "*://*/*croxyproxy*",
-    "*://*/*proxypal*",
-    "*://*/*proxysite*",
-    "*://*/*blockaway*",
-    "*://*/*lumiproxy*",
-    "*://*/*hidester*",
-    "*://*/*extremevpn*",
-    "*://*/*p23hxejm1.com*",
-    "*://*/*rm358.com*",
-
-    # Precision Search Query Shields (Targeting Web Proxy Seeking Intent Only)
-    "*google.com/search*q=*online*proxy*",
-    "*google.*/search*q=*online*proxy*",
-    "*google.com/search*q=*free*web*proxy*",
-    "*google.com/search*q=*web*proxy*online*",
-    "*google.com/search*q=*free*proxy*site*",
-    "*google.com/search*q=*unblock*website*",
-    "*google.com/search*q=*bypass*filter*",
-    "*google.com/search*q=*croxyproxy*",
-    "*google.com/search*q=*hidester*",
-    "*google.com/search*q=*proxysite*",
-    "*google.com/search*q=*uproxy*",
-    "*bing.com/search*q=*online*proxy*",
-    "*bing.com/search*q=*free*web*proxy*",
-    "*bing.com/search*q=*unblock*website*"
-)
-
-# 3. Notorious Platforms & Regional Google Bypasses
-$notoriousAndSearchBypasses = @(
-    "*fboxtv.org*", "*x.com*", "*twitter.com*", "*twimg.com*", "*redd.it*", "*reddit.com*",
-    "*tumblr.com*", "*telegram.org*", "*t.me*", "*tiktok.com*",
-    "*://*.google.co.*", "*://*.google.com.*", "*://*.google.ca*", "*://*.google.de*",
-    "*://*.google.fr*", "*://*.google.it*", "*://*.google.es*", "*://*.google.nl*",
-    "*://*.google.ru*", "*://*.google.pl*"
-)
-
-# Combine into master blocklist
-$masterBlockedUrls = $rawIpBlockList + $genericProxyPatterns + $notoriousAndSearchBypasses
 
 foreach ($b in $browserConfigs) {
     foreach ($rootKey in $b.Roots) {
@@ -279,26 +266,22 @@ foreach ($b in $browserConfigs) {
             if (Test-Path $extBlockKey) { Remove-Item -Path $extBlockKey -Recurse -Force -ErrorAction SilentlyContinue }
             Remove-ItemProperty -Path $rootKey -Name "BlockExternalExtensions" -Force -ErrorAction SilentlyContinue
 
-            # 1. Enforce URLAllowlist (LAN & Localhost)
+            # Purge URLAllowlist to avoid conflicts
             $urlAllowKey = "$rootKey\URLAllowlist"
-            if (-not (Test-Path $urlAllowKey)) { New-Item -Path $urlAllowKey -Force -ErrorAction SilentlyContinue | Out-Null }
-            for ($i = 0; $i -lt $allowedUrls.Count; $i++) {
-                $num = $i + 1
-                Set-ItemProperty -Path $urlAllowKey -Name "$num" -Value $allowedUrls[$i] -Type String -Force -ErrorAction SilentlyContinue
-            }
+            if (Test-Path $urlAllowKey) { Remove-Item -Path $urlAllowKey -Recurse -Force -ErrorAction SilentlyContinue }
 
-            # 2. Enforce Generic Master URLBlocklist (Raw IPs + Proxy Engines + Notorious)
+            # Enforce 100% Valid Chromium URLBlocklist
             $urlBlockKey = "$rootKey\URLBlocklist"
             if (-not (Test-Path $urlBlockKey)) { New-Item -Path $urlBlockKey -Force -ErrorAction SilentlyContinue | Out-Null }
-            for ($i = 0; $i -lt $masterBlockedUrls.Count; $i++) {
+            for ($i = 0; $i -lt $blockedDomains.Count; $i++) {
                 $num = $i + 1
-                Set-ItemProperty -Path $urlBlockKey -Name "$num" -Value $masterBlockedUrls[$i] -Type String -Force -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $urlBlockKey -Name "$num" -Value $blockedDomains[$i] -Type String -Force -ErrorAction SilentlyContinue
             }
         } catch {
             # Catch individual key errors gracefully
         }
     }
-    Write-Host "  $C_OK[+] $($b.Name): Incognito Disabled | Raw IP Block Active | Generic Proxy Interception Active ($($masterBlockedUrls.Count) rules)$R"
+    Write-Host "  $C_OK[+] $($b.Name): Incognito Disabled | Direct Proxy Active | $($blockedDomains.Count) Domains Locked$R"
 }
 
 # ------------------------------------------------------------------------------
@@ -353,5 +336,5 @@ if ($runningBrowsers) {
 }
 
 Write-Host "`n$C_HDR===============================================================================$R"
-Write-Host " $C_OK[OK] GENERIC ANTI-PROXY & CONTENT LOCKDOWN IS NOW 100% ACTIVE!$R"
+Write-Host " $C_OK[OK] ENTERPRISE PROXY & CONTENT LOCKDOWN IS NOW 100% ACTIVE!$R"
 Write-Host "$C_HDR===============================================================================$R`n"
