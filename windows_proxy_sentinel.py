@@ -2,9 +2,9 @@
 ==============================================================================
 DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY & BYPASS SENTINEL
 ==============================================================================
-Monitors active browser window titles and address bars in real-time (<100ms).
-Automatically terminates the tab or window the moment any proxy, unblocker,
-or bypass keywords are typed, searched, or loaded in any browser.
+Monitors active browser window titles and address bars in real-time (<50ms).
+Automatically terminates the tab or window the moment any proxy, proxies,
+unblocker, or bypass keywords are typed, searched, or loaded in any browser.
 ==============================================================================
 """
 
@@ -13,8 +13,8 @@ from ctypes import wintypes
 import time
 import os
 import sys
+import re
 import json
-import logging
 from datetime import datetime
 
 user32 = ctypes.windll.user32
@@ -36,79 +36,16 @@ TARGET_BROWSER_EXES = {
     "vivaldi.exe"
 }
 
-# Real-time trigger keywords and phrases (case-insensitive)
-TRIGGER_KEYWORDS = [
-    # Core Proxy & Unblocker Terms
-    "online proxy",
-    "web proxy",
-    "free proxy",
-    "proxy site",
-    "proxy server",
-    "proxy list",
-    "proxy youtube",
-    "proxy unblock",
-    "proxy unblocker",
-    "fast proxy",
-    "best proxy",
-    "unblock websites",
-    "unblock youtube",
-    "unblock tiktok",
-    "bypass filter",
-    "bypass securly",
-    "bypass iboss",
-    "holy unblocker",
-    
-    # Specific Proxy Engine & Domain Names
-    "croxyproxy",
-    "proxysite",
-    "hidester",
-    "uproxy",
-    "onlineproxy",
-    "extremevpn",
-    "azureserv",
-    "proxypal",
-    "proxyium",
-    "kproxy",
-    "vpnbook",
-    "blockaway",
-    "rammerhead",
-    "ultraviolet",
-    "anarchyproxy",
-    "hyperproxy",
-    "shuttleproxy",
-    "alohabrowser",
-    "womginx",
-    "zend2",
-    "zendproxy",
-    "megaproxy",
-    "dontfilter",
-    "unblock-web",
-    "unblockvideos",
-    "free-proxy",
-    "shadowproxy",
-    "interstellarproxy",
-    "incognitoproxy",
-    "nebula proxy",
-    "titaniumnetwork",
-    "plainproxies",
-    "hidemyass",
-    "whoer.net",
-    "zalmos",
-    "filterbypass",
-    "4everproxy",
-    "toolur",
-    "webproxy",
-    "turbohide",
-    "freeproxy",
-    "nodeunblocker",
-    "surfshield",
-    "cloakproxy",
-    "scramjet",
-    "arsenic proxy",
-    "selenite proxy",
-    "ludicrous proxy",
-    "shadowtabs"
-]
+# Regex pattern matching proxy, proxies, unblockers, bypasses and all proxy engines
+# Specifically engineered to match 'proxy', 'proxies', 'proxied', 'proxying' while ignoring 'proximity' & 'approximate'
+TRIGGER_REGEX = re.compile(
+    r'\bprox(?:y|ies|ied|ying|ys|ite|ypal|yium|ybroker)?\b|'
+    r'\b(?:croxy|uproxy|hidester|extremevpn|azureserv|blockaway|rammerhead|ultraviolet|womginx|zend2|megaproxy|dontfilter|vtunnel|hidemyass|whoer|zalmos|filterbypass|4everproxy|toolur|turbohide|nodeunblocker|surfshield|scramjet|onlineproxy)\b|'
+    r'\bunblock(?:ed|er|ing|s)?\b|'
+    r'\bbypass(?:ed|ing|es)?\b|'
+    r'prox(?:y|ies)',
+    re.IGNORECASE
+)
 
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "windows_security_log.json")
 
@@ -122,7 +59,6 @@ def get_process_name_from_pid(pid):
     exe_name = ctypes.create_unicode_buffer(512)
     size = wintypes.DWORD(512)
     try:
-        # QueryFullProcessImageNameW
         if kernel32.QueryFullProcessImageNameW(h_proc, 0, exe_name, ctypes.byref(size)):
             full_path = exe_name.value
             return os.path.basename(full_path).lower()
@@ -181,7 +117,6 @@ def log_incident(trigger, title, proc_name):
             records = []
     
     records.append(entry)
-    # Keep last 500 records
     if len(records) > 500:
         records = records[-500:]
         
@@ -195,32 +130,18 @@ def main():
     print("===============================================================================")
     print(" [✓] DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY SENTINEL ACTIVE")
     print("===============================================================================")
-    print(" Monitoring active browser titles for proxy keywords & unblockers...")
+    print(" Monitoring active browser titles for 'proxy', 'proxies', unblockers...")
     print(" Tab / Window will close immediately upon detecting trigger terms.\n")
-    
-    last_intercepted_time = 0
     
     while True:
         try:
             hwnd, title, proc_name, pid = get_active_window()
             
             if hwnd and proc_name in TARGET_BROWSER_EXES and title:
-                title_lower = title.lower()
+                match = TRIGGER_REGEX.search(title)
                 
-                # Check for triggers
-                matched_trigger = None
-                for trigger in TRIGGER_KEYWORDS:
-                    if trigger in title_lower:
-                        matched_trigger = trigger
-                        break
-                        
-                # Also check single word "proxy" if in search engine or website title
-                if not matched_trigger:
-                    if "proxy" in title_lower:
-                        # Ensure it's not a dev editor or terminal
-                        matched_trigger = "proxy"
-                
-                if matched_trigger:
+                if match:
+                    matched_trigger = match.group(0)
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🚨 INTERCEPTED: '{matched_trigger}' in '{title}' ({proc_name})")
                     
                     # 1. Instantly close tab with Ctrl+W
@@ -229,19 +150,18 @@ def main():
                     # 2. Log incident
                     log_incident(matched_trigger, title, proc_name)
                     
-                    # 3. Double-check: if still open after 150ms, close window
-                    time.sleep(0.15)
+                    # 3. Double-check: if still open after 100ms, close window
+                    time.sleep(0.10)
                     new_hwnd, new_title, _, _ = get_active_window()
-                    if new_hwnd == hwnd and matched_trigger in new_title.lower():
+                    if new_hwnd == hwnd and TRIGGER_REGEX.search(new_title):
                         close_window(hwnd)
                         
-                    time.sleep(0.3)
+                    time.sleep(0.2)
                     
-        except Exception as e:
-            # Silent recovery to ensure continuous uptime
+        except Exception:
             pass
             
-        time.sleep(0.1)  # 100ms polling rate (near 0% CPU)
+        time.sleep(0.05)  # 50ms polling rate (ultra-fast 20Hz check, <0.1% CPU)
 
 if __name__ == "__main__":
     main()
