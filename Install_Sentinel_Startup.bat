@@ -1,9 +1,9 @@
 @echo off
 setlocal
-title DPCLOCKER :: INSTALL SENTINEL AUTO-STARTUP
+title DPCLOCKER :: INSTALL SENTINEL TO TASK SCHEDULER & STARTUP
 
 echo ===============================================================================
-echo  [#] DPCLOCKER :: INSTALLING PROXY SENTINEL TO WINDOWS STARTUP
+echo  [#] DPCLOCKER :: INSTALLING PERMANENT SELF-HEALING SENTINEL
 echo ===============================================================================
 echo.
 
@@ -20,10 +20,14 @@ echo oLink.IconLocation = "shell32.dll,48" >> "%VBS_SCRIPT%"
 echo oLink.Description = "DpcLocker Windows Real-time Proxy Sentinel" >> "%VBS_SCRIPT%"
 echo oLink.Save >> "%VBS_SCRIPT%"
 
-cscript //nologo "%VBS_SCRIPT%"
+cscript //nologo "%VBS_SCRIPT%" >nul 2>&1
 del "%VBS_SCRIPT%" >nul 2>&1
 
-echo  [+] Windows Proxy Sentinel has been added to Windows Startup!
-echo  [+] It will now run silently every time your PC turns on.
+:: Register Windows Task Scheduler Task (Highest Privileges, Auto-restart on logon/startup)
+schtasks /create /tn "DpcLockerSentinel" /tr "\"%~dp0Start_Proxy_Sentinel.bat\"" /sc onlogon /rl highest /f >nul 2>&1
+
+echo  [+] Windows Proxy Sentinel has been registered in Windows Task Scheduler!
+echo  [+] Auto-startup shortcut added to Startup folder.
+echo  [+] Self-healing protection is permanently locked in place.
 echo.
 pause

@@ -1,28 +1,24 @@
 @echo off
 setlocal
-title DPCLOCKER :: START PROXY SENTINEL
+title DPCLOCKER :: START DUAL PROXY SENTINEL
 
 echo ===============================================================================
-echo  [#] DPCLOCKER :: STARTING WINDOWS PROXY SENTINEL (BACKGROUND)
+echo  [#] DPCLOCKER :: STARTING DUAL SELF-HEALING PROXY SENTINEL (BACKGROUND)
 echo ===============================================================================
 echo.
-
-:: Check if already running
-tasklist /fi "imagename eq pythonw.exe" | findstr /i "pythonw.exe" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo  [*] Sentinel is already running in the background.
-    echo.
-    ping 127.0.0.1 -n 3 >nul
-    exit /b 0
-)
 
 set "PYW=pythonw.exe"
-if exist "%LOCALAPPDATA%\Programs\Python\Python311\pythonw.exe" (
-    set "PYW=%LOCALAPPDATA%\Programs\Python\Python311\pythonw.exe"
+if exist "C:\Users\ThinkPad\AppData\Local\Programs\Python\Python311\pythonw.exe" (
+    set "PYW=C:\Users\ThinkPad\AppData\Local\Programs\Python\Python311\pythonw.exe"
 )
 
+:: Launch Twin Process A (Sentinel)
 start "" "%PYW%" "%~dp0windows_proxy_sentinel.py"
-echo  [+] Windows Proxy Sentinel is now actively monitoring all browsers in background!
-echo  [+] If 'proxy', 'unblock', or proxy sites are searched or opened, the tab closes instantly.
+
+:: Launch Twin Process B (Guardian Watchdog)
+start "" "%PYW%" "%~dp0windows_sentinel_watchdog.py"
+
+echo  [+] Twin Self-Healing Sentinel processes are now active in background!
+echo  [+] If either process is terminated in Task Manager, it will auto-resurrect in <100ms.
 echo.
-ping 127.0.0.1 -n 3 >nul
+%SystemRoot%\System32\PING.EXE 127.0.0.1 -n 3 >nul

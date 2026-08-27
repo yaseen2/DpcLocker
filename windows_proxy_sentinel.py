@@ -1,10 +1,11 @@
 """
 ==============================================================================
-DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY SENTINEL
+DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY SENTINEL (MUTUAL GUARDIAN)
 ==============================================================================
 Monitors active browser window titles and address bars in real-time (<50ms).
 Automatically terminates the tab or window the moment 'proxy', 'proxies',
 or web proxy engine names are typed, searched, or loaded in any browser.
+Includes Mutual Watchdog resurrection to prevent tampering from Task Manager.
 ==============================================================================
 """
 
@@ -15,6 +16,8 @@ import os
 import sys
 import re
 import json
+import subprocess
+import psutil
 from datetime import datetime
 
 user32 = ctypes.windll.user32
@@ -25,6 +28,10 @@ VK_CONTROL = 0x11
 VK_W = 0x57
 KEYEVENTF_KEYUP = 0x0002
 WM_CLOSE = 0x0010
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+WATCHDOG_SCRIPT = os.path.join(BASE_DIR, "windows_sentinel_watchdog.py")
+PYTHONW_PATH = sys.executable.replace("python.exe", "pythonw.exe")
 
 # Supported browser executable process names (case-insensitive)
 TARGET_BROWSER_EXES = {
@@ -45,7 +52,7 @@ TRIGGER_REGEX = re.compile(
     re.IGNORECASE
 )
 
-LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "windows_security_log.json")
+LOG_FILE = os.path.join(BASE_DIR, "windows_security_log.json")
 
 def get_process_name_from_pid(pid):
     """Retrieves the executable name for a given process ID."""
@@ -96,6 +103,29 @@ def close_window(hwnd):
     """Sends WM_CLOSE message to the window."""
     user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
 
+def is_watchdog_running():
+    """Checks if the twin watchdog process is active."""
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            cmdline = proc.info.get('cmdline') or []
+            cmd_str = " ".join(cmdline).lower()
+            if "windows_sentinel_watchdog.py" in cmd_str:
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+    return False
+
+def resurrect_watchdog():
+    """Launches windows_sentinel_watchdog.py via pythonw."""
+    try:
+        subprocess.Popen(
+            [PYTHONW_PATH, WATCHDOG_SCRIPT],
+            cwd=BASE_DIR,
+            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+        )
+    except Exception:
+        pass
+
 def log_incident(trigger, title, proc_name):
     """Appends security intercept incident to the JSON log."""
     entry = {
@@ -129,10 +159,20 @@ def main():
     print(" [✓] DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY SENTINEL ACTIVE")
     print("===============================================================================")
     print(" Monitoring active browser titles for 'proxy', 'proxies', web proxy engines...")
-    print(" Tab / Window will close immediately upon detecting trigger terms.\n")
+    print(" Dual-process watchdog self-healing enabled.\n")
+    
+    watchdog_check_counter = 0
     
     while True:
         try:
+            # 1. Periodically check that the twin Watchdog is running (every 1 second)
+            watchdog_check_counter += 1
+            if watchdog_check_counter >= 20:
+                watchdog_check_counter = 0
+                if not is_watchdog_running():
+                    resurrect_watchdog()
+            
+            # 2. Inspect active foreground window
             hwnd, title, proc_name, pid = get_active_window()
             
             if hwnd and proc_name in TARGET_BROWSER_EXES and title:
@@ -142,13 +182,13 @@ def main():
                     matched_trigger = match.group(0)
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🚨 INTERCEPTED: '{matched_trigger}' in '{title}' ({proc_name})")
                     
-                    # 1. Instantly close tab with Ctrl+W
+                    # Instantly close tab with Ctrl+W
                     close_active_tab()
                     
-                    # 2. Log incident
+                    # Log incident
                     log_incident(matched_trigger, title, proc_name)
                     
-                    # 3. Double-check: if still open after 100ms, close window
+                    # Double-check: if still open after 100ms, close window
                     time.sleep(0.10)
                     new_hwnd, new_title, _, _ = get_active_window()
                     if new_hwnd == hwnd and TRIGGER_REGEX.search(new_title):
