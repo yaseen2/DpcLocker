@@ -1,10 +1,10 @@
 """
 ==============================================================================
-DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY & BYPASS SENTINEL
+DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY SENTINEL
 ==============================================================================
 Monitors active browser window titles and address bars in real-time (<50ms).
-Automatically terminates the tab or window the moment any proxy, proxies,
-unblocker, or bypass keywords are typed, searched, or loaded in any browser.
+Automatically terminates the tab or window the moment 'proxy', 'proxies',
+or web proxy engine names are typed, searched, or loaded in any browser.
 ==============================================================================
 """
 
@@ -36,13 +36,11 @@ TARGET_BROWSER_EXES = {
     "vivaldi.exe"
 }
 
-# Regex pattern matching proxy, proxies, unblockers, bypasses and all proxy engines
-# Specifically engineered to match 'proxy', 'proxies', 'proxied', 'proxying' while ignoring 'proximity' & 'approximate'
+# Regex pattern targeting ONLY 'proxy', 'proxies', and specific web proxy engines.
+# Explicitly excludes generic words like 'bypass', 'unblock', 'proximity', and 'approximate'.
 TRIGGER_REGEX = re.compile(
     r'\bprox(?:y|ies|ied|ying|ys|ite|ypal|yium|ybroker)?\b|'
-    r'\b(?:croxy|uproxy|hidester|extremevpn|azureserv|blockaway|rammerhead|ultraviolet|womginx|zend2|megaproxy|dontfilter|vtunnel|hidemyass|whoer|zalmos|filterbypass|4everproxy|toolur|turbohide|nodeunblocker|surfshield|scramjet|onlineproxy)\b|'
-    r'\bunblock(?:ed|er|ing|s)?\b|'
-    r'\bbypass(?:ed|ing|es)?\b|'
+    r'\b(?:croxy|uproxy|hidester|extremevpn|azureserv|blockaway|rammerhead|ultraviolet|womginx|zend2|megaproxy|dontfilter|vtunnel|hidemyass|whoer|zalmos|4everproxy|toolur|turbohide|nodeunblocker|surfshield|scramjet|onlineproxy)\b|'
     r'prox(?:y|ies)',
     re.IGNORECASE
 )
@@ -130,7 +128,7 @@ def main():
     print("===============================================================================")
     print(" [✓] DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY SENTINEL ACTIVE")
     print("===============================================================================")
-    print(" Monitoring active browser titles for 'proxy', 'proxies', unblockers...")
+    print(" Monitoring active browser titles for 'proxy', 'proxies', web proxy engines...")
     print(" Tab / Window will close immediately upon detecting trigger terms.\n")
     
     while True:
