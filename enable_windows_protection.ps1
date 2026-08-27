@@ -197,10 +197,15 @@ $rawIpBlockList = @(1..255 | ForEach-Object { "*://$_.*" })
 
 # 2. Generic Proxy Engine Signatures (Ultraviolet, DIP, Osana, Stomp, CroxyProxy, Rammerhead, Glype, etc.)
 $genericProxyPatterns = @(
-    "*://*/uv/*",
-    "*://*/dip/*",
-    "*://*/osana/*",
-    "*://*/stomp/*",
+    # Precision Proxy Engine Bundle & Endpoint Signatures (0 False Positives)
+    "*://*/uv/uv.bundle.js*",
+    "*://*/uv/uv.config.js*",
+    "*://*/uv/uv.client.js*",
+    "*://*/uv/uv.handler.js*",
+    "*://*/uv/uv.sw.js*",
+    "*://*/dip/dip.config.js*",
+    "*://*/osana/config.js*",
+    "*://*/stomp/bootstrapper.js*",
     "*://*/*__cpo*",
     "*://*/*__cpi*",
     "*://*/*__cpr*",
@@ -230,12 +235,20 @@ $genericProxyPatterns = @(
     "*://*/*p23hxejm1.com*",
     "*://*/*rm358.com*",
 
-    # Search Engine Query Shields (Blocks searching for proxy unblockers)
-    "*://www.google.*/search?*q=*proxy*",
-    "*://www.google.*/search?*q=*unblock+website*",
+    # Precision Search Query Shields (Targeting Web Proxy Seeking Intent Only)
+    "*://www.google.*/search?*q=*online+proxy*",
+    "*://www.google.*/search?*q=*free+web+proxy*",
+    "*://www.google.*/search?*q=*web+proxy+online*",
+    "*://www.google.*/search?*q=*free+proxy+site*",
+    "*://www.google.*/search?*q=*unblock+websites*",
     "*://www.google.*/search?*q=*bypass+filter*",
-    "*://www.bing.com/search?*q=*proxy*",
-    "*://www.bing.com/search?*q=*unblock*"
+    "*://www.google.*/search?*q=*croxyproxy*",
+    "*://www.google.*/search?*q=*hidester*",
+    "*://www.google.*/search?*q=*proxysite*",
+    "*://www.google.*/search?*q=*uproxy*",
+    "*://www.bing.com/search?*q=*online+proxy*",
+    "*://www.bing.com/search?*q=*free+web+proxy*",
+    "*://www.bing.com/search?*q=*unblock+websites*"
 )
 
 # 3. Notorious Platforms & Regional Google Bypasses
