@@ -1,5 +1,5 @@
 # ==============================================================================
-# DPCLOCKER :: WINDOWS ENTERPRISE CONTENT & PROXY LOCKDOWN ENGINE
+# DPCLOCKER :: WINDOWS ENTERPRISE CONTENT & MASTER PROXY LOCKDOWN ENGINE
 # ==============================================================================
 
 $esc = [char]27
@@ -18,14 +18,14 @@ Write-Host " $C_HDR[#] DPCLOCKER :: ENTERPRISE PROXY & CONTENT LOCKDOWN ENGINE$R
 Write-Host "$C_HDR===============================================================================$R`n"
 
 # ------------------------------------------------------------------------------
-# 1. APPLY CLOUDFLARE FAMILY-FILTER DNS (1.1.1.3 / 1.0.0.3)
+# 1. APPLY CLEANBROWSING FAMILY & CLOUDFLARE FAMILY-FILTER DNS
 # ------------------------------------------------------------------------------
-Write-Host "$C_SEC[1/6] Configuring Cloudflare Family-Filtered DNS on Network Adapters...$R"
+Write-Host "$C_SEC[1/6] Configuring Protective Family-Filtered DNS on Network Adapters...$R"
 try {
     $adapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
     foreach ($adapter in $adapters) {
-        Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses ("1.1.1.3", "1.0.0.3") -ErrorAction SilentlyContinue
-        Write-Host "  $C_OK[+] Set Cloudflare Family DNS on: $($adapter.Name) (1.1.1.3 / 1.0.0.3)$R"
+        Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses ("185.228.168.168", "1.1.1.3") -ErrorAction SilentlyContinue
+        Write-Host "  $C_OK[+] Set CleanBrowsing / Cloudflare Family DNS on: $($adapter.Name) (185.228.168.168 / 1.1.1.3)$R"
     }
 } catch {
     Write-Host "  $C_WARN[!] DNS configuration notice: $($_.Exception.Message)$R"
@@ -51,7 +51,7 @@ $hostsEntries = @(
     "216.239.38.120 www.bing.com",
     "216.239.38.120 strict.bing.com",
 
-    # Notorious Streaming & Social
+    # Notorious Streaming & Social Media
     "0.0.0.0 www.fboxtv.org",
     "0.0.0.0 fboxtv.org",
     "0.0.0.0 x.com",
@@ -85,18 +85,27 @@ $hostsEntries = @(
     "0.0.0.0 v16-webapp-prime.tiktok.com",
     "0.0.0.0 v19-webapp-prime.tiktok.com",
 
-    # Web Proxy Engines & Dynamic Relay Nodes
+    # Master Web Proxy Domains & Unblockers
+    "0.0.0.0 onlineproxy.org",
+    "0.0.0.0 www.onlineproxy.org",
+    "0.0.0.0 uproxy.online",
+    "0.0.0.0 www.uproxy.online",
+    "0.0.0.0 api.uproxy.online",
     "0.0.0.0 proxysite.com",
     "0.0.0.0 www.proxysite.com",
     "0.0.0.0 proxysite.cloud",
     "0.0.0.0 proxysite.site",
     "0.0.0.0 proxysite.one",
+    "0.0.0.0 proxysite.net",
+    "0.0.0.0 proxysite.org",
     "0.0.0.0 hidester.one",
     "0.0.0.0 www.hidester.one",
     "0.0.0.0 proxy.hidester.one",
     "0.0.0.0 www-proxy.hidester.one",
     "0.0.0.0 hidester.com",
     "0.0.0.0 www.hidester.com",
+    "0.0.0.0 hidester.net",
+    "0.0.0.0 hidester.org",
     "0.0.0.0 croxyproxy.com",
     "0.0.0.0 www.croxyproxy.com",
     "0.0.0.0 croxyproxy.net",
@@ -104,11 +113,6 @@ $hostsEntries = @(
     "0.0.0.0 www.croxyproxy.rocks",
     "0.0.0.0 croxy.network",
     "0.0.0.0 croxy.org",
-    "0.0.0.0 uproxy.online",
-    "0.0.0.0 www.uproxy.online",
-    "0.0.0.0 api.uproxy.online",
-    "0.0.0.0 vtransmit.com",
-    "0.0.0.0 www.vtransmit.com",
     "0.0.0.0 extremevpn.com",
     "0.0.0.0 www.extremevpn.com",
     "0.0.0.0 proxy-ca.extremevpn.com",
@@ -116,8 +120,10 @@ $hostsEntries = @(
     "0.0.0.0 proxy-nl.extremevpn.com",
     "0.0.0.0 azureserv.com",
     "0.0.0.0 www.azureserv.com",
+    "0.0.0.0 azureserv.net",
     "0.0.0.0 proxypal.net",
     "0.0.0.0 www.proxypal.net",
+    "0.0.0.0 proxypal.org",
     "0.0.0.0 hide.me",
     "0.0.0.0 www.hide.me",
     "0.0.0.0 blockaway.net",
@@ -144,12 +150,80 @@ $hostsEntries = @(
     "0.0.0.0 hyperproxy.network",
     "0.0.0.0 shuttleproxy.com",
     "0.0.0.0 alohabrowser.com",
+    "0.0.0.0 vtransmit.com",
+    "0.0.0.0 www.vtransmit.com",
+    "0.0.0.0 p23hxejm1.com",
+    "0.0.0.0 rm358.com",
     "0.0.0.0 shadowproxy.org",
     "0.0.0.0 interstellarproxy.com",
     "0.0.0.0 incognitoproxy.com",
     "0.0.0.0 nebula.net",
     "0.0.0.0 titaniumnetwork.org",
-    "0.0.0.0 womginx.org"
+    "0.0.0.0 womginx.org",
+    "0.0.0.0 zend2.com",
+    "0.0.0.0 zendproxy.com",
+    "0.0.0.0 megaproxy.com",
+    "0.0.0.0 newipnow.com",
+    "0.0.0.0 dontfilter.us",
+    "0.0.0.0 unblock-web.com",
+    "0.0.0.0 unblockvideos.com",
+    "0.0.0.0 free-proxy.cz",
+    "0.0.0.0 proxybroker.online",
+    "0.0.0.0 smartproxy.com",
+    "0.0.0.0 brightdata.com",
+    "0.0.0.0 oxylabs.io",
+    "0.0.0.0 webproxy.free",
+    "0.0.0.0 free-proxy-list.net",
+    "0.0.0.0 usaproxy.info",
+    "0.0.0.0 german-proxy.de",
+    "0.0.0.0 myspaceproxy.org",
+    "0.0.0.0 youtubeproxy.org",
+    "0.0.0.0 tiktokproxy.com",
+    "0.0.0.0 unblockyoutube.net",
+    "0.0.0.0 bypassblocks.com",
+    "0.0.0.0 surfshield.io",
+    "0.0.0.0 cloakproxy.org",
+    "0.0.0.0 scramjet.org",
+    "0.0.0.0 tomp.app",
+    "0.0.0.0 arsenic.org",
+    "0.0.0.0 holyub.org",
+    "0.0.0.0 dynamicproxy.org",
+    "0.0.0.0 astralproxy.org",
+    "0.0.0.0 phantomproxy.org",
+    "0.0.0.0 metallicproxy.org",
+    "0.0.0.0 selenite.cc",
+    "0.0.0.0 ludicrous.org",
+    "0.0.0.0 shadowtabs.org",
+    "0.0.0.0 ccproxy.com",
+    "0.0.0.0 4proxy.de",
+    "0.0.0.0 vtunnel.com",
+    "0.0.0.0 polysolve.net",
+    "0.0.0.0 unblocker.cc",
+    "0.0.0.0 unblocker.us",
+    "0.0.0.0 web-proxy.cc",
+    "0.0.0.0 superproxy.cc",
+    "0.0.0.0 privacysite.net",
+    "0.0.0.0 proxyserver.com",
+    "0.0.0.0 freeproxyserver.co",
+    "0.0.0.0 freeopenproxy.com",
+    "0.0.0.0 freewebproxy.com",
+    "0.0.0.0 myproxy.ca",
+    "0.0.0.0 quickproxy.co.uk",
+    "0.0.0.0 snoopblocker.com",
+    "0.0.0.0 surfbrowser.com",
+    "0.0.0.0 unblockmyweb.com",
+    "0.0.0.0 unblockall.org",
+    "0.0.0.0 unblocker.biz",
+    "0.0.0.0 unblocker.info",
+    "0.0.0.0 unblocker.online",
+    "0.0.0.0 unblocker.site",
+    "0.0.0.0 unblocker.tech",
+    "0.0.0.0 unblocksite.org",
+    "0.0.0.0 unblockwebsites.org",
+    "0.0.0.0 webproxy.net",
+    "0.0.0.0 webproxy.org",
+    "0.0.0.0 webproxy.site",
+    "0.0.0.0 youproxy.org"
 )
 
 try {
@@ -186,22 +260,29 @@ $browserConfigs = @(
 
 # 100% Valid Chromium URLBlocklist (Domain matching: "example.com" blocks example.com, www, and all subdomains)
 $blockedDomains = @(
-    # Top Online Web Proxies & Unblockers
+    # Master Web Proxy Domains & Unblockers
+    "onlineproxy.org",
+    "uproxy.online",
     "proxysite.com",
     "proxysite.cloud",
     "proxysite.site",
     "proxysite.one",
+    "proxysite.net",
+    "proxysite.org",
     "hidester.one",
     "hidester.com",
+    "hidester.net",
+    "hidester.org",
     "croxyproxy.com",
     "croxyproxy.net",
     "croxyproxy.rocks",
     "croxy.network",
     "croxy.org",
-    "uproxy.online",
     "extremevpn.com",
     "azureserv.com",
+    "azureserv.net",
     "proxypal.net",
+    "proxypal.org",
     "hide.me",
     "blockaway.net",
     "proxyium.com",
@@ -228,13 +309,76 @@ $blockedDomains = @(
     "vtransmit.com",
     "p23hxejm1.com",
     "rm358.com",
-    "azureserv.net",
     "shadowproxy.org",
     "interstellarproxy.com",
     "incognitoproxy.com",
     "nebula.net",
     "titaniumnetwork.org",
     "womginx.org",
+    "zend2.com",
+    "zendproxy.com",
+    "megaproxy.com",
+    "newipnow.com",
+    "dontfilter.us",
+    "unblock-web.com",
+    "unblockvideos.com",
+    "free-proxy.cz",
+    "proxybroker.online",
+    "smartproxy.com",
+    "brightdata.com",
+    "oxylabs.io",
+    "webproxy.free",
+    "free-proxy-list.net",
+    "usaproxy.info",
+    "german-proxy.de",
+    "myspaceproxy.org",
+    "youtubeproxy.org",
+    "tiktokproxy.com",
+    "unblockyoutube.net",
+    "bypassblocks.com",
+    "surfshield.io",
+    "cloakproxy.org",
+    "scramjet.org",
+    "tomp.app",
+    "arsenic.org",
+    "holyub.org",
+    "dynamicproxy.org",
+    "astralproxy.org",
+    "phantomproxy.org",
+    "metallicproxy.org",
+    "selenite.cc",
+    "ludicrous.org",
+    "shadowtabs.org",
+    "ccproxy.com",
+    "4proxy.de",
+    "vtunnel.com",
+    "polysolve.net",
+    "unblocker.cc",
+    "unblocker.us",
+    "web-proxy.cc",
+    "superproxy.cc",
+    "privacysite.net",
+    "proxyserver.com",
+    "freeproxyserver.co",
+    "freeopenproxy.com",
+    "freewebproxy.com",
+    "myproxy.ca",
+    "quickproxy.co.uk",
+    "snoopblocker.com",
+    "surfbrowser.com",
+    "unblockmyweb.com",
+    "unblockall.org",
+    "unblocker.biz",
+    "unblocker.info",
+    "unblocker.online",
+    "unblocker.site",
+    "unblocker.tech",
+    "unblocksite.org",
+    "unblockwebsites.org",
+    "webproxy.net",
+    "webproxy.org",
+    "webproxy.site",
+    "youproxy.org",
 
     # Notorious Streaming & Social Media
     "fboxtv.org",
@@ -272,7 +416,8 @@ foreach ($b in $browserConfigs) {
 
             # Enforce 100% Valid Chromium URLBlocklist
             $urlBlockKey = "$rootKey\URLBlocklist"
-            if (-not (Test-Path $urlBlockKey)) { New-Item -Path $urlBlockKey -Force -ErrorAction SilentlyContinue | Out-Null }
+            if (Test-Path $urlBlockKey) { Remove-Item -Path $urlBlockKey -Recurse -Force -ErrorAction SilentlyContinue }
+            New-Item -Path $urlBlockKey -Force -ErrorAction SilentlyContinue | Out-Null
             for ($i = 0; $i -lt $blockedDomains.Count; $i++) {
                 $num = $i + 1
                 Set-ItemProperty -Path $urlBlockKey -Name "$num" -Value $blockedDomains[$i] -Type String -Force -ErrorAction SilentlyContinue
@@ -281,7 +426,7 @@ foreach ($b in $browserConfigs) {
             # Catch individual key errors gracefully
         }
     }
-    Write-Host "  $C_OK[+] $($b.Name): Incognito Disabled | Direct Proxy Active | $($blockedDomains.Count) Domains Locked$R"
+    Write-Host "  $C_OK[+] $($b.Name): Incognito Disabled | Direct Proxy Active | $($blockedDomains.Count) Proxy & Content Domains Locked$R"
 }
 
 # ------------------------------------------------------------------------------
