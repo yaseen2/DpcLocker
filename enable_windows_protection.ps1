@@ -86,6 +86,11 @@ $hostsEntries = @(
     "0.0.0.0 v19-webapp-prime.tiktok.com",
 
     # Web Proxy Engines & Dynamic Relay Nodes
+    "0.0.0.0 uproxy.online",
+    "0.0.0.0 www.uproxy.online",
+    "0.0.0.0 api.uproxy.online",
+    "0.0.0.0 vtransmit.com",
+    "0.0.0.0 www.vtransmit.com",
     "0.0.0.0 azureserv.com",
     "0.0.0.0 www.azureserv.com",
     "0.0.0.0 proxypal.net",
@@ -190,8 +195,12 @@ $allowedUrls = @(
 # 1. Generic Raw Public IPv4 Blocking (1.x.x.x through 255.x.x.x)
 $rawIpBlockList = @(1..255 | ForEach-Object { "*://$_.*" })
 
-# 2. Generic Proxy Engine Signatures (CroxyProxy, Ultraviolet, Rammerhead, Glype, etc.)
+# 2. Generic Proxy Engine Signatures (Ultraviolet, DIP, Osana, Stomp, CroxyProxy, Rammerhead, Glype, etc.)
 $genericProxyPatterns = @(
+    "*://*/uv/*",
+    "*://*/dip/*",
+    "*://*/osana/*",
+    "*://*/stomp/*",
     "*://*/*__cpo*",
     "*://*/*__cpi*",
     "*://*/*__cpr*",
@@ -209,6 +218,8 @@ $genericProxyPatterns = @(
     "*://*/*?*u=aHR0c*",
     "*://*/*evp-target*",
     "*://*/*__proxy*",
+    "*://*/*uproxy*",
+    "*://*/*vtransmit*",
     "*://*/*croxyproxy*",
     "*://*/*proxypal*",
     "*://*/*proxysite*",
@@ -217,7 +228,14 @@ $genericProxyPatterns = @(
     "*://*/*hidester*",
     "*://*/*extremevpn*",
     "*://*/*p23hxejm1.com*",
-    "*://*/*rm358.com*"
+    "*://*/*rm358.com*",
+
+    # Search Engine Query Shields (Blocks searching for proxy unblockers)
+    "*://www.google.*/search?*q=*proxy*",
+    "*://www.google.*/search?*q=*unblock+website*",
+    "*://www.google.*/search?*q=*bypass+filter*",
+    "*://www.bing.com/search?*q=*proxy*",
+    "*://www.bing.com/search?*q=*unblock*"
 )
 
 # 3. Notorious Platforms & Regional Google Bypasses
