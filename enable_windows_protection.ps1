@@ -187,8 +187,7 @@ $allowedUrls = @(
     "*://172.16.*", "*://172.17.*", "*://172.18.*", "*://172.19.*",
     "*://172.20.*", "*://172.21.*", "*://172.22.*", "*://172.23.*",
     "*://172.24.*", "*://172.25.*", "*://172.26.*", "*://172.27.*",
-    "*://172.28.*", "*://172.29.*", "*://172.30.*", "*://172.31.*",
-    "https://www.google.com*"
+    "*://172.28.*", "*://172.29.*", "*://172.30.*", "*://172.31.*"
 )
 
 # B. URLBlocklist:
@@ -236,19 +235,20 @@ $genericProxyPatterns = @(
     "*://*/*rm358.com*",
 
     # Precision Search Query Shields (Targeting Web Proxy Seeking Intent Only)
-    "*://www.google.*/search?*q=*online+proxy*",
-    "*://www.google.*/search?*q=*free+web+proxy*",
-    "*://www.google.*/search?*q=*web+proxy+online*",
-    "*://www.google.*/search?*q=*free+proxy+site*",
-    "*://www.google.*/search?*q=*unblock+websites*",
-    "*://www.google.*/search?*q=*bypass+filter*",
-    "*://www.google.*/search?*q=*croxyproxy*",
-    "*://www.google.*/search?*q=*hidester*",
-    "*://www.google.*/search?*q=*proxysite*",
-    "*://www.google.*/search?*q=*uproxy*",
-    "*://www.bing.com/search?*q=*online+proxy*",
-    "*://www.bing.com/search?*q=*free+web+proxy*",
-    "*://www.bing.com/search?*q=*unblock+websites*"
+    "*google.com/search*q=*online*proxy*",
+    "*google.*/search*q=*online*proxy*",
+    "*google.com/search*q=*free*web*proxy*",
+    "*google.com/search*q=*web*proxy*online*",
+    "*google.com/search*q=*free*proxy*site*",
+    "*google.com/search*q=*unblock*website*",
+    "*google.com/search*q=*bypass*filter*",
+    "*google.com/search*q=*croxyproxy*",
+    "*google.com/search*q=*hidester*",
+    "*google.com/search*q=*proxysite*",
+    "*google.com/search*q=*uproxy*",
+    "*bing.com/search*q=*online*proxy*",
+    "*bing.com/search*q=*free*web*proxy*",
+    "*bing.com/search*q=*unblock*website*"
 )
 
 # 3. Notorious Platforms & Regional Google Bypasses
