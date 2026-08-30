@@ -6,7 +6,7 @@ Monitors active browser window titles and address bars in real-time (<50ms).
 Automatically terminates the tab or window the moment 'proxy', 'proxies',
 'online remote browser', 'virtual browser', or cloud browser engines are typed,
 searched, or loaded in any browser.
-Includes Mutual Watchdog resurrection to prevent tampering from Task Manager.
+Includes Mutual Watchdog resurrection and Dynamic Hot-Reloading from disk.
 ==============================================================================
 """
 
@@ -44,28 +44,29 @@ TARGET_BROWSER_EXES = {
     "vivaldi.exe"
 }
 
-# Regex pattern targeting Proxies, Remote Browsers, Cloud Browsers, and WebVMs.
-# Specifically engineered to avoid generic false positives (e.g. 'Brave Browser', 'Chrome browser', 'browser settings').
-TRIGGER_REGEX = re.compile(
-    # 1. All Proxy Variations (excluding proximity/approximate)
-    r'\bprox(?:y|ies|ied|ying|ys|ite|ypal|yium|ybroker)?\b|'
-    
-    # 2. Remote / Cloud / Virtual / Disposable / Web-based Browser bypass phrases
-    r'\b(?:online|free|web|disposable|virtual|remote|cloud|temporary|sandbox|ephemeral|isolated)\s+(?:remote\s+)?browser(?:s)?\b|'
-    r'\b(?:web-based|web\s+based)\s+browser(?:s)?\b|'
-    r'\bbrowser\s+(?:in\s+(?:a\s+)?browser|online|remote|emulator|sandbox|isolation)\b|'
-    r'\b(?:run|open)\s+(?:chrome|browser|firefox|edge)\s+online\b|'
-    r'\bunblock(?:ed)?\s+browser(?:s)?\b|'
-    
-    # 3. Specific Web Proxy & Remote Browser Platforms / Engines
-    r'\b(?:croxy|uproxy|hidester|extremevpn|azureserv|blockaway|rammerhead|ultraviolet|womginx|zend2|megaproxy|dontfilter|vtunnel|hidemyass|whoer|zalmos|4everproxy|toolur|turbohide|nodeunblocker|surfshield|scramjet|onlineproxy)\b|'
-    r'\b(?:browserling|neverinstall|hyperbeam|kasm|kasmweb|webvm|distrosea|onworks|squarex|sqrx)\b|'
-    
-    # 4. Root exact stems
-    r'prox(?:y|ies)',
-    re.IGNORECASE
-)
+def build_trigger_regex():
+    """Compiles and returns the master regex for proxies and remote browsers."""
+    return re.compile(
+        # 1. All Proxy Variations (excluding proximity/approximate)
+        r'\bprox(?:y|ies|ied|ying|ys|ite|ypal|yium|ybroker)?\b|'
+        
+        # 2. Remote / Cloud / Virtual / Disposable / Web-based Browser bypass phrases
+        r'\b(?:online|free|web|disposable|virtual|remote|cloud|temporary|sandbox|ephemeral|isolated)\s+(?:remote\s+)?browser(?:s)?\b|'
+        r'\b(?:web-based|web\s+based)\s+browser(?:s)?\b|'
+        r'\bbrowser\s+(?:in\s+(?:a\s+)?browser|online|remote|emulator|sandbox|isolation)\b|'
+        r'\b(?:run|open)\s+(?:chrome|browser|firefox|edge)\s+online\b|'
+        r'\bunblock(?:ed)?\s+browser(?:s)?\b|'
+        
+        # 3. Specific Web Proxy & Remote Browser Platforms / Engines
+        r'\b(?:croxy|uproxy|hidester|extremevpn|azureserv|blockaway|rammerhead|ultraviolet|womginx|zend2|megaproxy|dontfilter|vtunnel|hidemyass|whoer|zalmos|4everproxy|toolur|turbohide|nodeunblocker|surfshield|scramjet|onlineproxy)\b|'
+        r'\b(?:browserling|neverinstall|hyperbeam|kasm|kasmweb|webvm|distrosea|onworks|squarex|sqrx)\b|'
+        
+        # 4. Root exact stems
+        r'prox(?:y|ies)',
+        re.IGNORECASE
+    )
 
+TRIGGER_REGEX = build_trigger_regex()
 LOG_FILE = os.path.join(BASE_DIR, "windows_security_log.json")
 
 def get_process_name_from_pid(pid):
@@ -169,6 +170,7 @@ def log_incident(trigger, title, proc_name):
         pass
 
 def main():
+    global TRIGGER_REGEX
     print("===============================================================================")
     print(" [+] DPCLOCKER :: WINDOWS PROXY & REMOTE BROWSER SENTINEL ACTIVE")
     print("===============================================================================")
@@ -176,17 +178,26 @@ def main():
     print(" Dual-process watchdog self-healing enabled.\n")
     
     watchdog_check_counter = 0
+    last_mtime = os.path.getmtime(__file__)
     
     while True:
         try:
-            # 1. Periodically check that the twin Watchdog is running (every 1 second)
+            # 1. Check for file modification to dynamically hot-reload without restart
+            if watchdog_check_counter % 40 == 0:
+                current_mtime = os.path.getmtime(__file__)
+                if current_mtime != last_mtime:
+                    last_mtime = current_mtime
+                    TRIGGER_REGEX = build_trigger_regex()
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] [+] HOT-RELOADED NEW RULES FROM DISK!")
+            
+            # 2. Periodically check that the twin Watchdog is running (every 1 second)
             watchdog_check_counter += 1
             if watchdog_check_counter >= 20:
                 watchdog_check_counter = 0
                 if not is_watchdog_running():
                     resurrect_watchdog()
             
-            # 2. Inspect active foreground window
+            # 3. Inspect active foreground window
             hwnd, title, proc_name, pid = get_active_window()
             
             if hwnd and proc_name in TARGET_BROWSER_EXES and title:
