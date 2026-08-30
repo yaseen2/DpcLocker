@@ -1,10 +1,11 @@
 """
 ==============================================================================
-DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY SENTINEL (MUTUAL GUARDIAN)
+DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY & REMOTE BROWSER SENTINEL
 ==============================================================================
 Monitors active browser window titles and address bars in real-time (<50ms).
 Automatically terminates the tab or window the moment 'proxy', 'proxies',
-or web proxy engine names are typed, searched, or loaded in any browser.
+'online remote browser', 'virtual browser', or cloud browser engines are typed,
+searched, or loaded in any browser.
 Includes Mutual Watchdog resurrection to prevent tampering from Task Manager.
 ==============================================================================
 """
@@ -43,11 +44,24 @@ TARGET_BROWSER_EXES = {
     "vivaldi.exe"
 }
 
-# Regex pattern targeting ONLY 'proxy', 'proxies', and specific web proxy engines.
-# Explicitly excludes generic words like 'bypass', 'unblock', 'proximity', and 'approximate'.
+# Regex pattern targeting Proxies, Remote Browsers, Cloud Browsers, and WebVMs.
+# Specifically engineered to avoid generic false positives (e.g. 'Brave Browser', 'Chrome browser', 'browser settings').
 TRIGGER_REGEX = re.compile(
+    # 1. All Proxy Variations (excluding proximity/approximate)
     r'\bprox(?:y|ies|ied|ying|ys|ite|ypal|yium|ybroker)?\b|'
+    
+    # 2. Remote / Cloud / Virtual / Disposable / Web-based Browser bypass phrases
+    r'\b(?:online|free|web|disposable|virtual|remote|cloud|temporary|sandbox|ephemeral|isolated)\s+(?:remote\s+)?browser(?:s)?\b|'
+    r'\b(?:web-based|web\s+based)\s+browser(?:s)?\b|'
+    r'\bbrowser\s+(?:in\s+(?:a\s+)?browser|online|remote|emulator|sandbox|isolation)\b|'
+    r'\b(?:run|open)\s+(?:chrome|browser|firefox|edge)\s+online\b|'
+    r'\bunblock(?:ed)?\s+browser(?:s)?\b|'
+    
+    # 3. Specific Web Proxy & Remote Browser Platforms / Engines
     r'\b(?:croxy|uproxy|hidester|extremevpn|azureserv|blockaway|rammerhead|ultraviolet|womginx|zend2|megaproxy|dontfilter|vtunnel|hidemyass|whoer|zalmos|4everproxy|toolur|turbohide|nodeunblocker|surfshield|scramjet|onlineproxy)\b|'
+    r'\b(?:browserling|neverinstall|hyperbeam|kasm|kasmweb|webvm|distrosea|onworks|squarex|sqrx)\b|'
+    
+    # 4. Root exact stems
     r'prox(?:y|ies)',
     re.IGNORECASE
 )
@@ -156,9 +170,9 @@ def log_incident(trigger, title, proc_name):
 
 def main():
     print("===============================================================================")
-    print(" [✓] DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY SENTINEL ACTIVE")
+    print(" [+] DPCLOCKER :: WINDOWS PROXY & REMOTE BROWSER SENTINEL ACTIVE")
     print("===============================================================================")
-    print(" Monitoring active browser titles for 'proxy', 'proxies', web proxy engines...")
+    print(" Monitoring active browser titles for 'proxy', 'proxies', 'remote browser'...")
     print(" Dual-process watchdog self-healing enabled.\n")
     
     watchdog_check_counter = 0
@@ -180,7 +194,7 @@ def main():
                 
                 if match:
                     matched_trigger = match.group(0)
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🚨 INTERCEPTED: '{matched_trigger}' in '{title}' ({proc_name})")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] [!] INTERCEPTED: '{matched_trigger}' in '{title}' ({proc_name})")
                     
                     # Instantly close tab with Ctrl+W
                     close_active_tab()
