@@ -1,10 +1,10 @@
 """
 ==============================================================================
-DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY & REMOTE BROWSER SENTINEL
+DPCLOCKER :: WINDOWS REAL-TIME BROWSER PROXY, REMOTE BROWSER & ONLINE VPN SENTINEL
 ==============================================================================
 Monitors active browser window titles and address bars in real-time (<50ms).
 Automatically terminates the tab or window the moment 'proxy', 'proxies',
-'online remote browser', 'virtual browser', or cloud browser engines are typed,
+'online remote browser', 'virtual browser', or 'online vpn' / web vpn proxies are typed,
 searched, or loaded in any browser.
 Includes Mutual Watchdog resurrection and Dynamic Hot-Reloading from disk.
 ==============================================================================
@@ -45,7 +45,7 @@ TARGET_BROWSER_EXES = {
 }
 
 def build_trigger_regex():
-    """Compiles and returns the master regex for proxies and remote browsers."""
+    """Compiles and returns the master regex for proxies, remote browsers, and online VPN proxies."""
     return re.compile(
         # 1. All Proxy Variations (excluding proximity/approximate)
         r'\bprox(?:y|ies|ied|ying|ys|ite|ypal|yium|ybroker)?\b|'
@@ -57,11 +57,16 @@ def build_trigger_regex():
         r'\b(?:run|open)\s+(?:chrome|browser|firefox|edge)\s+online\b|'
         r'\bunblock(?:ed)?\s+browser(?:s)?\b|'
         
-        # 3. Specific Web Proxy & Remote Browser Platforms / Engines
-        r'\b(?:croxy|uproxy|hidester|extremevpn|azureserv|blockaway|rammerhead|ultraviolet|womginx|zend2|megaproxy|dontfilter|vtunnel|hidemyass|whoer|zalmos|4everproxy|toolur|turbohide|nodeunblocker|surfshield|scramjet|onlineproxy)\b|'
+        # 3. Online VPN / Web VPN / Browser VPN / No-Download VPN Proxies
+        r'\b(?:online|web|browser|cloud|free\s+online|no\s+download|in\s+browser|virtual)\s+vpn(?:s)?\b|'
+        r'\bvpn\s+(?:online|in\s+(?:a\s+)?browser|without\s+download|no\s+download|website|web\s+proxy|proxy|unblocker)\b|'
+        r'\b(?:onlinevpn|webvpn|freeonlinevpn)\b|'
+        
+        # 4. Specific Web Proxy, Remote Browser & Online VPN Platforms / Engines
+        r'\b(?:croxy|uproxy|hidester|extremevpn|azureserv|blockaway|rammerhead|ultraviolet|womginx|zend2|megaproxy|dontfilter|vtunnel|hidemyass|whoer|zalmos|4everproxy|toolur|turbohide|nodeunblocker|surfshield|scramjet|onlineproxy|onlinevpn)\b|'
         r'\b(?:browserling|neverinstall|hyperbeam|kasm|kasmweb|webvm|distrosea|onworks|squarex|sqrx)\b|'
         
-        # 4. Root exact stems
+        # 5. Root exact stems
         r'prox(?:y|ies)',
         re.IGNORECASE
     )
@@ -172,9 +177,9 @@ def log_incident(trigger, title, proc_name):
 def main():
     global TRIGGER_REGEX
     print("===============================================================================")
-    print(" [+] DPCLOCKER :: WINDOWS PROXY & REMOTE BROWSER SENTINEL ACTIVE")
+    print(" [+] DPCLOCKER :: WINDOWS PROXY, REMOTE BROWSER & ONLINE VPN SENTINEL ACTIVE")
     print("===============================================================================")
-    print(" Monitoring active browser titles for 'proxy', 'proxies', 'remote browser'...")
+    print(" Monitoring active browser titles for 'proxy', 'proxies', 'remote browser', 'online vpn'...")
     print(" Dual-process watchdog self-healing enabled.\n")
     
     watchdog_check_counter = 0
