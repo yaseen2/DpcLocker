@@ -6,10 +6,12 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.admin.DevicePolicyManager;
 import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.provider.Settings;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -121,9 +123,11 @@ public class ImpulseGuardService extends AccessibilityService {
             "com.duolingo"
     ));
 
-    // Default Monitored Web Browsers
+    // Default Monitored Web Browsers & Video Apps
     private static final Set<String> DEFAULT_BROWSERS = new HashSet<>(Arrays.asList(
             "com.android.chrome",
+            "com.google.android.youtube",
+            "app.revanced.android.youtube",
             "org.mozilla.firefox",
             "com.microsoft.emmx",
             "com.opera.browser",
@@ -158,6 +162,22 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         }
         return result;
+    }
+
+    public static void ensureAccessibilityServiceEnabled(Context context) {
+        try {
+            ContentResolver cr = context.getContentResolver();
+            String enabledServices = Settings.Secure.getString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            String targetService = context.getPackageName() + "/" + ImpulseGuardService.class.getName();
+            if (enabledServices == null || !enabledServices.contains(context.getPackageName())) {
+                String newServices = (enabledServices == null || enabledServices.isEmpty()) ? targetService : enabledServices + ":" + targetService;
+                Settings.Secure.putString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, newServices);
+                Settings.Secure.putInt(cr, Settings.Secure.ACCESSIBILITY_ENABLED, 1);
+                Log.i(TAG, "Auto-enforced and restored Accessibility Service: " + newServices);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to auto-enforce accessibility service", e);
+        }
     }
 
     public static boolean isNeverAskApp(Context context, String packageName) {
