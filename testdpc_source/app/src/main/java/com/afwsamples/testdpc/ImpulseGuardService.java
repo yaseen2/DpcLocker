@@ -339,6 +339,21 @@ public class ImpulseGuardService extends AccessibilityService {
             mLastPenalizedQueryMap.remove(packageName);
         }
 
+        // 0. ANTI-TAMPER: Block User from accessing the Accessibility Toggle or App Info for Impulse Guard
+        if ("com.android.settings".equals(packageName)) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                    eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+
+                if (isAccessibilitySettingsToggleScreen(event)) {
+                    Log.w(TAG, "🚨 ANTI-TAMPER: User attempted to access Impulse Guard Accessibility Toggle! Bouncing back...");
+                    performGlobalAction(GLOBAL_ACTION_BACK);
+                    mHandler.post(() -> Toast.makeText(ImpulseGuardService.this, "🔒 Security Protected: Impulse Guard cannot be disabled.", Toast.LENGTH_SHORT).show());
+                    return;
+                }
+            }
+        }
+
         // 1. Password & Sensitive Input Field Privacy Masking
         if (isPasswordOrSensitiveNode(event)) {
             return;
@@ -695,6 +710,61 @@ public class ImpulseGuardService extends AccessibilityService {
         String lower = packageName.toLowerCase(Locale.US);
         return lower.contains("browser") || lower.contains("chrome") || lower.contains("firefox") ||
                 lower.contains("opera") || lower.contains("search") || lower.contains("duckduckgo");
+    }
+
+    private boolean isAccessibilitySettingsToggleScreen(AccessibilityEvent event) {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && inspectNodeForToggleScreen(root)) {
+                return true;
+            }
+            if (event != null && event.getSource() != null && inspectNodeForToggleScreen(event.getSource())) {
+                return true;
+            }
+            if (event != null && event.getText() != null) {
+                for (CharSequence cs : event.getText()) {
+                    if (cs != null && isTriggerTamperText(cs.toString())) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking settings toggle screen", e);
+        }
+        return false;
+    }
+
+    private boolean isTriggerTamperText(String text) {
+        if (text == null) return false;
+        String lower = text.toLowerCase(Locale.US);
+        return lower.contains("use impulse guard") ||
+                lower.contains("stop impulse guard") ||
+                lower.contains("turn off impulse guard") ||
+                lower.contains("disable impulse guard") ||
+                (lower.contains("impulse guard") && lower.contains("shortcut")) ||
+                (lower.contains("impulse guard") && lower.contains("app info"));
+    }
+
+    private boolean inspectNodeForToggleScreen(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        CharSequence text = node.getText();
+        if (text != null && isTriggerTamperText(text.toString())) {
+            return true;
+        }
+        CharSequence desc = node.getContentDescription();
+        if (desc != null && isTriggerTamperText(desc.toString())) {
+            return true;
+        }
+        int count = node.getChildCount();
+        for (int i = 0; i < count; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                if (inspectNodeForToggleScreen(child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private boolean isMeaningfulSearchText(String str) {
