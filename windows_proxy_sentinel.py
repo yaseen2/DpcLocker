@@ -44,6 +44,46 @@ TARGET_BROWSER_EXES = {
     "vivaldi.exe"
 }
 
+# Specific non-'vpn' named VPN, tunnel, and proxy client executables
+TARGET_TUNNEL_EXES = {
+    "wireguard.exe",
+    "warp-svc.exe",
+    "cloudflarewarp.exe",
+    "psiphon.exe",
+    "psiphon3.exe",
+    "shadowsocks.exe",
+    "shadowsocksr.exe",
+    "v2ray.exe",
+    "xray.exe",
+    "clash.exe",
+    "clash-verge.exe",
+    "tailscale.exe",
+    "tailscaled.exe",
+    "zerotier-one_x64.exe",
+    "zerotier-one.exe",
+    "outline.exe",
+    "tor.exe"
+}
+
+# Whitelisted processes that should NEVER be killed even if editing a file containing 'vpn'
+WHITELISTED_TITLE_EXES = {
+    "code.exe",
+    "notepad.exe",
+    "notepad++.exe",
+    "devenv.exe",
+    "sublime_text.exe",
+    "explorer.exe",
+    "cmd.exe",
+    "powershell.exe",
+    "pwsh.exe",
+    "python.exe",
+    "pythonw.exe",
+    "git.exe"
+}
+
+# Generic VPN window title pattern
+VPN_TITLE_REGEX = re.compile(r'\bvpn(?:s)?\b', re.IGNORECASE)
+
 def build_trigger_regex():
     """Compiles and returns the master regex for proxies, remote browsers, and online VPN proxies."""
     return re.compile(
@@ -146,6 +186,53 @@ def resurrect_watchdog():
     except Exception:
         pass
 
+def is_vpn_process(proc_name):
+    """Checks if the process name is a generic VPN executable or known tunnel."""
+    if not proc_name:
+        return False
+    name_lower = proc_name.lower()
+    if name_lower in WHITELISTED_TITLE_EXES:
+        return False
+    if "vpn" in name_lower:
+        return True
+    if name_lower in TARGET_TUNNEL_EXES:
+        return True
+    return False
+
+def terminate_vpn_process(pid, proc_name, reason):
+    """Forcefully terminates a VPN process and logs the incident."""
+    try:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] [!] TERMINATING VPN APP: {proc_name} (PID: {pid}) - Reason: {reason}")
+        subprocess.run(["taskkill", "/F", "/PID", str(pid), "/T"], capture_output=True)
+        log_incident(reason, f"Terminated {proc_name} (PID: {pid})", proc_name)
+    except Exception as e:
+        print(f"[-] Error terminating {proc_name}: {e}")
+
+def scan_and_kill_vpn_processes():
+    """Scans all running processes in Windows and terminates any VPN process."""
+    try:
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                pname = proc.info.get('name') or ''
+                if is_vpn_process(pname):
+                    terminate_vpn_process(proc.info['pid'], pname, "GENERIC_VPN_PROCESS_DETECTED")
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+    except Exception:
+        pass
+
+def check_and_disable_vpn_adapters():
+    """Periodically checks and disables any TAP/TUN/Wintun/WireGuard/VPN virtual adapter."""
+    try:
+        cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { ($_.InterfaceDescription -match \'TAP|TUN|Wintun|WireGuard|VPN|Virtual\' -or $_.Name -match \'TAP|TUN|Wintun|WireGuard|VPN\') -and $_.Status -ne \'Disabled\' } | ForEach-Object { Disable-NetAdapter -Name $_.Name -Confirm:$false ; Write-Output $_.Name }"'
+        res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        disabled = res.stdout.strip()
+        if disabled:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] [!] DISABLED VIRTUAL VPN ADAPTER(S): {disabled}")
+            log_incident("DISABLED_VIRTUAL_ADAPTER", disabled, "NetAdapterSentry")
+    except Exception:
+        pass
+
 def log_incident(trigger, title, proc_name):
     """Appends security intercept incident to the JSON log."""
     entry = {
@@ -153,7 +240,7 @@ def log_incident(trigger, title, proc_name):
         "trigger": trigger,
         "window_title": title,
         "process_name": proc_name,
-        "action": "CLOSED_TAB_AND_WINDOW"
+        "action": "TERMINATED_VPN_OR_CLOSED_TAB"
     }
     
     records = []
@@ -177,13 +264,18 @@ def log_incident(trigger, title, proc_name):
 def main():
     global TRIGGER_REGEX
     print("===============================================================================")
-    print(" [+] DPCLOCKER :: WINDOWS PROXY, REMOTE BROWSER & ONLINE VPN SENTINEL ACTIVE")
+    print(" [+] DPCLOCKER :: WINDOWS PROXY, VPN & REMOTE BROWSER SENTINEL ACTIVE")
     print("===============================================================================")
-    print(" Monitoring active browser titles for 'proxy', 'proxies', 'remote browser', 'online vpn'...")
+    print(" Monitoring active browser titles for proxies, online remote browsers, and web VPNs...")
+    print(" Active generic VPN Process & Window Killer + NetAdapter Sentry ENABLED.")
     print(" Dual-process watchdog self-healing enabled.\n")
     
     watchdog_check_counter = 0
     last_mtime = os.path.getmtime(__file__)
+    
+    # Run an immediate check on startup
+    scan_and_kill_vpn_processes()
+    check_and_disable_vpn_adapters()
     
     while True:
         try:
@@ -205,9 +297,25 @@ def main():
             # 3. Inspect active foreground window
             hwnd, title, proc_name, pid = get_active_window()
             
+            # Check A: Active window belongs to generic VPN process
+            if hwnd and is_vpn_process(proc_name):
+                terminate_vpn_process(pid, proc_name, "ACTIVE_VPN_WINDOW_PROCESS")
+                close_window(hwnd)
+                time.sleep(0.2)
+                continue
+
+            # Check B: Active window title matches generic 'VPN' in non-browser/non-IDE app
+            if hwnd and proc_name and proc_name not in WHITELISTED_TITLE_EXES and proc_name not in TARGET_BROWSER_EXES:
+                if title and VPN_TITLE_REGEX.search(title):
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] [!] GENERIC VPN WINDOW DETECTED: '{title}' ({proc_name})")
+                    terminate_vpn_process(pid, proc_name, f"GENERIC_VPN_WINDOW_TITLE: {title}")
+                    close_window(hwnd)
+                    time.sleep(0.2)
+                    continue
+
+            # Check C: Web Browser Tab Proxy / Remote Browser / Online VPN check
             if hwnd and proc_name in TARGET_BROWSER_EXES and title:
                 match = TRIGGER_REGEX.search(title)
-                
                 if match:
                     matched_trigger = match.group(0)
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] [!] INTERCEPTED: '{matched_trigger}' in '{title}' ({proc_name})")
@@ -225,6 +333,14 @@ def main():
                         close_window(hwnd)
                         
                     time.sleep(0.2)
+            
+            # 4. Periodic background system-wide VPN process audit (every 1 second)
+            if watchdog_check_counter == 10:
+                scan_and_kill_vpn_processes()
+
+            # 5. Periodic Virtual NetAdapter audit (every 3 seconds)
+            if watchdog_check_counter == 19:
+                check_and_disable_vpn_adapters()
                     
         except Exception:
             pass

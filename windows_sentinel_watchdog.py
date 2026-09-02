@@ -38,20 +38,20 @@ def resurrect_sentinel():
             cwd=BASE_DIR,
             creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
         )
-        print(f"[{time.strftime('%H:%M:%S')}] ⚡ RESURRECTED: windows_proxy_sentinel.py restored!")
+        print(f"[{time.strftime('%H:%M:%S')}] [+] RESURRECTED: windows_proxy_sentinel.py restored!")
     except Exception as e:
         print(f"Failed to resurrect sentinel: {e}")
 
 def main():
     print("===============================================================================")
-    print(" [✓] DPCLOCKER :: SENTINEL GUARDIAN WATCHDOG ACTIVE")
+    print(" [+] DPCLOCKER :: SENTINEL GUARDIAN WATCHDOG ACTIVE")
     print("===============================================================================")
     print(" Continuously monitoring Sentinel process health. Auto-resurrection active.\n")
     
     while True:
         try:
             if not is_sentinel_running():
-                print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Sentinel process termination detected!")
+                print(f"[{time.strftime('%H:%M:%S')}] [!] Sentinel process termination detected!")
                 resurrect_sentinel()
                 time.sleep(0.5)
         except Exception:

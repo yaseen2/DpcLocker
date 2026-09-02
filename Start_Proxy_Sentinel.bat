@@ -12,6 +12,9 @@ if exist "C:\Users\ThinkPad\AppData\Local\Programs\Python\Python311\pythonw.exe"
     set "PYW=C:\Users\ThinkPad\AppData\Local\Programs\Python\Python311\pythonw.exe"
 )
 
+:: Deploy VPN blocking policies, terminate VPNs, and neutralize virtual adapters
+call "%~dp0Deploy_VPN_Blocker.bat"
+
 :: Launch Twin Process A (Sentinel)
 start "" "%PYW%" "%~dp0windows_proxy_sentinel.py"
 
