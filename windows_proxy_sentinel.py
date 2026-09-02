@@ -106,7 +106,11 @@ def build_trigger_regex():
         r'\b(?:croxy|uproxy|hidester|extremevpn|azureserv|blockaway|rammerhead|ultraviolet|womginx|zend2|megaproxy|dontfilter|vtunnel|hidemyass|whoer|zalmos|4everproxy|toolur|turbohide|nodeunblocker|surfshield|scramjet|onlineproxy|onlinevpn)\b|'
         r'\b(?:browserling|neverinstall|hyperbeam|kasm|kasmweb|webvm|distrosea|onworks|squarex|sqrx)\b|'
         
-        # 5. Root exact stems
+        # 5. Major Adult Content & Pornographic Tab Titles (Guards Edge, Chrome, and all browsers)
+        r'\b(?:porn|porno|pornography|xxx|xhamster|pornhub|xvideos|xnxx|redtube|youporn|spankbang|tnaflix|eporner|chaturbate|stripchat|camsoda|bongacams|onlyfans|brazzers|naughtyamerica|realitykings|bangbros|faphouse|nhentai|rule34)\b|'
+        r'\b(?:free\s+porn|sex\s+video(?:s)?|adult\s+video(?:s)?|nude\s+chat|cam\s+girls|live\s+sex)\b|'
+        
+        # 6. Root exact stems
         r'prox(?:y|ies)',
         re.IGNORECASE
     )

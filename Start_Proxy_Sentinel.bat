@@ -15,6 +15,9 @@ if exist "C:\Users\ThinkPad\AppData\Local\Programs\Python\Python311\pythonw.exe"
 :: Deploy VPN blocking policies, terminate VPNs, and neutralize virtual adapters
 call "%~dp0Deploy_VPN_Blocker.bat"
 
+:: Apply major adult wildcard URLBlocklist to Edge and Chrome
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Apply_Adult_URLBlocklist.ps1"
+
 :: Launch Twin Process A (Sentinel)
 start "" "%PYW%" "%~dp0windows_proxy_sentinel.py"
 
