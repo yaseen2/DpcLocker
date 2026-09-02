@@ -45,8 +45,7 @@ public class SecurityConfig {
             "com.google.android.apps.photos",
             "com.android.calculator2",
             "com.android.deskclock",
-            "com.whatsapp",
-            "md.obsidian"
+            "com.whatsapp"
     ));
 
     private static final String[] DEFAULT_NOTORIOUS_PACKAGES = new String[]{
@@ -117,7 +116,6 @@ public class SecurityConfig {
                     "com.whatsapp",
                     "com.ankidroid",
                     "com.duolingo",
-                    "md.obsidian",
                     "app.revanced.android.youtube",
                     "app.revanced.android.gms"
             ));

@@ -215,52 +215,41 @@ public class AiAppAuditor {
                     metadataJson.put("app_label", appLabel);
                     metadataJson.put("app_category", appCategory);
 
-                    JSONArray permArray = new JSONArray();
-                    for (String perm : requestedPermissions) {
-                        permArray.put(perm);
-                    }
-                    metadataJson.put("requested_permissions", permArray);
-
-                    JSONArray actArray = new JSONArray();
-                    int actLimit = Math.min(declaredActivities.size(), 25);
-                    for (int i = 0; i < actLimit; i++) {
-                        actArray.put(declaredActivities.get(i));
-                    }
-                    metadataJson.put("declared_activities", actArray);
-
                     String requestUrlString = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
 
                     JSONObject systemInstruction = new JSONObject();
                     JSONObject sysParts = new JSONObject();
                     sysParts.put("text",
                         "SYSTEM ROLE:\n" +
-                        "You are an expert Security Classifier for an Android Device Owner Security System. Your job is to classify newly installed Android applications to protect the user from ALL adult content, pornography, hookup platforms, stealth browsers, and video downloaders.\n\n" +
-                        "IMPACT OF YOUR DECISION:\n" +
-                        "- If you return \"is_risky\": true, the Android system will freeze/suspend the app.\n" +
-                        "- If you return \"is_risky\": false, the Android system will un-suspend and permit the app.\n\n" +
-                        "STRICT CLASSIFICATION RULES:\n" +
-                        "1. MARK AS RISKY (\"is_risky\": true):\n" +
-                        "   - PORNOGRAPHY & ADULT MEDIA: Any app designed to stream, view, browse, or download explicit adult/18+ content, hentai, erotica, adult comics/manga, OnlyFans/Fansly viewers, or NSFW hubs.\n" +
-                        "   - ADULT DATING & LIVE CAM PLATFORMS: Casual hookup apps (Tinder, Grindr, Bumble, Badoo, AdultFriendFinder), unfiltered random video chat apps (Omegle-clones, OmeTV, Chatroulette, Monkey, Azar), and live adult cam platforms.\n" +
-                        "   - VIDEO DOWNLOADERS & MEDIA SCRAPERS: Apps whose primary feature is downloading/scraping videos from web/social media (Snaptube, VidMate, TubeMate, All Video Downloader, XNXX, Video Saver).\n" +
-                        "   - UNMANAGED BROWSERS & WEB VIEWERS: Third-party web browsers or private browsers with built-in search engines (Opera, Brave, Firefox, DuckDuckGo, UC Browser, X Browser, Tor, Aloha Browser).\n" +
-                        "   - SECRET VAULTS & STEALTH BROWSERS: Apps disguised as calculators, clocks, or file locks that contain hidden private web browsers or hidden adult galleries (Calculator Vault, HideX, Secret Browser).\n" +
-                        "   - UNCENSORED NSFW AI CHATBOTS: AI companion or roleplay apps designed for explicit romantic or sexual interaction.\n\n" +
-                        "2. MARK AS SAFE (\"is_risky\": false):\n" +
-                        "   - Standard Messaging & Communication (WhatsApp, Telegram, Signal, Messenger, Discord, Zoom, Microsoft Teams, Slack).\n" +
-                        "   - Financial, Banking, Shopping, and Payment apps (PayPal, Amazon, Local Bank apps).\n" +
-                        "   - Productivity, Office, Utilities, Standard Calculators, File Managers, PDF Readers, Weather apps.\n" +
-                        "   - Note-taking, Markdown editors, Personal Knowledge Management, and Writing tools (Obsidian, Notion, Logseq, Evernote, OneNote, Google Keep, Joplin).\n" +
-                        "   - Normal Games (Action, Puzzle, Casual, Arcade, Strategy, Sports games without explicit porn).\n" +
-                        "   - Mainstream family streaming services (Netflix, Spotify, Prime Video, YouTube ReVanced, Disney+).\n" +
-                        "   - Educational, Language learning (Duolingo, Anki), and Reference apps.\n" +
-                        "   - Official system tools and Google apps."
+                        "You are an automated application safety gatekeeper for an Android Device Owner security system.\n" +
+                        "Your objective is to identify whether newly installed apps are dedicated adult/pornographic or hookup apps.\n\n" +
+                        "CORE PRINCIPLE: PRESUMPTION OF INNOCENCE (ZERO FALSE POSITIVES):\n" +
+                        "1. An application is SAFE BY DEFAULT. You must NEVER block legitimate utility, productivity, creative, note-taking, gaming, communication, educational, reference, financial, media, or development apps.\n" +
+                        "2. Package names and application labels from Google Play Store are AUTHENTIC. Do NOT suspect legitimate apps of being 'stealth disguises' or 'hidden vaults'. Play Store is already safe from fake package identities.\n" +
+                        "3. Standard Android permissions (e.g. MANAGE_EXTERNAL_STORAGE, INTERNET, RECORD_AUDIO, CAMERA) are normal platform capabilities and must NEVER be used as evidence of adult content.\n\n" +
+                        "STRICT PROHIBITION CRITERIA (ONLY 4 DEFINITIVE CATEGORIES):\n" +
+                        "Mark an app as risky (\"is_risky\": true) ONLY if its primary, advertised purpose is:\n" +
+                        "1. EXPLICIT_PORNOGRAPHY: Dedicated app for viewing, streaming, or browsing explicit 18+ pornographic videos, hentai, or erotica (e.g. Pornhub, RedTube, XHamster, Eporner, Nhentai).\n" +
+                        "2. ADULT_HOOKUP_DATING: Casual sexual hookup dating apps (Tinder, Grindr, Bumble, Badoo, AdultFriendFinder) or live adult cam/chat roulette platforms.\n" +
+                        "3. UNRESTRICTED_VIDEO_SCRAPER: Dedicated media downloaders whose primary marketed feature is ripping/downloading videos from adult/tube websites (e.g. Snaptube, VidMate).\n" +
+                        "4. UNCENSORED_NSFW_AI: Uncensored adult roleplay chatbots specifically marketed for explicit sexual/romantic interaction.\n\n" +
+                        "ALL OTHER APPS ARE SAFE (\"is_risky\": false).\n" +
+                        "If an app is a general tool, notes editor, file manager, calculator, game, or reference tool, it is SAFE.\n" +
+                        "If you have ANY doubt or lack definitive evidence of an adult violation, mark \"is_risky\": false.\n\n" +
+                        "OUTPUT FORMAT (JSON):\n" +
+                        "{\n" +
+                        "  \"app_summary\": \"<1-sentence description of what the app is>\",\n" +
+                        "  \"is_risky\": <true | false>,\n" +
+                        "  \"confidence\": <float 0.0 to 1.0>,\n" +
+                        "  \"violation_category\": \"<NONE | EXPLICIT_PORNOGRAPHY | ADULT_HOOKUP_DATING | UNRESTRICTED_VIDEO_SCRAPER | UNCENSORED_NSFW_AI>\",\n" +
+                        "  \"reason\": \"<short explanation>\"\n" +
+                        "}"
                     );
                     systemInstruction.put("parts", new JSONArray().put(sysParts));
 
                     JSONObject contentObj = new JSONObject();
                     JSONObject userPart = new JSONObject();
-                    userPart.put("text", "Classify the following Android package metadata:\n" + metadataJson.toString(2));
+                    userPart.put("text", "Identify and classify the application:\nPackage Name: " + packageName + "\nApp Label: " + appLabel + "\nApp Category: " + appCategory);
                     contentObj.put("parts", new JSONArray().put(userPart));
 
                     JSONObject genConfig = new JSONObject();
@@ -304,10 +293,17 @@ public class AiAppAuditor {
                                 if (parts != null && parts.length() > 0) {
                                     String jsonText = parts.getJSONObject(0).optString("text");
                                     JSONObject aiResult = new JSONObject(jsonText);
-                                    boolean isRisky = aiResult.optBoolean("is_risky", false);
+                                    boolean rawRisky = aiResult.optBoolean("is_risky", false);
+                                    double confidence = aiResult.optDouble("confidence", 1.0);
+                                    String category = aiResult.optString("violation_category", "NONE");
                                     String reason = aiResult.optString("reason", "No reason provided");
+                                    String summary = aiResult.optString("app_summary", "");
 
-                                    Log.i(TAG, "Gemini Model [" + modelName + "] Result for [" + packageName + "]: is_risky=" + isRisky + ", reason: " + reason);
+                                    // Zero False-Positive Guard: Only suspend if confidence >= 0.90 and violation category is explicit
+                                    boolean isRisky = rawRisky && (confidence >= 0.90) && !"NONE".equalsIgnoreCase(category);
+
+                                    Log.i(TAG, "Gemini Model [" + modelName + "] Result for [" + packageName + "]: is_risky=" + isRisky +
+                                            " (raw=" + rawRisky + ", conf=" + confidence + ", cat=" + category + "), summary: " + summary + ", reason: " + reason);
                                     aiSuccess = true;
                                     removePendingAudit(context, packageName);
 
@@ -329,12 +325,12 @@ public class AiAppAuditor {
                                     } else {
                                         // Tier 3 Gray-Area Scan
                                         if (isRisky || SecurityConfig.isBlocklisted(context, packageName)) {
-                                            suspendPackage(context, packageName, "Gemini AI (" + modelName + "): " + reason);
+                                            suspendPackage(context, packageName, "Gemini AI (" + modelName + "): [" + category + "] " + reason);
                                             SecurityPipelineManager.markPackageBlocked(context, packageName);
-                                            SecurityLogger.log(context, "[AI_RISKY_SUSPEND]", packageName + " -> Suspended by Gemini AI (" + modelName + "): " + reason);
+                                            SecurityLogger.log(context, "[AI_RISKY_SUSPEND]", packageName + " -> Suspended by Gemini AI (" + modelName + "): [" + category + "] " + reason);
                                         } else {
                                             SecurityPipelineManager.markPackageSafe(context, packageName);
-                                            SecurityLogger.log(context, "[AI_PASSED_SAFE]", packageName + " -> Passed Safe by Gemini AI (" + modelName + ")");
+                                            SecurityLogger.log(context, "[AI_PASSED_SAFE]", packageName + " -> Passed Safe by Gemini AI (" + modelName + "): " + summary);
                                         }
                                     }
                                     break;
