@@ -127,6 +127,12 @@ public class SecurityPipelineManager {
     }
 
     private static void processPackagePipeline(Context context, String packageName) {
+        // --- TIER 0: Verified Safe Package Cache (0ms) ---
+        if (getCachedSafePackages(context).contains(packageName.toLowerCase())) {
+            Log.i(TAG, "Package " + packageName + " is already verified safe in cache. Skipping audit (0ms).");
+            return;
+        }
+
         // --- TIER 1: User UI Whitelist & Core System (0ms) ---
         if (SecurityConfig.isWhitelisted(context, packageName)) {
             markPackageSafe(context, packageName);
@@ -202,11 +208,8 @@ public class SecurityPipelineManager {
 
                         // 1. Whitelist override -> always ensure un-suspended and marked safe
                         if (SecurityConfig.isWhitelisted(context, pkg)) {
-                            if (blockedCache.contains(pkg)) {
-                                packagesToUnsuspend.add(pkg);
-                                markPackageSafe(context, pkg);
-                            }
-                            skippedSafeCount++;
+                            packagesToUnsuspend.add(pkg);
+                            markPackageSafe(context, pkg);
                             continue;
                         }
 

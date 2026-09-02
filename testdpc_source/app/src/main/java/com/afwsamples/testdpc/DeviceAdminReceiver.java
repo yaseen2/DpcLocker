@@ -78,7 +78,8 @@ public class DeviceAdminReceiver extends android.app.admin.DeviceAdminReceiver {
         ChromePolicyManager.enforceDefaultChromePolicies(context);
         ImpulseGuardService.ensureAccessibilityServiceEnabled(context);
         if (intent != null && intent.getAction() != null) {
-            if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
+            if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction()) ||
+                "com.afwsamples.testdpc.ACTION_SYNC_POLICIES".equals(intent.getAction())) {
                 SecurityPipelineManager.onBootCompleted(context);
                 AiAppAuditor.processPendingAudits(context);
             }

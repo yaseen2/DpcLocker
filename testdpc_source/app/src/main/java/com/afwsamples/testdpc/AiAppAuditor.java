@@ -250,6 +250,7 @@ public class AiAppAuditor {
                         "   - Standard Messaging & Communication (WhatsApp, Telegram, Signal, Messenger, Discord, Zoom, Microsoft Teams, Slack).\n" +
                         "   - Financial, Banking, Shopping, and Payment apps (PayPal, Amazon, Local Bank apps).\n" +
                         "   - Productivity, Office, Utilities, Standard Calculators, File Managers, PDF Readers, Weather apps.\n" +
+                        "   - Note-taking, Markdown editors, Personal Knowledge Management, and Writing tools (Obsidian, Notion, Logseq, Evernote, OneNote, Google Keep, Joplin).\n" +
                         "   - Normal Games (Action, Puzzle, Casual, Arcade, Strategy, Sports games without explicit porn).\n" +
                         "   - Mainstream family streaming services (Netflix, Spotify, Prime Video, YouTube ReVanced, Disney+).\n" +
                         "   - Educational, Language learning (Duolingo, Anki), and Reference apps.\n" +
@@ -264,6 +265,7 @@ public class AiAppAuditor {
 
                     JSONObject genConfig = new JSONObject();
                     genConfig.put("response_mime_type", "application/json");
+                    genConfig.put("temperature", 0.0);
 
                     JSONObject payload = new JSONObject();
                     payload.put("system_instruction", systemInstruction);
