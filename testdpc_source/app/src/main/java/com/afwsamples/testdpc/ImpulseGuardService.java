@@ -102,6 +102,12 @@ public class ImpulseGuardService extends AccessibilityService {
     private Runnable mPendingAuditRunnable;
     private Runnable mPendingScreenAuditRunnable;
 
+    // Real-Time App Daily Usage Timer Enforcement
+    private String mActiveTimedPackage = null;
+    private long mActiveSessionStartTime = 0L;
+    private final Handler mAppTimerHandler = new Handler(Looper.getMainLooper());
+    private Runnable mAppTimerTickerRunnable = null;
+
     // Built-In Never-Ask System & Productivity Whitelist
     private static final Set<String> SYSTEM_WHITELIST = new HashSet<>(Arrays.asList(
             "com.afwsamples.testdpc",
@@ -288,6 +294,142 @@ public class ImpulseGuardService extends AccessibilityService {
         }
     }
 
+    public synchronized void commitActiveSessionUsage() {
+        if (mActiveTimedPackage != null) {
+            long now = System.currentTimeMillis();
+            long elapsed = now - mActiveSessionStartTime;
+            if (elapsed > 0) {
+                AppTimerManager.addForegroundUsageMillis(this, mActiveTimedPackage, elapsed);
+                Log.i(TAG, "⏱️ Committed session usage for [" + mActiveTimedPackage + "]: " + (elapsed / 1000) + "s");
+            }
+            if (mAppTimerTickerRunnable != null) {
+                mAppTimerHandler.removeCallbacks(mAppTimerTickerRunnable);
+                mAppTimerTickerRunnable = null;
+            }
+            if (AppTimerManager.isDailyLimitExceeded(this, mActiveTimedPackage)) {
+                enforceAppTimerLimit(mActiveTimedPackage);
+            }
+            mActiveTimedPackage = null;
+            mActiveSessionStartTime = 0L;
+        }
+    }
+
+    private void handleAppTimerWindowStateChange(String newPkg) {
+        if (newPkg == null || newPkg.isEmpty()) return;
+
+        // Skip transient system overlays (keyboards, systemui notifications)
+        if (newPkg.contains("inputmethod") || newPkg.contains("keyboard") || "com.android.systemui".equals(newPkg)) {
+            return;
+        }
+
+        // If user navigated away from the timed app, commit its elapsed time
+        if (mActiveTimedPackage != null && !newPkg.equals(mActiveTimedPackage)) {
+            commitActiveSessionUsage();
+        }
+
+        // Check if the newly focused app has a daily usage limit
+        int limitMins = AppTimerManager.getAppLimitMinutes(this, newPkg);
+        if (limitMins > 0) {
+            // Check if already locked for today
+            if (AppTimerManager.isDailyLimitExceeded(this, newPkg)) {
+                Log.w(TAG, "🚨 Timed app [" + newPkg + "] opened but DAILY LIMIT IS EXCEEDED! Kicking to home.");
+                enforceAppTimerLimit(newPkg);
+                return;
+            }
+
+            long limitMillis = limitMins * 60 * 1000L;
+            long usedMillis = AppTimerManager.getTodayUsageMillis(this, newPkg);
+
+            if (usedMillis >= limitMillis) {
+                Log.w(TAG, "🚨 Timed app [" + newPkg + "] reached limit (" + (usedMillis / 60000) + "m / " + limitMins + "m). Locking!");
+                AppTimerManager.setDailyLimitExceeded(this, newPkg, true);
+                enforceAppTimerLimit(newPkg);
+                return;
+            }
+
+            // Start live session tracking if not already ticking for this package
+            if (mActiveTimedPackage == null || !newPkg.equals(mActiveTimedPackage)) {
+                mActiveTimedPackage = newPkg;
+                mActiveSessionStartTime = System.currentTimeMillis();
+                startAppTimerTicker(newPkg, limitMillis);
+                Log.i(TAG, "⏱️ Active timer started for [" + newPkg + "] -> " + (usedMillis / 60000) + "m used / " + limitMins + "m limit");
+            }
+        }
+    }
+
+    private void startAppTimerTicker(final String pkg, final long limitMillis) {
+        if (mAppTimerTickerRunnable != null) {
+            mAppTimerHandler.removeCallbacks(mAppTimerTickerRunnable);
+        }
+
+        mAppTimerTickerRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (mActiveTimedPackage == null || !pkg.equals(mActiveTimedPackage)) {
+                    return;
+                }
+
+                long now = System.currentTimeMillis();
+                long sessionElapsed = now - mActiveSessionStartTime;
+
+                // Periodically persist to SharedPreferences every 5 seconds to prevent data loss
+                if (sessionElapsed >= 5000L) {
+                    AppTimerManager.addForegroundUsageMillis(ImpulseGuardService.this, pkg, sessionElapsed);
+                    mActiveSessionStartTime = now;
+                    sessionElapsed = 0L;
+                }
+
+                long baseUsage = AppTimerManager.getTodayUsageMillis(ImpulseGuardService.this, pkg);
+                long currentTotal = baseUsage + sessionElapsed;
+
+                if (currentTotal >= limitMillis) {
+                    Log.w(TAG, "⏱️ DAILY LIMIT HIT in real-time for [" + pkg + "] (" + (currentTotal / 60000) + "m / " + (limitMillis / 60000) + "m)!");
+                    if (sessionElapsed > 0) {
+                        AppTimerManager.addForegroundUsageMillis(ImpulseGuardService.this, pkg, sessionElapsed);
+                    }
+                    AppTimerManager.setDailyLimitExceeded(ImpulseGuardService.this, pkg, true);
+                    mActiveTimedPackage = null;
+                    mActiveSessionStartTime = 0L;
+                    enforceAppTimerLimit(pkg);
+                    return;
+                }
+
+                // Tick every 1000ms (1 second) for strict precision
+                mAppTimerHandler.postDelayed(this, 1000L);
+            }
+        };
+
+        mAppTimerHandler.postDelayed(mAppTimerTickerRunnable, 1000L);
+    }
+
+    private void enforceAppTimerLimit(String pkg) {
+        // 1. Kick user back to Home screen immediately
+        performGlobalAction(GLOBAL_ACTION_HOME);
+
+        // 2. Suspend package via Device Owner so icon is grayed out and cannot be launched
+        try {
+            DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
+            if (dpm != null && dpm.isDeviceOwnerApp(getPackageName())) {
+                dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(this), new String[]{pkg}, true);
+                Log.i(TAG, "🔒 Device Owner locked/suspended timed app: " + pkg);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error suspending package " + pkg, e);
+        }
+
+        // 3. Inform user with a high-priority Toast
+        String appLabel = pkg;
+        try {
+            PackageManager pm = getPackageManager();
+            ApplicationInfo ai = pm.getApplicationInfo(pkg, 0);
+            appLabel = pm.getApplicationLabel(ai).toString();
+        } catch (Exception ignored) {}
+
+        int limitMins = AppTimerManager.getAppLimitMinutes(this, pkg);
+        final String msg = "⏱️ " + appLabel + " daily limit (" + limitMins + " min) reached! Locked for today.";
+        mHandler.post(() -> Toast.makeText(ImpulseGuardService.this, msg, Toast.LENGTH_LONG).show());
+    }
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
@@ -299,6 +441,7 @@ public class ImpulseGuardService extends AccessibilityService {
         filter.addAction(ACTION_MONITOR_APP);
         filter.addAction(ACTION_WHITELIST_APP);
         filter.addAction(ACTION_RUN_FALCONS_DIAGNOSTICS);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
 
         registerReceiver(new BroadcastReceiver() {
             @Override
@@ -311,35 +454,36 @@ public class ImpulseGuardService extends AccessibilityService {
                         String report = FalconsVisionGuardEngine.runSelfDiagnostics(ImpulseGuardService.this);
                         Log.i("FalconsDiagnostic", "\n" + report);
                     });
+                } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                    Log.i(TAG, "Screen off detected: committing active session usage.");
+                    commitActiveSessionUsage();
                 }
             }
         }, filter);
     }
 
     @Override
+    public void onDestroy() {
+        super.onDestroy();
+        commitActiveSessionUsage();
+    }
+
+    @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        checkAndCleanExpiredSuspensions();
-
-        boolean geminiActive = GeminiGuardEngine.isEnabled(this);
-        boolean falconsActive = FalconsVisionGuardEngine.isEnabled(this);
-
-        if ((!geminiActive && !falconsActive) || event == null) {
-            return;
-        }
+        if (event == null) return;
 
         final CharSequence packageNameChar = event.getPackageName();
-        if (packageNameChar == null) {
-            return;
-        }
-
+        if (packageNameChar == null) return;
         final String packageName = packageNameChar.toString();
 
         int eventType = event.getEventType();
-        if (eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED || eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            mLastPenalizedQueryMap.remove(packageName);
+
+        // 0. REAL-TIME APP DAILY USAGE TIMERS ENFORCEMENT
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            handleAppTimerWindowStateChange(packageName);
         }
 
-        // 0. ANTI-TAMPER: Block User from accessing the Accessibility Toggle or App Info for Impulse Guard
+        // 1. ANTI-TAMPER: Block User from accessing the Accessibility Toggle or App Info for Impulse Guard
         if ("com.android.settings".equals(packageName)) {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                     eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
@@ -354,7 +498,20 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         }
 
-        // 1. Password & Sensitive Input Field Privacy Masking
+        checkAndCleanExpiredSuspensions();
+
+        boolean geminiActive = GeminiGuardEngine.isEnabled(this);
+        boolean falconsActive = FalconsVisionGuardEngine.isEnabled(this);
+
+        if (!geminiActive && !falconsActive) {
+            return;
+        }
+
+        if (eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED || eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            mLastPenalizedQueryMap.remove(packageName);
+        }
+
+        // Password & Sensitive Input Field Privacy Masking
         if (isPasswordOrSensitiveNode(event)) {
             return;
         }
@@ -1071,6 +1228,7 @@ public class ImpulseGuardService extends AccessibilityService {
     @Override
     public void onInterrupt() {
         Log.w(TAG, "ImpulseGuardService Interrupted!");
+        commitActiveSessionUsage();
     }
 
     public static class ActionReceiver extends BroadcastReceiver {

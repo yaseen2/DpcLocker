@@ -74,13 +74,36 @@ public class AppTimerManager {
     public static void clearDailyExceededFlags(Context context) {
         SharedPreferences prefs = getPrefs(context);
         SharedPreferences.Editor editor = prefs.edit();
+        java.util.List<String> packagesToUnsuspend = new java.util.ArrayList<>();
+
         for (String key : prefs.getAll().keySet()) {
             if (key.startsWith(KEY_EXCEEDED_PREFIX)) {
+                String pkg = key.substring(KEY_EXCEEDED_PREFIX.length());
+                packagesToUnsuspend.add(pkg);
+                editor.remove(key);
+            }
+            if (key.startsWith(KEY_USAGE_MILLIS_PREFIX)) {
                 editor.remove(key);
             }
         }
         editor.apply();
-        Log.i(TAG, "Cleared all daily exceeded flags for midnight rollover.");
+        Log.i(TAG, "Cleared daily exceeded flags and usage counters for midnight rollover.");
+
+        // Unsuspend timed-out apps for the fresh new day
+        try {
+            DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            if (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName())) {
+                for (String pkg : packagesToUnsuspend) {
+                    if (!SecurityPipelineManager.isPermanentlyProhibited(context, pkg) &&
+                            !ImpulseGuardService.isTemporarilySuspended(context, pkg)) {
+                        dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{pkg}, false);
+                        Log.i(TAG, "Midnight rollover: Unsuspended " + pkg + " with fresh daily timer.");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error unsuspending packages on midnight rollover", e);
+        }
     }
 
     public static void setAppLimitMinutes(Context context, String packageName, int limitMinutes) {
@@ -128,10 +151,35 @@ public class AppTimerManager {
         return limits;
     }
 
+    public static final String KEY_USAGE_MILLIS_PREFIX = "usage_today_";
+
+    public static void addForegroundUsageMillis(Context context, String packageName, long additionalMillis) {
+        if (packageName == null || packageName.isEmpty() || additionalMillis <= 0) return;
+        SharedPreferences prefs = getPrefs(context);
+        String todayKey = getTodayKey();
+        String fullKey = KEY_USAGE_MILLIS_PREFIX + todayKey + "_" + packageName;
+        long current = prefs.getLong(fullKey, 0L);
+        long updated = current + additionalMillis;
+        prefs.edit().putLong(fullKey, updated).apply();
+    }
+
+    public static long getLocalRecordedUsageMillis(Context context, String packageName) {
+        if (packageName == null || packageName.isEmpty()) return 0L;
+        SharedPreferences prefs = getPrefs(context);
+        String todayKey = getTodayKey();
+        return prefs.getLong(KEY_USAGE_MILLIS_PREFIX + todayKey + "_" + packageName, 0L);
+    }
+
     public static long getTodayUsageMillis(Context context, String packageName) {
+        long localUsage = getLocalRecordedUsageMillis(context, packageName);
+        long usmUsage = getUsageStatsManagerUsage(context, packageName);
+        return Math.max(localUsage, usmUsage);
+    }
+
+    private static long getUsageStatsManagerUsage(Context context, String packageName) {
         try {
             UsageStatsManager usm = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
-            if (usm == null) return 0;
+            if (usm == null) return 0L;
 
             Calendar calendar = Calendar.getInstance();
             calendar.set(Calendar.HOUR_OF_DAY, 0);
@@ -166,7 +214,7 @@ public class AppTimerManager {
         } catch (Exception e) {
             Log.e(TAG, "Error querying usage stats for " + packageName, e);
         }
-        return 0;
+        return 0L;
     }
 
     public static void checkAndEnforceLimits(Context context) {
