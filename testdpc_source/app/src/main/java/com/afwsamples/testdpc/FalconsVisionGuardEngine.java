@@ -27,25 +27,64 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * On-Device Falcons.ai Vision Transformer (ViT) NSFW Detection Engine.
- * Runs 100% locally and offline via Microsoft ONNX Runtime Mobile.
+ * =========================================================================================
+ * CLASS: FalconsVisionGuardEngine
+ * =========================================================================================
+ * Purpose:
+ *   High-speed, on-device visual adult content detection engine powered by the Falcons.ai
+ *   Vision Transformer (ViT) quantized neural network model running offline via Microsoft
+ *   ONNX Runtime Mobile.
+ *
+ * Why On-Device AI Vision?
+ *   - 100% Offline & Private: No screen captures or personal visual data are ever uploaded to
+ *     the cloud or external servers.
+ *   - Low Latency: Sub-60ms execution using multithreaded ARM NEON CPU vectorization.
+ *   - Zero-Data-Cost: Operates seamlessly even in Airplane Mode or without an active internet
+ *     connection.
+ *
+ * Mathematical & Preprocessing Pipeline:
+ *   1. Screen Resizing: Downsamples screenshot to ViT standard patch dimensions: 224 x 224 px.
+ *   2. Planar CHW Tensor Layout: Re-arranges interleaved Android ARGB pixels into 3 planar
+ *      color channels: Channel 0 = Red [224x224], Channel 1 = Green [224x224], Channel 2 = Blue [224x224].
+ *   3. Precomputed Fast Normalization (O(1) LUT):
+ *      ViT expects pixel values normalized by mean 0.5, std 0.5:
+ *        Normalized Value = ((pixel / 255.0) - 0.5) / 0.5 = (pixel / 255.0 - 0.5) * 2.0
+ *      Precalculated into a 256-entry static float table (NORM_LUT) eliminating floating-point math
+ *      during runtime loops.
+ *   4. Zero-GC Memory Management:
+ *      Uses reusable `ThreadLocal` buffers to eliminate Android Garbage Collection (GC) pauses
+ *      during continuous screen capture analysis.
+ *   5. Softmax Logits: Converts raw ONNX model classification logits into normalized probabilities:
+ *        P(nsfw) = exp(logit_nsfw) / (exp(logit_normal) + exp(logit_nsfw))
+ * =========================================================================================
  */
 public class FalconsVisionGuardEngine {
 
+    // Logcat tag for vision engine diagnostics
     private static final String TAG = "FalconsVisionGuard";
+
+    // SharedPreferences file name for vision guard configuration
     private static final String PREFS_NAME = "falcons_vision_guard_prefs";
     private static final String KEY_ENABLED = "falcons_vision_enabled";
     private static final String KEY_THRESHOLD = "falcons_vision_threshold";
     private static final String KEY_LOGS = "falcons_vision_logs";
 
+    // Expected ONNX model file name
     public static final String MODEL_FILE_NAME = "falcons_nsfw_quantized.onnx";
+
+    // Default probability threshold (0.70 = 70% confidence) to flag an image as NSFW
     public static final float DEFAULT_THRESHOLD = 0.70f;
 
+    // Vision Transformer input dimensions: 224 x 224 pixels
     private static final int INPUT_SIZE = 224;
     private static final float[] MEAN = new float[]{0.5f, 0.5f, 0.5f};
     private static final float[] STD = new float[]{0.5f, 0.5f, 0.5f};
 
-    // Precomputed O(1) static lookup table for pixel normalization (pixel / 255.0 - 0.5) * 2.0
+    /**
+     * Precomputed O(1) static lookup table for pixel normalization:
+     *   NORM_LUT[pixel] = ((pixel / 255.0f) - 0.5f) * 2.0f
+     * Maps any 8-bit unsigned integer (0..255) to its normalized float [-1.0 .. 1.0] in a single memory fetch.
+     */
     private static final float[] NORM_LUT = new float[256];
     static {
         for (int i = 0; i < 256; i++) {
@@ -53,7 +92,10 @@ public class FalconsVisionGuardEngine {
         }
     }
 
-    // ThreadLocal reusable pre-allocated buffers: ZERO GC allocations per frame!
+    /**
+     * ThreadLocal reusable integer buffer for extracting 224x224 ARGB pixels from Bitmaps.
+     * Prevents allocating a new 50,176-element int array on every analyzed frame (Zero-GC).
+     */
     private static final ThreadLocal<int[]> sPixelBufferHolder = new ThreadLocal<int[]>() {
         @Override
         protected int[] initialValue() {
@@ -61,6 +103,10 @@ public class FalconsVisionGuardEngine {
         }
     };
 
+    /**
+     * ThreadLocal reusable float buffer for the Planar CHW tensor (3 channels * 224 * 224 = 150,528 floats).
+     * Reused across frames to completely eliminate Garbage Collection churn.
+     */
     private static final ThreadLocal<float[]> sFloatBufferHolder = new ThreadLocal<float[]>() {
         @Override
         protected float[] initialValue() {
@@ -68,20 +114,26 @@ public class FalconsVisionGuardEngine {
         }
     };
 
+    // Microsoft ONNX Runtime Environment & Active Inference Session
     private static OrtEnvironment sOrtEnv;
     private static OrtSession sOrtSession;
     private static String sActiveExecutionProvider = "UNINITIALIZED";
     private static final Object sLock = new Object();
     private static final AtomicBoolean sIsInitializing = new AtomicBoolean(false);
+
+    // In-memory LRU-like quick hash cache to instantly return verdicts for identical or static screens
     private static final ConcurrentHashMap<Long, Boolean> sBitmapVerdictCache = new ConcurrentHashMap<>();
     private static final ExecutorService sWorkerExecutor = Executors.newSingleThreadExecutor();
 
+    /**
+     * Immutable Data Transfer Object encapsulating ViT inference results.
+     */
     public static class VisionResult {
-        public final boolean isNsfw;
-        public final float nsfwProbability;
-        public final float normalProbability;
-        public final long latencyMs;
-        public final String reason;
+        public final boolean isNsfw;             // True if NSFW probability >= configured threshold
+        public final float nsfwProbability;      // Probability (0.0 to 1.0) of adult content
+        public final float normalProbability;    // Probability (0.0 to 1.0) of safe/normal content
+        public final long latencyMs;             // Execution duration in milliseconds
+        public final String reason;              // Diagnostic tag (e.g. "nsfw_detected", "ram_hash_cache")
 
         public VisionResult(boolean isNsfw, float nsfwProbability, float normalProbability, long latencyMs, String reason) {
             this.isNsfw = isNsfw;
@@ -92,28 +144,46 @@ public class FalconsVisionGuardEngine {
         }
     }
 
+    /**
+     * Helper to access SharedPreferences for Falcons Vision Guard.
+     */
     private static SharedPreferences getPrefs(Context context) {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
+    /**
+     * Returns whether on-device Falcons vision scanning is currently enabled by user.
+     */
     public static boolean isEnabled(Context context) {
         return getPrefs(context).getBoolean(KEY_ENABLED, false);
     }
 
+    /**
+     * Enables or disables Falcons vision scanning.
+     */
     public static void setEnabled(Context context, boolean enabled) {
         getPrefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply();
         Log.i(TAG, "Falcons Vision Guard enabled set to: " + enabled);
     }
 
+    /**
+     * Returns the configured sensitivity threshold (0.0 to 1.0, default 0.70).
+     */
     public static float getThreshold(Context context) {
         return getPrefs(context).getFloat(KEY_THRESHOLD, DEFAULT_THRESHOLD);
     }
 
+    /**
+     * Updates the sensitivity threshold in SharedPreferences.
+     */
     public static void setThreshold(Context context, float threshold) {
         getPrefs(context).edit().putFloat(KEY_THRESHOLD, threshold).apply();
         Log.i(TAG, "Falcons Vision Guard threshold set to: " + threshold);
     }
 
+    /**
+     * Returns historical logs of visual detection events.
+     */
     public static String getLogs(Context context) {
         String logs = getPrefs(context).getString(KEY_LOGS, "");
         if (logs.isEmpty()) {
@@ -122,6 +192,9 @@ public class FalconsVisionGuardEngine {
         return logs;
     }
 
+    /**
+     * Appends an entry to the rolling circular vision log (capped at 10,000 characters).
+     */
     public static void appendLog(Context context, String entry) {
         String timestamp = new SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(new Date());
         String currentLogs = getPrefs(context).getString(KEY_LOGS, "");
@@ -132,12 +205,25 @@ public class FalconsVisionGuardEngine {
         getPrefs(context).edit().putString(KEY_LOGS, newLogs).apply();
     }
 
+    /**
+     * Clears all vision logs.
+     */
     public static void clearLogs(Context context) {
         getPrefs(context).edit().remove(KEY_LOGS).apply();
     }
 
+    // =====================================================================================
+    // SECTION 1: Model File Discovery & Internal Storage Extraction
+    // =====================================================================================
+
     /**
-     * Ensures the ONNX model is available either from assets or internal storage.
+     * Discovers or extracts the quantized ONNX model file:
+     * 1. Checks internal app files directory: /data/user/0/com.afwsamples.testdpc/files/models/
+     * 2. Checks external Download directory: /sdcard/Download/falcons_models/
+     * 3. Extracts from APK assets directory: assets/models/
+     *
+     * @param context Application context
+     * @return File handle to the ready-to-load ONNX model, or null if missing.
      */
     public static File getOrCopyModelFile(Context context) {
         File internalModelDir = new File(context.getFilesDir(), "models");
@@ -146,11 +232,12 @@ public class FalconsVisionGuardEngine {
         }
         File modelFile = new File(internalModelDir, MODEL_FILE_NAME);
 
+        // If internal model exists and is greater than 1MB, use it directly
         if (modelFile.exists() && modelFile.length() > 1000000) {
             return modelFile;
         }
 
-        // 1. Check Download directory (/sdcard/Download/falcons_models/)
+        // Discovery Check 1: Sideloaded folder in Download storage
         File externalModel = new File("/sdcard/Download/falcons_models/" + MODEL_FILE_NAME);
         if (externalModel.exists() && externalModel.length() > 1000000) {
             try (InputStream is = new java.io.FileInputStream(externalModel);
@@ -168,7 +255,7 @@ public class FalconsVisionGuardEngine {
             }
         }
 
-        // 2. Try extracting from APK assets
+        // Discovery Check 2: Bundled APK assets
         try (InputStream is = context.getAssets().open("models/" + MODEL_FILE_NAME);
              FileOutputStream fos = new FileOutputStream(modelFile)) {
             byte[] buffer = new byte[16384];
@@ -186,16 +273,24 @@ public class FalconsVisionGuardEngine {
         return modelFile.exists() ? modelFile : null;
     }
 
+    /**
+     * Checks if the ONNX model is available and exceeds 1MB in file size.
+     */
     public static boolean isModelReady(Context context) {
         File model = getOrCopyModelFile(context);
         return model != null && model.exists() && model.length() > 1000000;
     }
 
+    // =====================================================================================
+    // SECTION 2: ONNX Runtime Session Lifecycle & Optimization
+    // =====================================================================================
+
     /**
-     * Initializes the ONNX Runtime session with NNAPI Hardware Acceleration fallback.
+     * Initializes the Microsoft ONNX Runtime environment and session with optimized thread pooling.
+     * Uses double-checked locking to ensure thread safety across concurrent calls.
      */
     private static boolean ensureInitialized(Context context) {
-        if (sOrtSession != null) return true;
+        if (sOrtSession != null) return true; // Already initialized
 
         synchronized (sLock) {
             if (sOrtSession != null) return true;
@@ -207,18 +302,23 @@ public class FalconsVisionGuardEngine {
             }
 
             try {
+                // Initialize ONNX Runtime global environment
                 if (sOrtEnv == null) {
                     sOrtEnv = OrtEnvironment.getEnvironment();
                 }
 
+                // Configure CPU optimization options
                 OrtSession.SessionOptions cpuOpts = new OrtSession.SessionOptions();
-                cpuOpts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+                cpuOpts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT); // Apply all graph optimizations
+
+                // Scale intra-op threads dynamically based on available CPU cores (min 2, max 4)
                 int threads = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors()));
                 cpuOpts.setIntraOpNumThreads(threads);
                 cpuOpts.setInterOpNumThreads(2);
                 cpuOpts.setMemoryPatternOptimization(true);
                 cpuOpts.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL);
 
+                // Create the active ONNX inference session
                 sOrtSession = sOrtEnv.createSession(modelFile.getAbsolutePath(), cpuOpts);
                 sActiveExecutionProvider = "ARM_NEON_CPU_" + threads + "_THREADS";
                 Log.i(TAG, "Falcons.ai Vision Transformer session initialized with ARM NEON (" + threads + " threads)!");
@@ -231,12 +331,31 @@ public class FalconsVisionGuardEngine {
         }
     }
 
+    // =====================================================================================
+    // SECTION 3: Live Bitmap Evaluation & Tensor Preprocessing
+    // =====================================================================================
+
     /**
-     * Classifies a captured screen Bitmap locally on-device in sub-60ms with zero GC.
+     * Evaluates a screen capture Bitmap locally on-device in sub-60ms with Zero GC allocations.
+     *
+     * Execution Steps:
+     *   1. Quick Hash Cache Check: Skips inference if screen is identical to a recent frame.
+     *   2. Image Resizing: Scales input bitmap down to 224x224.
+     *   3. Planar CHW Transformation: Converts interleaved ARGB pixels to 3 contiguous float arrays.
+     *   4. Lookup Table Normalization: Scales pixels via precomputed NORM_LUT.
+     *   5. ONNX Tensor Creation & Inference: Runs model forward pass.
+     *   6. Softmax Logits Calculation: Derives adult vs normal probability distribution.
+     *   7. Threshold Evaluation: Flags NSFW if probNsfw >= threshold.
+     *
+     * @param context     Application context
+     * @param packageName Current foreground application package
+     * @param bitmap      Screen capture Bitmap to evaluate
+     * @return VisionResult containing detection probabilities and latency.
      */
     public static VisionResult evaluateBitmap(Context context, String packageName, Bitmap bitmap) {
         long startTime = SystemClock.elapsedRealtime();
 
+        // Defensive checks
         if (bitmap == null || bitmap.isRecycled()) {
             return new VisionResult(false, 0.0f, 1.0f, 0, "null_bitmap");
         }
@@ -245,6 +364,7 @@ public class FalconsVisionGuardEngine {
             return new VisionResult(false, 0.0f, 1.0f, 0, "model_not_ready");
         }
 
+        // Step 1: Check fast in-memory hash cache
         long quickHash = computeQuickHash(bitmap);
         Boolean cachedVerdict = sBitmapVerdictCache.get(quickHash);
         if (cachedVerdict != null) {
@@ -257,40 +377,43 @@ public class FalconsVisionGuardEngine {
         OrtSession.Result ortResult = null;
 
         try {
-            // 1. High-Speed Resize to ViT patch input: 224 x 224
+            // Step 2: Resize Bitmap to ViT patch dimensions (224 x 224)
             if (bitmap.getWidth() == INPUT_SIZE && bitmap.getHeight() == INPUT_SIZE) {
                 scaledBitmap = bitmap;
             } else {
                 scaledBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, false);
             }
 
-            int channelSize = INPUT_SIZE * INPUT_SIZE;
-            int[] pixels = sPixelBufferHolder.get();
+            int channelSize = INPUT_SIZE * INPUT_SIZE; // 50,176 pixels per channel
+            int[] pixels = sPixelBufferHolder.get();   // Retrieve reusable ThreadLocal pixel buffer
             scaledBitmap.getPixels(pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE);
 
-            // 2. High-speed O(1) Planar CHW Float Tensor Conversion via Static LUT
-            float[] floatArray = sFloatBufferHolder.get();
+            // Step 3 & 4: Planar CHW conversion & Precomputed Static LUT Normalization
+            // Channel Offsets: Red = 0, Green = channelSize, Blue = 2 * channelSize
+            float[] floatArray = sFloatBufferHolder.get(); // Retrieve reusable ThreadLocal float buffer
             int gOffset = channelSize;
             int bOffset = 2 * channelSize;
 
             for (int i = 0; i < channelSize; i++) {
                 int c = pixels[i];
-                floatArray[i] = NORM_LUT[(c >> 16) & 0xFF];
-                floatArray[gOffset + i] = NORM_LUT[(c >> 8) & 0xFF];
-                floatArray[bOffset + i] = NORM_LUT[c & 0xFF];
+                // Extract R, G, B components and normalize via static LUT
+                floatArray[i] = NORM_LUT[(c >> 16) & 0xFF];        // Red planar channel
+                floatArray[gOffset + i] = NORM_LUT[(c >> 8) & 0xFF]; // Green planar channel
+                floatArray[bOffset + i] = NORM_LUT[c & 0xFF];        // Blue planar channel
             }
 
             FloatBuffer floatBuffer = FloatBuffer.wrap(floatArray);
 
-            // 3. Create input tensor and run inference
+            // Step 5: Construct input tensor with shape [1, 3, 224, 224] and execute inference
             inputTensor = OnnxTensor.createTensor(sOrtEnv, floatBuffer, new long[]{1, 3, INPUT_SIZE, INPUT_SIZE});
             ortResult = sOrtSession.run(Collections.singletonMap("pixel_values", inputTensor));
 
+            // Extract classification logits: [ [logit_normal, logit_nsfw] ]
             float[][] logits = (float[][]) ortResult.get(0).getValue();
             float normalLogit = logits[0][0];
             float nsfwLogit = logits[0][1];
 
-            // 4. Softmax computation
+            // Step 6: Softmax transformation with numerical stability subtraction (subtract maxLogit)
             float maxLogit = Math.max(normalLogit, nsfwLogit);
             float expNormal = (float) Math.exp(normalLogit - maxLogit);
             float expNsfw = (float) Math.exp(nsfwLogit - maxLogit);
@@ -299,14 +422,15 @@ public class FalconsVisionGuardEngine {
 
             long latencyMs = SystemClock.elapsedRealtime() - startTime;
             float threshold = getThreshold(context);
-            boolean isNsfw = probNsfw >= threshold;
+            boolean isNsfw = probNsfw >= threshold; // True if NSFW probability meets or exceeds threshold
 
-            // Cache result
+            // Step 7: Cache verdict in RAM (capped at 500 entries)
             sBitmapVerdictCache.put(quickHash, isNsfw);
             if (sBitmapVerdictCache.size() > 500) {
                 sBitmapVerdictCache.clear();
             }
 
+            // Format logging details
             String logEntry = String.format(Locale.US, "[%s] ViT Scan (%dms): NSFW=%.1f%%, Normal=%.1f%% (Cutoff: %d%%) -> %s",
                     packageName, latencyMs, probNsfw * 100f, probNormal * 100f, Math.round(threshold * 100), isNsfw ? "🚨 ADULT BLOCKED" : "✅ SAFE PASS");
             Log.i(TAG, logEntry);
@@ -324,7 +448,8 @@ public class FalconsVisionGuardEngine {
             return new VisionResult(false, 0.0f, 1.0f, latencyMs, "inference_error: " + e.getMessage());
 
         } finally {
-            if (scaledBitmap != null && !scaledBitmap.isRecycled()) {
+            // Clean up native and intermediate resources
+            if (scaledBitmap != null && !scaledBitmap.isRecycled() && scaledBitmap != bitmap) {
                 scaledBitmap.recycle();
             }
             if (inputTensor != null) {
@@ -336,6 +461,14 @@ public class FalconsVisionGuardEngine {
         }
     }
 
+    // =====================================================================================
+    // SECTION 4: Diagnostics & Hardware Benchmark
+    // =====================================================================================
+
+    /**
+     * Executes a hardware benchmark test pattern to verify model loading, ARM NEON acceleration,
+     * cold inference speed, and warm average latency.
+     */
     public static String runSelfDiagnostics(Context context) {
         StringBuilder report = new StringBuilder();
         report.append("=== FALCONS.AI ON-DEVICE VISION GUARD BENCHMARK ===\n");
@@ -404,6 +537,9 @@ public class FalconsVisionGuardEngine {
         return finalReport;
     }
 
+    /**
+     * Computes a quick 16-sample spatial hash of a Bitmap to accelerate cache lookups for static screens.
+     */
     private static long computeQuickHash(Bitmap bitmap) {
         int w = bitmap.getWidth();
         int h = bitmap.getHeight();
@@ -416,3 +552,4 @@ public class FalconsVisionGuardEngine {
         return hash;
     }
 }
+

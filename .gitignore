@@ -24,3 +24,4 @@ testdpc_source/app/build/
 *.bmp
 models/
 temp_*
+windows_security_log.json

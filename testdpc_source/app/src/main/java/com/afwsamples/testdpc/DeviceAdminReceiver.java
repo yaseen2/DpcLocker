@@ -71,16 +71,43 @@ public class DeviceAdminReceiver extends android.app.admin.DeviceAdminReceiver {
     private static final int CHANGE_PASSWORD_NOTIFICATION_ID = 101;
     private static final int PASSWORD_FAILED_NOTIFICATION_ID = 102;
 
+    /**
+     * Primary Device Admin Broadcast Receiver Callback: onReceive
+     * ------------------------------------------------------------
+     * Intercepts all administrative broadcasts sent to TestDPC by the Android framework.
+     *
+     * In addition to standard Device Admin lifecycle actions, this method serves as the
+     * master initialization gateway for the entire Adult Protection Security Architecture:
+     *
+     * 1. BrowserBlocker: Registers the LauncherApps.Callback listener to intercept real-time
+     *    package additions and unhides/restores safe packages.
+     * 2. AppTimerManager: Re-registers UsageStats and AppOps content observers for daily usage quotas.
+     * 3. ChromePolicyManager: Enforces Google Chrome managed configurations (SafeSearch, incognito lockout).
+     * 4. ImpulseGuardService: Silently verifies and re-enables accessibility settings via Device Owner.
+     * 5. SecurityPipelineManager & AiAppAuditor: On boot completion or policy sync broadcasts,
+     *    rescans all installed packages and processes pending cloud/local AI audits.
+     */
     @Override
     public void onReceive(Context context, Intent intent) {
+        // Step 1: Initialize LauncherApps callback for real-time package install monitoring
         BrowserBlocker.initLauncherAppsCallback(context);
+
+        // Step 2: Register UsageStats observers for app usage timer enforcement
         AppTimerManager.registerAllObservers(context);
+
+        // Step 3: Push managed configuration policies to Google Chrome (SafeSearch, Force Incognito Disabled)
         ChromePolicyManager.enforceDefaultChromePolicies(context);
+
+        // Step 4: Ensure Impulse Guard accessibility service is active (auto-reenable via Device Owner if disabled)
         ImpulseGuardService.ensureAccessibilityServiceEnabled(context);
+
+        // Step 5: Boot-up and Policy Sync Handlers
         if (intent != null && intent.getAction() != null) {
             if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction()) ||
                 "com.afwsamples.testdpc.ACTION_SYNC_POLICIES".equals(intent.getAction())) {
+                // Re-evaluate all installed packages and re-enforce suspensions
                 SecurityPipelineManager.onBootCompleted(context);
+                // Flush and resume background AI audits for pending apps
                 AiAppAuditor.processPendingAudits(context);
             }
         }
