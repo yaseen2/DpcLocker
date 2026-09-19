@@ -601,6 +601,13 @@ public class ImpulseGuardService extends AccessibilityService {
         super.onServiceConnected();
         Log.i(TAG, "ImpulseGuardService Accessibility Service CONNECTED & RUNNING!");
 
+        // Step 0: Ensure Google Chrome enterprise policies and URLBlocklist are actively enforced
+        try {
+            ChromePolicyManager.enforceDefaultChromePolicies(this);
+        } catch (Exception e) {
+            Log.e(TAG, "Error enforcing Chrome policies on service connect", e);
+        }
+
         // Step 1: Create notification channels required for Android 8.0+ (API 26+)
         createNotificationChannels();
 
@@ -801,18 +808,27 @@ public class ImpulseGuardService extends AccessibilityService {
                 String extractedText = extractActiveText(event);
                 if (extractedText != null && extractedText.trim().length() >= 3) {
                     final String typedText = extractedText.trim();
-                    // Ignore search box default hints and direct full URLs (handled by BrowserBlocker)
-                    if (!typedText.equalsIgnoreCase("Search or type URL") && !typedText.equalsIgnoreCase("Search Google or type URL") &&
-                            !typedText.startsWith("http://") && !typedText.startsWith("https://") && !typedText.startsWith("www.")) {
+                    // Strip schema and www prefixes to evaluate raw queries and full URLs alike
+                    String cleanQuery = typedText;
+                    String lowerText = typedText.toLowerCase(Locale.US);
+                    if (lowerText.startsWith("https://")) cleanQuery = typedText.substring(8);
+                    else if (lowerText.startsWith("http://")) cleanQuery = typedText.substring(7);
+                    if (cleanQuery.toLowerCase(Locale.US).startsWith("www.")) cleanQuery = cleanQuery.substring(4);
+                    final String normalizedQuery = cleanQuery.trim();
 
-                        // FAST-PATH: Check in-memory local cache for previously flagged risky terms
-                        Boolean localCached = GeminiGuardEngine.getCachedVerdict(this, typedText);
-                        if (localCached != null && localCached) {
-                            // Instant 0ms lockout for cached violations
+                    // Ignore search box default placeholder hints
+                    if (!typedText.equalsIgnoreCase("Search or type URL") && !typedText.equalsIgnoreCase("Search Google or type URL") &&
+                            normalizedQuery.length() >= 3) {
+
+                        // FAST-PATH: Check in-memory local cache or deterministic fast-path for torrents/proxies
+                        Boolean localCached = GeminiGuardEngine.getCachedVerdict(this, normalizedQuery);
+                        boolean isFastPath = GeminiGuardEngine.isNotoriousTorrentOrProxyQuery(normalizedQuery);
+                        if ((localCached != null && localCached) || isFastPath) {
+                            // Instant 0ms lockout for cached violations or notorious torrent/proxy domains
                             mBgExecutor.execute(new Runnable() {
                                 @Override
                                 public void run() {
-                                    evaluateAndEnforceImpulseGuard(packageName, typedText);
+                                    evaluateAndEnforceImpulseGuard(packageName, normalizedQuery);
                                 }
                             });
                         } else if (isClickInputEvent) {
@@ -820,7 +836,7 @@ public class ImpulseGuardService extends AccessibilityService {
                             mBgExecutor.execute(new Runnable() {
                                 @Override
                                 public void run() {
-                                    evaluateAndEnforceImpulseGuard(packageName, typedText);
+                                    evaluateAndEnforceImpulseGuard(packageName, normalizedQuery);
                                 }
                             });
                         } else {
@@ -835,15 +851,15 @@ public class ImpulseGuardService extends AccessibilityService {
                                 public void run() {
                                     String lastTextForPkg = mLastEvaluatedTextMap.get(packageName);
                                     // Only evaluate if query differs from the last evaluated query for this app
-                                    if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(typedText)) {
-                                        mLastEvaluatedTextMap.put(packageName, typedText);
-                                        Log.d(TAG, "Captured complete search query in [" + packageName + "]: \"" + typedText + "\"");
+                                    if (lastTextForPkg == null || !lastTextForPkg.equalsIgnoreCase(normalizedQuery)) {
+                                        mLastEvaluatedTextMap.put(packageName, normalizedQuery);
+                                        Log.d(TAG, "Captured complete search query in [" + packageName + "]: \"" + normalizedQuery + "\"");
 
                                         // Dispatch AI evaluation to background thread pool
                                         mBgExecutor.execute(new Runnable() {
                                             @Override
                                             public void run() {
-                                                evaluateAndEnforceImpulseGuard(packageName, typedText);
+                                                evaluateAndEnforceImpulseGuard(packageName, normalizedQuery);
                                             }
                                         });
                                     }

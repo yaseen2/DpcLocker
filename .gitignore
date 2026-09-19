@@ -25,3 +25,10 @@ testdpc_source/app/build/
 models/
 temp_*
 windows_security_log.json
+*.pid
+.*.pid
+.sentinel_stop_signal*
+.*signal*
+sentinel_*.log
+__pycache__/
+*.pyc

@@ -99,12 +99,8 @@ echo [+] Device Installation restrictions applied.
 echo.
 echo [*] Restarting Sentinel & Watchdog with updated Generic VPN & NetAdapter rules...
 set SCRIPT_DIR=%~dp0
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Process -Name 'python', 'pythonw' -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Python311*' } | Stop-Process -Force"
-timeout /t 1 /nobreak >nul
-
-start "" /B "%LOCALAPPDATA%\Programs\Python\Python311\pythonw.exe" "%SCRIPT_DIR%windows_proxy_sentinel.py"
-timeout /t 1 /nobreak >nul
-start "" /B "%LOCALAPPDATA%\Programs\Python\Python311\pythonw.exe" "%SCRIPT_DIR%windows_sentinel_watchdog.py"
+call "%SCRIPT_DIR%Stop_Proxy_Sentinel.bat" >nul 2>&1
+wscript.exe //nologo "%SCRIPT_DIR%launch_sentinel_hidden.vbs"
 
 echo.
 echo ===============================================================================

@@ -32,6 +32,7 @@
     <uses-permission android:name="android.permission.REQUEST_PASSWORD_COMPLEXITY"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>
 
     <application
             android:allowBackup="true"
@@ -159,6 +160,8 @@
             <intent-filter>
                 <action android:name="com.afwsamples.testdpc.ACTION_LIMIT_EXCEEDED" />
                 <action android:name="com.afwsamples.testdpc.ACTION_MIDNIGHT_RESET" />
+                <action android:name="com.afwsamples.testdpc.ACTION_ENFORCE_POLICIES" />
+                <action android:name="com.afwsamples.testdpc.ACTION_SYNC_POLICIES" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>

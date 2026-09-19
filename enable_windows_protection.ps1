@@ -85,6 +85,53 @@ $hostsEntries = @(
     "0.0.0.0 v16-webapp-prime.tiktok.com",
     "0.0.0.0 v19-webapp-prime.tiktok.com",
 
+    # Online VPN App
+    "0.0.0.0 onlinevpn.app",
+    "0.0.0.0 www.onlinevpn.app",
+
+    # Music Streaming & Audio Platforms (Standard YouTube preserved)
+    "0.0.0.0 music.youtube.com",
+    "0.0.0.0 spotify.com",
+    "0.0.0.0 www.spotify.com",
+    "0.0.0.0 open.spotify.com",
+    "0.0.0.0 play.spotify.com",
+    "0.0.0.0 soundcloud.com",
+    "0.0.0.0 www.soundcloud.com",
+    "0.0.0.0 music.apple.com",
+    "0.0.0.0 music.amazon.com",
+    "0.0.0.0 deezer.com",
+    "0.0.0.0 www.deezer.com",
+    "0.0.0.0 tidal.com",
+    "0.0.0.0 www.tidal.com",
+    "0.0.0.0 listen.tidal.com",
+    "0.0.0.0 pandora.com",
+    "0.0.0.0 www.pandora.com",
+    "0.0.0.0 gaana.com",
+    "0.0.0.0 www.gaana.com",
+    "0.0.0.0 jiosaavn.com",
+    "0.0.0.0 www.jiosaavn.com",
+    "0.0.0.0 saavn.com",
+    "0.0.0.0 www.saavn.com",
+    "0.0.0.0 wynk.in",
+    "0.0.0.0 www.wynk.in",
+    "0.0.0.0 hungama.com",
+    "0.0.0.0 www.hungama.com",
+    "0.0.0.0 bandcamp.com",
+    "0.0.0.0 audiomack.com",
+    "0.0.0.0 www.audiomack.com",
+    "0.0.0.0 qobuz.com",
+    "0.0.0.0 www.qobuz.com",
+    "0.0.0.0 napster.com",
+    "0.0.0.0 www.napster.com",
+    "0.0.0.0 tunein.com",
+    "0.0.0.0 www.tunein.com",
+    "0.0.0.0 iheart.com",
+    "0.0.0.0 www.iheart.com",
+    "0.0.0.0 last.fm",
+    "0.0.0.0 www.last.fm",
+    "0.0.0.0 mixcloud.com",
+    "0.0.0.0 www.mixcloud.com",
+
     # Master Web Proxy Domains & Unblockers
     "0.0.0.0 onlineproxy.org",
     "0.0.0.0 www.onlineproxy.org",
@@ -223,7 +270,21 @@ $hostsEntries = @(
     "0.0.0.0 webproxy.net",
     "0.0.0.0 webproxy.org",
     "0.0.0.0 webproxy.site",
-    "0.0.0.0 youproxy.org"
+    "0.0.0.0 youproxy.org",
+    "0.0.0.0 onlinevpn.app",
+    "0.0.0.0 www.onlinevpn.app",
+    "0.0.0.0 thepiratebay.org",
+    "0.0.0.0 www.thepiratebay.org",
+    "0.0.0.0 thepiratesproxy.org",
+    "0.0.0.0 www.thepiratesproxy.org",
+    "0.0.0.0 tpb.party",
+    "0.0.0.0 www.tpb.party",
+    "0.0.0.0 1337x.to",
+    "0.0.0.0 www.1337x.to",
+    "0.0.0.0 yts.mx",
+    "0.0.0.0 www.yts.mx",
+    "0.0.0.0 torrentgalaxy.to",
+    "0.0.0.0 www.torrentgalaxy.to"
 )
 
 try {
@@ -391,7 +452,45 @@ $blockedDomains = @(
     "tumblr.com",
     "telegram.org",
     "t.me",
-    "tiktok.com"
+    "tiktok.com",
+
+    # Online VPN App
+    "onlinevpn.app",
+
+    # Torrent & Piracy Download Hubs
+    "thepiratebay.org",
+    "thepiratesproxy.org",
+    "tpb.party",
+    "1337x.to",
+    "yts.mx",
+    "torrentgalaxy.to",
+    "limetorrents.lol",
+    "nyaa.si",
+    "eztv.re",
+    "magnetdl.com",
+
+    # Music Streaming & Audio Platforms (Preserving standard YouTube)
+    "music.youtube.com",
+    "spotify.com",
+    "soundcloud.com",
+    "music.apple.com",
+    "music.amazon.com",
+    "deezer.com",
+    "tidal.com",
+    "pandora.com",
+    "gaana.com",
+    "jiosaavn.com",
+    "saavn.com",
+    "wynk.in",
+    "hungama.com",
+    "bandcamp.com",
+    "audiomack.com",
+    "qobuz.com",
+    "napster.com",
+    "tunein.com",
+    "iheart.com",
+    "last.fm",
+    "mixcloud.com"
 )
 
 foreach ($b in $browserConfigs) {

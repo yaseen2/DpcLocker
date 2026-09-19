@@ -345,6 +345,13 @@ public class GeminiGuardEngine {
             return new EvaluationResult(cachedVerdict, cachedVerdict ? 0.95 : 0.05, cachedVerdict ? "ADULT_PORNOGRAPHY" : "SAFE_GENERAL", "0ms_local_cache", 0, "{\"cached\": true}", "cache");
         }
 
+        // 1b. Fast-Path Deterministic Torrent & Online VPN Check (0ms Instant Return)
+        if (isNotoriousTorrentOrProxyQuery(trimmedText)) {
+            Log.d(TAG, "Fast-path 0ms intercept for torrent/proxy query: " + trimmedText);
+            putCachedVerdict(context, trimmedText, true);
+            return new EvaluationResult(true, 1.0, "PROHIBITED_CONDUIT", "fast_path_torrent_or_vpn", 0, "{\"is_risky\": true}", "regex");
+        }
+
         // 2. Check API Key
         String apiKey = getApiKey(context);
         if (apiKey.isEmpty()) {
@@ -393,6 +400,32 @@ public class GeminiGuardEngine {
     }
 
     /**
+     * Fast-path deterministic detection for notorious torrent indexers and online VPN proxies (0ms response).
+     */
+    public static boolean isNotoriousTorrentOrProxyQuery(String text) {
+        if (text == null) return false;
+        String lower = text.toLowerCase(Locale.US);
+        return lower.contains("pirate") || // Catch all pirate bay, pirateproxy, thepiratesproxy, tpb, etc.
+                lower.contains("tpb.") ||
+                lower.contains("1337x") ||
+                lower.contains("torrentgalaxy") ||
+                lower.contains("yts.") ||
+                lower.contains("limetorrents") ||
+                lower.contains("onlinevpn") ||
+                lower.contains("croxy") ||
+                lower.contains("proxysite") ||
+                lower.contains("blockaway") ||
+                lower.contains("hidemyass") ||
+                lower.contains("kproxy") ||
+                lower.contains("proxyium") ||
+                (lower.contains("online") && lower.contains("vpn")) ||
+                (lower.contains("web") && lower.contains("vpn")) ||
+                (lower.contains("free") && lower.contains("vpn") && lower.contains("online")) ||
+                (lower.contains("unblock") && lower.contains("proxy")) ||
+                (lower.contains("web") && lower.contains("proxy"));
+    }
+
+    /**
      * Executes the HTTP POST request to the Gemini generateContent REST endpoint.
      */
     private static EvaluationResult executeGeminiRequest(Context context, String modelName, String apiKey, String packageName, String trimmedText, long startTime) {
@@ -406,7 +439,10 @@ public class GeminiGuardEngine {
             JSONArray parts = new JSONArray();
             JSONObject partObj = new JSONObject();
 
-            String prompt = "You are an AI content safety filter for an Android browser. Classify if the search query represents explicit adult, pornographic, erotic, or NSFW search intent.\n\n" +
+            String prompt = "You are an AI content safety filter for an Android browser. Classify if the search query represents:\n" +
+                    "1. Explicit adult, pornographic, erotic, or NSFW intent.\n" +
+                    "2. Online web proxies, VPN unblockers, or browser bypass services (e.g. onlinevpn.app, web proxy, unblocker).\n" +
+                    "3. Torrent and pirate download indexers used to obtain unfiltered or adult media (e.g. The Pirate Bay, 1337x, torrents).\n\n" +
                     "Search Query: \"" + trimmedText + "\"\n\n" +
                     "Respond ONLY with a valid JSON object: {\"is_risky\": true} or {\"is_risky\": false}";
 
@@ -545,6 +581,13 @@ public class GeminiGuardEngine {
         if (ramVerdict != null && ramVerdict.booleanValue()) {
             Log.d(TAG, "0ms RAM Cache HIT (RISKY) for Screen Text -> true");
             return new EvaluationResult(true, 0.95, "ADULT_SCREEN_CONTENT", "0ms_ram_cache", 0, "{\"ram_cached\": true}", "ram_cache");
+        }
+
+        // 1b. Fast-Path Deterministic Screen Text Check for Notorious Torrents / Web Proxies (0ms Instant Return)
+        if (isNotoriousTorrentOrProxyQuery(trimmedScreenText)) {
+            Log.w(TAG, "Fast-path 0ms intercept for torrent/proxy screen text in [" + packageName + "]");
+            sRamCache.put(hashKey, true);
+            return new EvaluationResult(true, 1.0, "PROHIBITED_CONDUIT", "fast_path_screen_torrent_or_vpn", 0, "{\"is_risky\": true}", "regex");
         }
 
         // 2. Check API Key & Network

@@ -211,9 +211,17 @@ public class SecurityPipelineManager {
         // ---------------------------------------------------------------------------------
         // TIER 0: Verified Safe Package Cache (0ms Instant Return)
         // ---------------------------------------------------------------------------------
-        if (getCachedSafePackages(context).contains(packageName.toLowerCase())) {
-            Log.i(TAG, "Package " + packageName + " is already verified safe in cache. Skipping audit (0ms).");
-            return;
+        String lowerPkg = (packageName != null) ? packageName.toLowerCase() : "";
+        if (getCachedSafePackages(context).contains(lowerPkg)) {
+            // Ensure an explicit blocklist entry or unmanaged browser invalidates stale safe cache
+            if (!SecurityConfig.isBlocklisted(context, lowerPkg) &&
+                    (!BrowserBlocker.isAutoBlockEnabled(context) || !BrowserBlocker.isNonChromeBrowser(context, lowerPkg))) {
+                Log.i(TAG, "Package " + packageName + " is already verified safe in cache. Skipping audit (0ms).");
+                return;
+            } else {
+                Log.w(TAG, "Package " + packageName + " was cached safe but is prohibited by policy. Evicting from safe cache.");
+                markPackageBlocked(context, lowerPkg);
+            }
         }
 
         // ---------------------------------------------------------------------------------
@@ -362,6 +370,9 @@ public class SecurityPipelineManager {
                             dpm.setPackagesSuspended(admin, validUnsuspend.toArray(new String[0]), false);
                         }
                     }
+
+                    // Re-enforce Chrome enterprise policies & URLBlocklist upon boot
+                    ChromePolicyManager.enforceDefaultChromePolicies(context);
 
                     // Log aggregate summary of the boot optimization cycle
                     SecurityLogger.log(context, "[BOOT_OPTIMIZER]", "Boot complete: " + skippedSafeCount + " safe apps skipped (0ms) | " +

@@ -44,9 +44,53 @@ $AdultPatterns = @(
     "*.xxx", "*.porn", "*.adult", "*.sex"
 )
 
+$MusicAndVpnPatterns = @(
+    # Online VPN App
+    "*onlinevpn.app*", "onlinevpn.app",
+
+    # Music Streaming & Audio Platforms (Preserving standard YouTube)
+    "music.youtube.com", "*music.youtube.com*",
+    "spotify.com", "*spotify.com*", "open.spotify.com", "*open.spotify.com*",
+    "soundcloud.com", "*soundcloud.com*",
+    "music.apple.com", "*music.apple.com*",
+    "music.amazon.com", "*music.amazon.*",
+    "deezer.com", "*deezer.com*",
+    "tidal.com", "*tidal.com*",
+    "pandora.com", "*pandora.com*",
+    "gaana.com", "*gaana.com*",
+    "jiosaavn.com", "*jiosaavn.com*", "saavn.com", "*saavn.com*",
+    "wynk.in", "*wynk.in*",
+    "hungama.com", "*hungama.com*",
+    "bandcamp.com", "*bandcamp.com*",
+    "audiomack.com", "*audiomack.com*",
+    "qobuz.com", "*qobuz.com*",
+    "napster.com", "*napster.com*",
+    "tunein.com", "*tunein.com*",
+    "iheart.com", "*iheart.com*",
+    "last.fm", "*last.fm*",
+    "mixcloud.com", "*mixcloud.com*"
+)
+
+$TorrentAndPiracyPatterns = @(
+    # The Pirate Bay & Torrent Indexers
+    "thepiratebay.org", "*thepiratebay*", "*thepiratebay.org*", "*piratebay*",
+    "thepiratesproxy.org", "*thepiratesproxy*", "*thepiratesproxy.org*",
+    "pirateproxy.*", "*pirateproxy*", "*piratesproxy*",
+    "tpb.party", "*tpb.party*",
+    "1337x.to", "*1337x.*",
+    "yts.mx", "*yts.*",
+    "torrentgalaxy.to", "*torrentgalaxy*",
+    "limetorrents.*", "*limetorrents*",
+    "nyaa.si", "*nyaa.si*",
+    "eztv.re", "magnetdl.com"
+)
+
+$AllPatternsToBlock = $AdultPatterns + $MusicAndVpnPatterns + $TorrentAndPiracyPatterns
+
 $Targets = @(
     "HKLM:\SOFTWARE\Policies\Microsoft\Edge",
-    "HKLM:\SOFTWARE\Policies\Google\Chrome"
+    "HKLM:\SOFTWARE\Policies\Google\Chrome",
+    "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave"
 )
 
 foreach ($target in $Targets) {
@@ -75,9 +119,9 @@ foreach ($target in $Targets) {
         }
     }
 
-    # Add missing adult patterns
+    # Add missing adult, VPN, and music patterns
     $addedCount = 0
-    foreach ($pattern in $AdultPatterns) {
+    foreach ($pattern in $AllPatternsToBlock) {
         $p = $pattern.Trim()
         if (-not $existingValues.Contains($p)) {
             $maxIndex++
@@ -87,7 +131,7 @@ foreach ($target in $Targets) {
         }
     }
 
-    Write-Host " [+] $browserName`: Added $addedCount new adult wildcard patterns (Total items: $maxIndex)" -ForegroundColor Green
+    Write-Host " [+] $browserName`: Added $addedCount new wildcard patterns (Total items: $maxIndex)" -ForegroundColor Green
 }
 
 # Apply Edge-Specific Policies (Strict SafeSearch, DoH disabled, SmartScreen enabled)

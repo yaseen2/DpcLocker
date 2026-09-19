@@ -101,27 +101,113 @@ public class ChromePolicyManager {
             // for compatibility across older and newer Chrome versions.
             // --------------------------------------------------------------------------
             String[] urlBlocklist = new String[]{
-                // Video streaming & pirate hubs
-                "fboxtv.org",
+                // The Pirate Bay & Pirate Proxy Mirrors
+                "thepiratebay.org", "[*.]thepiratebay.org",
+                "thepiratesproxy.org", "[*.]thepiratesproxy.org",
+                "tpb.party", "[*.]tpb.party",
+                "pirateproxy.live", "[*.]pirateproxy.live",
+                "piratesbay.net", "[*.]piratesbay.net",
+                "thepiratebay-proxy.com", "[*.]thepiratebay-proxy.com",
+                "piratebay.party", "[*.]piratebay.party",
+                "piratebayproxy.info", "[*.]piratebayproxy.info",
+                "piratebay.live", "[*.]piratebay.live",
+                "1337x.to", "[*.]1337x.to",
+                "1337x.st", "[*.]1337x.st",
+                "1337x.ws", "[*.]1337x.ws",
+                "yts.mx", "[*.]yts.mx",
+                "torrentgalaxy.to", "[*.]torrentgalaxy.to",
+                "limetorrents.lol", "[*.]limetorrents.lol",
+                "nyaa.si", "[*.]nyaa.si",
+                "eztv.re", "[*.]eztv.re",
+                "magnetdl.com", "[*.]magnetdl.com",
+                "fboxtv.org", "[*.]fboxtv.org",
 
                 // Unfiltered adult social media platforms
-                "x.com",
-                "twitter.com",
-                "twimg.com",
-                "reddit.com",
-                "redditmedia.com",
-                "redd.it",
-                "tumblr.com",
+                "x.com", "[*.]x.com",
+                "twitter.com", "[*.]twitter.com",
+                "twimg.com", "[*.]twimg.com",
+                "reddit.com", "[*.]reddit.com",
+                "redditmedia.com", "[*.]redditmedia.com",
+                "redd.it", "[*.]redd.it",
+                "tumblr.com", "[*.]tumblr.com",
 
                 // Unfiltered messaging web clients
-                "telegram.org",
-                "t.me",
+                "telegram.org", "[*.]telegram.org",
+                "t.me", "[*.]t.me",
 
-                // Online web proxies commonly used to bypass network filters
-                "croxyproxy.com",
-                "proxysite.com",
-                "hide.me",
-                "blockaway.net",
+                // Online VPNs, web proxies & browser unblockers
+                "onlinevpn.app", "[*.]onlinevpn.app",
+                "onlineproxy.org", "[*.]onlineproxy.org",
+                "uproxy.online", "[*.]uproxy.online",
+                "croxyproxy.com", "[*.]croxyproxy.com",
+                "croxyproxy.net", "[*.]croxyproxy.net",
+                "croxyproxy.rocks", "[*.]croxyproxy.rocks",
+                "croxy.network", "[*.]croxy.network",
+                "croxy.org", "[*.]croxy.org",
+                "proxysite.com", "[*.]proxysite.com",
+                "extremevpn.com", "[*.]extremevpn.com",
+                "azureserv.com", "[*.]azureserv.com",
+                "proxypal.net", "[*.]proxypal.net",
+                "hide.me", "[*.]hide.me",
+                "blockaway.net", "[*.]blockaway.net",
+                "proxyium.com", "[*.]proxyium.com",
+                "kproxy.com", "[*.]kproxy.com",
+                "vpnbook.com", "[*.]vpnbook.com",
+                "plainproxies.com", "[*.]plainproxies.com",
+                "hidemyass.com", "[*.]hidemyass.com",
+                "whoer.net", "[*.]whoer.net",
+                "zalmos.com", "[*.]zalmos.com",
+                "filterbypass.me", "[*.]filterbypass.me",
+                "4everproxy.com", "[*.]4everproxy.com",
+                "toolur.com", "[*.]toolur.com",
+                "webproxy.to", "[*.]webproxy.to",
+                "turbohide.org", "[*.]turbohide.org",
+                "freeproxy.win", "[*.]freeproxy.win",
+                "nodeunblocker.net", "[*.]nodeunblocker.net",
+                "rammerhead.org", "[*.]rammerhead.org",
+                "ultraviolet.dev", "[*.]ultraviolet.dev",
+                "anarchyproxy.com", "[*.]anarchyproxy.com",
+                "hyperproxy.network", "[*.]hyperproxy.network",
+                "shuttleproxy.com", "[*.]shuttleproxy.com",
+                "alohabrowser.com", "[*.]alohabrowser.com",
+                "womginx.org", "[*.]womginx.org",
+                "zend2.com", "[*.]zend2.com",
+                "megaproxy.com", "[*.]megaproxy.com",
+                "dontfilter.us", "[*.]dontfilter.us",
+                "unblock-web.com", "[*.]unblock-web.com",
+                "surfshield.io", "[*.]surfshield.io",
+                "scramjet.org", "[*.]scramjet.org",
+                "browserling.com", "[*.]browserling.com",
+                "neverinstall.com", "[*.]neverinstall.com",
+                "hyperbeam.com", "[*.]hyperbeam.com",
+                "kasmweb.com", "[*.]kasmweb.com",
+                "webvm.io", "[*.]webvm.io",
+                "distrosea.com", "[*.]distrosea.com",
+                "onworks.net", "[*.]onworks.net",
+                "squarex.com", "[*.]squarex.com",
+                "sqrx.com", "[*.]sqrx.com",
+
+                // Major adult tube & cam platforms
+                "pornhub.com", "[*.]pornhub.com",
+                "xvideos.com", "[*.]xvideos.com",
+                "xnxx.com", "[*.]xnxx.com",
+                "xhamster.com", "[*.]xhamster.com",
+                "redtube.com", "[*.]redtube.com",
+                "youporn.com", "[*.]youporn.com",
+                "spankbang.com", "[*.]spankbang.com",
+                "eporner.com", "[*.]eporner.com",
+                "chaturbate.com", "[*.]chaturbate.com",
+                "stripchat.com", "[*.]stripchat.com",
+                "camsoda.com", "[*.]camsoda.com",
+                "bongacams.com", "[*.]bongacams.com",
+                "onlyfans.com", "[*.]onlyfans.com",
+                "brazzers.com", "[*.]brazzers.com",
+                "naughtyamerica.com", "[*.]naughtyamerica.com",
+                "realitykings.com", "[*.]realitykings.com",
+                "bangbros.com", "[*.]bangbros.com",
+                "faphouse.com", "[*.]faphouse.com",
+                "nhentai.net", "[*.]nhentai.net",
+                "rule34.xxx", "[*.]rule34.xxx",
 
                 // Addictive short-form infinite scroll video feeds
                 "youtube.com/shorts",
@@ -139,15 +225,20 @@ public class ChromePolicyManager {
             // --------------------------------------------------------------------------
             dpm.setApplicationRestrictions(DeviceAdminReceiver.getComponentName(context), CHROME_PACKAGE, chromeBundle);
             Log.i(TAG, "Successfully enforced default Chrome policies & domain blocklist");
+            SecurityLogger.log(context, "[CHROME_POLICY]", "Successfully pushed Chrome policies & domain blocklist (" + urlBlocklist.length + " rules)");
 
             // --------------------------------------------------------------------------
             // 8. Force Chrome Process Restart:
             // Chrome caches policies in memory during its lifecycle. Killing its background
             // process forces it to re-read the newly injected restrictions on next launch.
             // --------------------------------------------------------------------------
-            ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-            if (am != null) {
-                am.killBackgroundProcesses(CHROME_PACKAGE);
+            try {
+                ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+                if (am != null) {
+                    am.killBackgroundProcesses(CHROME_PACKAGE);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "killBackgroundProcesses ignored: " + e.getMessage());
             }
         } catch (Exception e) {
             Log.e(TAG, "Error enforcing default Chrome policies", e);

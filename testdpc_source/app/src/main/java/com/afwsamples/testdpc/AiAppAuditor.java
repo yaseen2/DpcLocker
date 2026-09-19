@@ -240,6 +240,15 @@ public class AiAppAuditor {
      *      - If Offline -> Enqueues into pending queue and allows temporarily.
      */
     private static void auditPackageInternal(Context context, String packageName, boolean isRescueMode, String triggerReason) {
+        // Deterministic guard: Unmanaged Chrome channels (Beta, Dev, Canary) cannot be managed via DPM policies
+        if (packageName.startsWith("com.chrome.") && !"com.android.chrome".equalsIgnoreCase(packageName)) {
+            Log.w(TAG, "Unmanaged Chrome channel detected: " + packageName + " -> HARD BLOCK (No AI rescue)");
+            suspendPackage(context, packageName, "Unmanaged Chrome Channel (" + packageName + ")");
+            SecurityPipelineManager.markPackageBlocked(context, packageName);
+            removePendingAudit(context, packageName);
+            return;
+        }
+
         PackageManager pm = context.getPackageManager();
 
         String appLabel = packageName;
@@ -312,9 +321,9 @@ public class AiAppAuditor {
                     sysParts.put("text",
                         "SYSTEM ROLE:\n" +
                         "You are an Android app security gatekeeper. Your goal is to prevent adult content access by blocking unfiltered web conduits and adult platforms.\n" +
-                        "Rule: Google Chrome is the ONLY permitted browser (strictly managed with SafeSearch). Any other app providing arbitrary web browsing, online video scraping, VPN tunneling, or adult dating must be blocked.\n\n" +
+                        "Rule: Standard Google Chrome (\"com.android.chrome\") is the ONLY permitted browser because it is strictly managed via Device Owner policies. Any other browser, including Chrome pre-release channels (Chrome Beta \"com.chrome.beta\", Chrome Dev, Chrome Canary) and third-party browsers (Firefox, Brave, Opera, Kiwi), must be blocked as ALTERNATIVE_WEB_BROWSER.\n\n" +
                         "FLAG AN APP AS RISKY (\"is_risky\": true) ONLY IF IT FALLS INTO ONE OF THESE 4 CATEGORIES:\n" +
-                        "1. ALTERNATIVE_WEB_BROWSER: Any third-party web browser, private browser, or incognito browser (e.g. Firefox, Brave, Opera, Kiwi, Aloha, DuckDuckGo).\n" +
+                        "1. ALTERNATIVE_WEB_BROWSER: Any third-party web browser, private browser, or unmanaged Chrome channel (e.g. Chrome Beta \"com.chrome.beta\", Chrome Dev, Firefox, Brave, Opera, Kiwi, Aloha, DuckDuckGo).\n" +
                         "2. MEDIA_DOWNLOADER_WITH_BROWSER: Video downloaders, tube scrapers, or torrent clients with a built-in browser or URL loader to rip online videos.\n" +
                         "3. VPN_AND_PROXY_TUNNEL: Standalone VPNs, proxies, or DNS tunnels that bypass network-level adult filters (e.g. Turbo VPN, Psiphon, SuperVPN).\n" +
                         "4. ADULT_DATING_CHAT_NSFW: Casual dating/hookup apps (Tinder, Grindr, Badoo), live adult cam chats, or uncensored NSFW AI companions.\n\n" +

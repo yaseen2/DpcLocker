@@ -92,7 +92,10 @@ public class SecurityConfig {
             "com.zhiliaoapp.musically",     // TikTok
             "com.zhiliaoapp.musically.go",  // TikTok Lite
             "com.ss.android.ugc.trill",     // TikTok Regional
-            "com.ss.android.ugc.aweme"      // Douyin
+            "com.ss.android.ugc.aweme",     // Douyin
+            "com.chrome.beta",              // Chrome Beta (Unmanaged browser channel)
+            "com.chrome.dev",               // Chrome Dev (Unmanaged browser channel)
+            "com.chrome.canary"             // Chrome Canary (Unmanaged browser channel)
     };
 
     /**
@@ -241,8 +244,8 @@ public class SecurityConfig {
         // Check against static system core packages and safe system namespace prefixes
         if (SYSTEM_CORE_PACKAGES.contains(lower) || lower.startsWith("com.afwsamples.testdpc") ||
                 lower.startsWith("com.android.") || lower.startsWith("com.google.android.")) {
-            // Explicit exception: Official YouTube contains open shorts/videos, so it is subject to timer limits
-            if ("com.google.android.youtube".equals(lower)) {
+            // Explicit exceptions: YouTube (has timer limits) and AOSP browser (unmanaged web conduit)
+            if ("com.google.android.youtube".equals(lower) || "com.android.browser".equals(lower)) {
                 return false;
             }
             return true;

@@ -111,6 +111,17 @@ public class AppTimerReceiver extends BroadcastReceiver {
 
             // System observers are wiped from RAM on reboot; re-register all app quotas immediately
             AppTimerManager.registerAllObservers(context);
+            // Re-enforce Chrome enterprise policies on boot
+            ChromePolicyManager.enforceDefaultChromePolicies(context);
+        }
+        // ---------------------------------------------------------------------------------
+        // CASE 4: Direct Enterprise Policy Enforcement & Sync Intent
+        // ---------------------------------------------------------------------------------
+        else if ("com.afwsamples.testdpc.ACTION_ENFORCE_POLICIES".equals(action) ||
+                "com.afwsamples.testdpc.ACTION_SYNC_POLICIES".equals(action)) {
+            Log.i(TAG, "Executing Direct Policy Enforcement Broadcast...");
+            ChromePolicyManager.enforceDefaultChromePolicies(context);
+            SecurityPipelineManager.onBootCompleted(context);
         }
     }
 }
