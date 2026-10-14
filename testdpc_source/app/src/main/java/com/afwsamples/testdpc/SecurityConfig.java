@@ -7,6 +7,7 @@ import android.content.SharedPreferences;
 import android.util.Log;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -396,6 +397,104 @@ public class SecurityConfig {
 
         Set<String> blocklist = getUserBlocklist(context);
         return blocklist.contains(lower);
+    }
+
+    // =====================================================================================
+    // TARGETED VISUAL PROBATION CONSTANTS & METHODS
+    // =====================================================================================
+    public static final String PREFS_PROBATION = "dpclocker_probation_prefs";
+    public static final String KEY_PROBATION_ACTIVE_SET = "probation_active_set";
+    public static final String KEY_PROBATION_SHOTS_PREFIX = "probation_shots_";
+    public static final String KEY_PROBATION_START_PREFIX = "probation_start_";
+    public static final int MAX_PROBATION_SHOTS = 5;
+    public static final long PROBATION_DURATION_MS = 5 * 60 * 1000L; // 5 minutes active window
+
+    public static synchronized boolean isUnderProbation(Context context, String packageName) {
+        if (packageName == null || packageName.isEmpty()) return false;
+        String lower = packageName.trim().toLowerCase();
+        if (isWhitelisted(context, lower) || isBlocklisted(context, lower)) {
+            return false;
+        }
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);
+        Set<String> activeSet = prefs.getStringSet(KEY_PROBATION_ACTIVE_SET, Collections.<String>emptySet());
+        if (activeSet.contains(lower)) {
+            long startTime = prefs.getLong(KEY_PROBATION_START_PREFIX + lower, 0L);
+            int shots = prefs.getInt(KEY_PROBATION_SHOTS_PREFIX + lower, 0);
+            if (startTime > 0 && (System.currentTimeMillis() - startTime > PROBATION_DURATION_MS) && shots >= 2) {
+                // Auto graduate after 5 minutes of clean monitoring with at least 2 shots
+                graduateProbation(context, lower);
+                return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    public static synchronized void startProbation(Context context, String packageName) {
+        if (packageName == null || packageName.isEmpty()) return;
+        String lower = packageName.trim().toLowerCase();
+        if (isWhitelisted(context, lower) || isBlocklisted(context, lower)) {
+            return;
+        }
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);
+        Set<String> activeSet = new HashSet<>(prefs.getStringSet(KEY_PROBATION_ACTIVE_SET, Collections.<String>emptySet()));
+        activeSet.add(lower);
+        prefs.edit()
+                .putStringSet(KEY_PROBATION_ACTIVE_SET, activeSet)
+                .putInt(KEY_PROBATION_SHOTS_PREFIX + lower, 0)
+                .putLong(KEY_PROBATION_START_PREFIX + lower, System.currentTimeMillis())
+                .apply();
+
+        // Also register in ImpulseGuardService so text/proxy inspection is active
+        ImpulseGuardService.setMonitoredApp(context, lower, true);
+        Log.i(TAG, "Enrolled package in Targeted Visual Probation: " + lower);
+        SecurityLogger.log(context, "[PROBATION_START]", lower + " -> Enrolled in 5-Shot Visual Probation (Max 5 mins)");
+    }
+
+    public static synchronized int getProbationShotCount(Context context, String packageName) {
+        if (packageName == null) return 0;
+        String lower = packageName.trim().toLowerCase();
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);
+        return prefs.getInt(KEY_PROBATION_SHOTS_PREFIX + lower, 0);
+    }
+
+    public static synchronized int incrementProbationShotCount(Context context, String packageName) {
+        if (packageName == null) return 0;
+        String lower = packageName.trim().toLowerCase();
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);
+        int current = prefs.getInt(KEY_PROBATION_SHOTS_PREFIX + lower, 0);
+        int updated = current + 1;
+        prefs.edit().putInt(KEY_PROBATION_SHOTS_PREFIX + lower, updated).apply();
+        return updated;
+    }
+
+    public static synchronized void graduateProbation(Context context, String packageName) {
+        if (packageName == null) return;
+        String lower = packageName.trim().toLowerCase();
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);
+        Set<String> activeSet = new HashSet<>(prefs.getStringSet(KEY_PROBATION_ACTIVE_SET, Collections.<String>emptySet()));
+        if (activeSet.remove(lower)) {
+            prefs.edit().putStringSet(KEY_PROBATION_ACTIVE_SET, activeSet).apply();
+        }
+        // Mark package as verified safe in cache
+        SecurityPipelineManager.markPackageSafe(context, lower);
+        Log.i(TAG, "Package graduated from Visual Probation: " + lower);
+        SecurityLogger.log(context, "[PROBATION_GRADUATED]", lower + " -> Passed Visual Probation. Verified Safe Tool.");
+    }
+
+    public static synchronized void revokeProbation(Context context, String packageName, String reason) {
+        if (packageName == null) return;
+        String lower = packageName.trim().toLowerCase();
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);
+        Set<String> activeSet = new HashSet<>(prefs.getStringSet(KEY_PROBATION_ACTIVE_SET, Collections.<String>emptySet()));
+        if (activeSet.remove(lower)) {
+            prefs.edit().putStringSet(KEY_PROBATION_ACTIVE_SET, activeSet).apply();
+        }
+        // Permanently add to blocklist, update pipeline cache, and suspend via DPM
+        addToUserBlocklist(context, lower);
+
+        Log.w(TAG, "REVOKED PROBATION FOR: " + lower + " | Reason: " + reason);
+        SecurityLogger.log(context, "[PROBATION_REVOKED]", lower + " -> Confirmed Web Browser: " + reason + " -> Permanently Suspended.");
     }
 }
 

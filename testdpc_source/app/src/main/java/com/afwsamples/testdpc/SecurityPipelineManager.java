@@ -166,7 +166,11 @@ public class SecurityPipelineManager {
             return true;
         }
 
-        // 3. Alternative browser check
+        // 3. Alternative browser check: if it is under active probation, it is not permanently prohibited
+        if (SecurityConfig.isUnderProbation(context, lower)) {
+            return false;
+        }
+
         if (BrowserBlocker.isAutoBlockEnabled(context) && BrowserBlocker.isNonChromeBrowser(context, lower)) {
             return true;
         }
@@ -222,6 +226,12 @@ public class SecurityPipelineManager {
                 Log.w(TAG, "Package " + packageName + " was cached safe but is prohibited by policy. Evicting from safe cache.");
                 markPackageBlocked(context, lowerPkg);
             }
+        }
+
+        // Active Probation Bypass: If package is currently undergoing visual probation, avoid re-suspension
+        if (SecurityConfig.isUnderProbation(context, lowerPkg)) {
+            Log.i(TAG, "Package " + packageName + " is undergoing Targeted Visual Probation. Skipping redundant pipeline trigger.");
+            return;
         }
 
         // ---------------------------------------------------------------------------------
@@ -315,10 +325,6 @@ public class SecurityPipelineManager {
                     for (ApplicationInfo ai : installedApps) {
                         String pkg = ai.packageName.toLowerCase();
 
-                        // Check policy rules
-                        boolean isProhibited = SecurityConfig.isBlocklisted(context, pkg) ||
-                                (BrowserBlocker.isAutoBlockEnabled(context) && BrowserBlocker.isNonChromeBrowser(context, pkg));
-
                         // 1. Whitelist override -> always unsuspend and ensure marked safe
                         if (SecurityConfig.isWhitelisted(context, pkg)) {
                             packagesToUnsuspend.add(pkg);
@@ -326,28 +332,32 @@ public class SecurityPipelineManager {
                             continue;
                         }
 
-                        // 2. Confirmed prohibited app -> queue for hardware suspension
-                        if (isProhibited) {
+                        // 2. Explicit User Blocklist match -> queue for hardware suspension
+                        if (SecurityConfig.isBlocklisted(context, pkg)) {
                             packagesToSuspend.add(pkg);
                             markPackageBlocked(context, pkg);
                             continue;
                         }
 
-                        // 3. Auto-Rescue: App was previously cached as blocked by heuristic, but is clean now
-                        if (blockedCache.contains(pkg) && !isProhibited) {
+                        // 3. Active Probation app -> ensure unsuspended for visual monitoring
+                        if (SecurityConfig.isUnderProbation(context, pkg)) {
                             packagesToUnsuspend.add(pkg);
-                            markPackageSafe(context, pkg);
-                            SecurityLogger.log(context, "[BOOT_RESCUE]", pkg + " -> Rescued & Un-suspended (Verified clean app)");
                             continue;
                         }
 
-                        // 4. Cached safe app -> skip immediately (0ms overhead)
+                        // 4. Confirmed blocked in cache -> maintain hardware suspension
+                        if (blockedCache.contains(pkg)) {
+                            packagesToSuspend.add(pkg);
+                            continue;
+                        }
+
+                        // 5. Cached safe app -> skip immediately (0ms overhead)
                         if (safeCache.contains(pkg)) {
                             skippedSafeCount++;
                             continue;
                         }
 
-                        // 5. Brand new unclassified app -> run through the full security pipeline
+                        // 6. Brand new unclassified app -> run through the full security pipeline
                         newAppCount++;
                         processPackagePipeline(context, pkg);
                     }

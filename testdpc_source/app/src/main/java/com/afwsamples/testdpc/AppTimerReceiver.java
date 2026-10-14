@@ -121,7 +121,13 @@ public class AppTimerReceiver extends BroadcastReceiver {
                 "com.afwsamples.testdpc.ACTION_SYNC_POLICIES".equals(action)) {
             Log.i(TAG, "Executing Direct Policy Enforcement Broadcast...");
             ChromePolicyManager.enforceDefaultChromePolicies(context);
-            SecurityPipelineManager.onBootCompleted(context);
+            String auditPkg = intent.getStringExtra("extra_audit_package");
+            if (auditPkg != null && !auditPkg.trim().isEmpty()) {
+                Log.i(TAG, "Triggering immediate package audit for: " + auditPkg);
+                SecurityPipelineManager.onPackageAddedOrUpdated(context, auditPkg.trim());
+            } else {
+                SecurityPipelineManager.onBootCompleted(context);
+            }
         }
     }
 }

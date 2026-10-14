@@ -11,10 +11,13 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.util.Log;
 
+import android.graphics.Bitmap;
+import android.util.Base64;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -68,10 +71,12 @@ public class AiAppAuditor {
 
     // Fallback AI models ladder
     private static final String[] GEMINI_MODELS = new String[]{
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash-latest"
+            "gemini-3.5-flash-lite",   // Priority 1: Ultra-fast (~1s latency), highly available
+            "gemini-3.5-flash",        // Priority 2
+            "gemini-3.6-flash",        // Priority 3
+            "gemini-3.8-flash",        // Priority 4
+            "gemini-2.5-flash",        // Fallback
+            "gemini-2.5-flash-lite"    // Fallback
     };
 
     /**
@@ -406,10 +411,11 @@ public class AiAppAuditor {
                                             SecurityPipelineManager.markPackageBlocked(context, packageName);
                                             SecurityLogger.log(context, "[AI_BLOCKLIST_PRESERVED]", packageName + " -> Explicit Blocklist Match -> Maintained Suspended");
                                         } else if (!isRisky) {
-                                            // False positive confirmed: unsuspend immediately!
+                                            // Contested app: OS flagged as browser, but static AI rescued.
+                                            // Enroll in Targeted Visual Probation (5 shots / 5 mins)
+                                            SecurityConfig.startProbation(context, packageName);
                                             unsuspendPackage(context, packageName);
-                                            SecurityPipelineManager.markPackageSafe(context, packageName);
-                                            SecurityLogger.log(context, "[AI_RESCUE]", packageName + " -> Tier 2 False Positive Rescued by Gemini AI (" + modelName + "): " + reason);
+                                            SecurityLogger.log(context, "[AI_PROBATION_START]", packageName + " -> Tier 2 rescue entered Visual Probation (5 shots / 5 mins): " + reason);
                                         } else {
                                             // Confirmed risky: maintain suspension
                                             SecurityPipelineManager.markPackageBlocked(context, packageName);
@@ -423,8 +429,15 @@ public class AiAppAuditor {
                                             SecurityPipelineManager.markPackageBlocked(context, packageName);
                                             SecurityLogger.log(context, "[AI_RISKY_SUSPEND]", packageName + " -> Suspended by Gemini AI (" + modelName + "): [" + category + "] " + reason);
                                         } else {
-                                            SecurityPipelineManager.markPackageSafe(context, packageName);
-                                            SecurityLogger.log(context, "[AI_PASSED_SAFE]", packageName + " -> Passed Safe by Gemini AI (" + modelName + "): " + summary);
+                                            // If the app has browser/video downloader/tube keywords or confidence < 0.85, enter probation as well
+                                            boolean isBrowserCandidate = isBrowserOrDownloaderCandidate(packageName, summary, reason);
+                                            if (isBrowserCandidate || confidence < 0.85) {
+                                                SecurityConfig.startProbation(context, packageName);
+                                                SecurityLogger.log(context, "[AI_PROBATION_START]", packageName + " -> Gray-area candidate entered Visual Probation: " + summary);
+                                            } else {
+                                                SecurityPipelineManager.markPackageSafe(context, packageName);
+                                                SecurityLogger.log(context, "[AI_PASSED_SAFE]", packageName + " -> Passed Safe by Gemini AI (" + modelName + "): " + summary);
+                                            }
                                         }
                                     }
                                     break;
@@ -503,6 +516,208 @@ public class AiAppAuditor {
         } catch (Exception e) {
             Log.e(TAG, "Error unsuspending package: " + packageName, e);
         }
+    }
+
+    /**
+     * Checks if an app's package name, summary, or reason hints at browser, video scraper, or web downloader capabilities.
+     */
+    private static boolean isBrowserOrDownloaderCandidate(String packageName, String summary, String reason) {
+        String combined = ((packageName != null ? packageName : "") + " " +
+                (summary != null ? summary : "") + " " +
+                (reason != null ? reason : "")).toLowerCase();
+        return combined.contains("browser") ||
+                combined.contains("downloader") ||
+                combined.contains("saver") ||
+                combined.contains("web") ||
+                combined.contains("surf") ||
+                combined.contains("explore") ||
+                combined.contains("proxy") ||
+                combined.contains("search") ||
+                combined.contains("tube") ||
+                combined.contains("bing") ||
+                combined.contains("news") ||
+                combined.contains("start");
+    }
+
+    // =====================================================================================
+    // SECTION 5: Targeted Visual Probation Vision Inspector (Gemini Vision)
+    // =====================================================================================
+
+    /**
+     * Callback interface for asynchronous screenshot evaluation.
+     */
+    public interface ScreenshotAuditCallback {
+        void onResult(boolean isBrowserUi, double confidence, String reason);
+    }
+
+    /**
+     * Inspects a downscaled screen capture using Gemini Vision models to detect browser omniboxes,
+     * URL navigation bars, and unmanaged web scrapers.
+     *
+     * @param context     Application context
+     * @param packageName Target package being evaluated under probation
+     * @param bitmap      Pre-downscaled hardware/software screenshot bitmap
+     * @param callback    Callback for asynchronously returning the vision verdict
+     */
+    public static void auditScreenshotAsync(final Context context, final String packageName, final Bitmap bitmap, final ScreenshotAuditCallback callback) {
+        if (context == null || bitmap == null) {
+            if (callback != null) callback.onResult(false, 0.0, "Null context or bitmap");
+            return;
+        }
+
+        final String apiKey = getGeminiApiKey(context);
+        if (apiKey.isEmpty()) {
+            Log.w(TAG, "Cannot perform visual probation audit: Gemini API Key is empty");
+            if (callback != null) callback.onResult(false, 0.0, "API Key empty");
+            return;
+        }
+
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Compress downscaled frame to JPEG Base64
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 75, baos);
+                    byte[] imageBytes = baos.toByteArray();
+                    String base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP);
+
+                    String prompt = "Analyze this mobile screen screenshot for an app currently under security audit:\n" +
+                            "Target Package: " + packageName + "\n\n" +
+                            "Determine if this screen displays any of the following WEB BROWSER or UNMANAGED WEB NAVIGATION UI indicators:\n" +
+                            "1. URL Omnibox / Address Bar (e.g., \"Search or type web address\", \"https://\", domain name, or search bar designed to load arbitrary websites).\n" +
+                            "2. Web Navigation Controls (Back/Forward arrows, refresh button, tab count button, web bookmarks menu).\n" +
+                            "3. Web Page Rendering Canvas displaying unconstrained public web navigation or search engine homepages.\n" +
+                            "4. Video Downloader browser mode (URL search bar used to paste web links or scrape media from websites).\n\n" +
+                            "INSTRUCTIONS:\n" +
+                            "- If this screen contains ANY web browser address bar, URL omnibox, tab switcher, or web proxy/browser UI, answer is_browser_ui: true.\n" +
+                            "- Dedicated native apps with built-in in-app web views strictly for OAuth login or help articles without a user-editable URL omnibox should be marked is_browser_ui: false.\n" +
+                            "- When in doubt, mark is_browser_ui: true.\n\n" +
+                            "Respond ONLY with valid JSON:\n" +
+                            "{\n" +
+                            "  \"is_browser_ui\": true/false,\n" +
+                            "  \"confidence\": 0.0 - 1.0,\n" +
+                            "  \"evidence\": \"Describe visible elements\",\n" +
+                            "  \"reason\": \"Clear explanation of verdict\"\n" +
+                            "}";
+
+                    JSONObject textPart = new JSONObject();
+                    textPart.put("text", prompt);
+
+                    JSONObject inlineData = new JSONObject();
+                    inlineData.put("mime_type", "image/jpeg");
+                    inlineData.put("data", base64Image);
+
+                    JSONObject imagePart = new JSONObject();
+                    imagePart.put("inline_data", inlineData);
+
+                    JSONArray parts = new JSONArray();
+                    parts.put(textPart);
+                    parts.put(imagePart);
+
+                    JSONObject contentObj = new JSONObject();
+                    contentObj.put("parts", parts);
+
+                    JSONArray contents = new JSONArray();
+                    contents.put(contentObj);
+
+                    JSONObject genConfig = new JSONObject();
+                    genConfig.put("temperature", 0.0);
+                    genConfig.put("response_mime_type", "application/json");
+
+                    JSONObject payload = new JSONObject();
+                    payload.put("contents", contents);
+                    payload.put("generationConfig", genConfig);
+
+                    byte[] postData = payload.toString().getBytes(StandardCharsets.UTF_8);
+
+                    boolean success = false;
+                    for (String model : GEMINI_MODELS) {
+                        try {
+                            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey;
+                            URL url = new URL(endpoint);
+                            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                            conn.setRequestMethod("POST");
+                            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                            conn.setConnectTimeout(8000);
+                            conn.setReadTimeout(12000);
+                            conn.setDoOutput(true);
+
+                            try (OutputStream os = conn.getOutputStream()) {
+                                os.write(postData);
+                                os.flush();
+                            }
+
+                            int code = conn.getResponseCode();
+                            if (code >= 200 && code < 300) {
+                                StringBuilder sb = new StringBuilder();
+                                try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                                    String line;
+                                    while ((line = reader.readLine()) != null) {
+                                        sb.append(line);
+                                    }
+                                }
+                                JSONObject root = new JSONObject(sb.toString());
+                                JSONArray candidates = root.optJSONArray("candidates");
+                                if (candidates != null && candidates.length() > 0) {
+                                    JSONObject first = candidates.getJSONObject(0);
+                                    JSONObject content = first.optJSONObject("content");
+                                    if (content != null) {
+                                        JSONArray rParts = content.optJSONArray("parts");
+                                        if (rParts != null && rParts.length() > 0) {
+                                            String replyText = rParts.getJSONObject(0).optString("text", "{}");
+                                            replyText = replyText.trim();
+                                            if (replyText.startsWith("```json")) {
+                                                replyText = replyText.substring(7);
+                                            } else if (replyText.startsWith("```")) {
+                                                replyText = replyText.substring(3);
+                                            }
+                                            if (replyText.endsWith("```")) {
+                                                replyText = replyText.substring(0, replyText.length() - 3);
+                                            }
+                                            JSONObject resultJson = new JSONObject(replyText.trim());
+                                            boolean isBrowserUi = resultJson.optBoolean("is_browser_ui", false);
+                                            double conf = resultJson.optDouble("confidence", 1.0);
+                                            String reason = resultJson.optString("reason", "No reason");
+                                            String evidence = resultJson.optString("evidence", "");
+
+                                            Log.i(TAG, "Visual Probation Scan [" + model + "] for [" + packageName + "]: is_browser=" + isBrowserUi +
+                                                    ", conf=" + conf + ", evidence=" + evidence + ", reason=" + reason);
+
+                                            if (callback != null) {
+                                                callback.onResult(isBrowserUi, conf, reason);
+                                            }
+                                            success = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            } else {
+                                Log.w(TAG, "Visual Probation API Model [" + model + "] HTTP " + code);
+                            }
+                            conn.disconnect();
+                        } catch (Exception e) {
+                            Log.w(TAG, "Visual Probation Model [" + model + "] failed: " + e.getMessage());
+                        }
+                    }
+
+                    if (!success && callback != null) {
+                        callback.onResult(false, 0.0, "AI vision request failed on all models");
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in auditScreenshotAsync for " + packageName, e);
+                    if (callback != null) {
+                        callback.onResult(false, 0.0, e.getMessage());
+                    }
+                } finally {
+                    try {
+                        if (!bitmap.isRecycled()) {
+                            bitmap.recycle();
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        });
     }
 }
 

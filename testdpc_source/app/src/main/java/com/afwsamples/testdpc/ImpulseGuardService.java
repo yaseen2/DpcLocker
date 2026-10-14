@@ -227,6 +227,10 @@ public class ImpulseGuardService extends AccessibilityService {
         if (DEFAULT_BROWSERS.contains(packageName)) {
             return true;
         }
+        // Packages undergoing Targeted Visual Probation are actively monitored
+        if (SecurityConfig.isUnderProbation(context, packageName)) {
+            return true;
+        }
         SharedPreferences prefs = context.getSharedPreferences(PREF_MONITORED_APPS, Context.MODE_PRIVATE);
         return prefs.getBoolean(packageName, false);
     }
@@ -727,6 +731,20 @@ public class ImpulseGuardService extends AccessibilityService {
         }
 
         // =================================================================================
+        // PHASE 0.5: TARGETED VISUAL PROBATION AUDIT
+        // =================================================================================
+        // If this app is under active Visual Probation, schedule real-time visual audits
+        if (SecurityConfig.isUnderProbation(this, packageName)) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                // Initial window render settle: schedule Shot 1 at T+2.5s
+                scheduleProbationVisualAudit(packageName, 2500);
+            } else if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                // Interaction tap / navigation: schedule follow-up shot after 1.2s dwell
+                scheduleProbationVisualAudit(packageName, 1200);
+            }
+        }
+
+        // =================================================================================
         // PHASE 1: ANTI-TAMPER SHIELD (Settings Accessibility & App Info Lockout)
         // =================================================================================
         // If the user navigates into com.android.settings, inspect whether they are attempting
@@ -937,6 +955,138 @@ public class ImpulseGuardService extends AccessibilityService {
                 scheduleFalconsVisualDwellAudit(packageName);
             }
         }
+    }
+
+    // =====================================================================================
+    // SECTION 7.5: Targeted Visual Probation Inspection Pipeline (Gemini Vision)
+    // =====================================================================================
+
+    /** Debounced Runnable reference for scheduling probation screenshot audits */
+    private Runnable mPendingProbationAuditRunnable;
+
+    /** System timestamp of the most recent completed probation visual scan */
+    private long mLastProbationScanTimestamp = 0;
+
+    /** Concurrency lock to guarantee only one probation screenshot capture & AI vision audit runs at a time */
+    private volatile boolean mIsProbationScanInFlight = false;
+
+    /**
+     * Schedules a targeted visual screenshot audit for an application currently under probation.
+     * Takes up to MAX_PROBATION_SHOTS (5 shots) over the 5-minute probation window.
+     * If browser UI (URL bar, omnibox, web tabs) is detected, revokes probation and suspends the app.
+     *
+     * @param packageName The package name of the active foreground app being audited.
+     * @param delayMs     Debounce/settling delay in milliseconds before taking screenshot.
+     */
+    private void scheduleProbationVisualAudit(final String packageName, long delayMs) {
+        if (!SecurityConfig.isUnderProbation(this, packageName)) {
+            return;
+        }
+
+        int shotCount = SecurityConfig.getProbationShotCount(this, packageName);
+        if (shotCount >= SecurityConfig.MAX_PROBATION_SHOTS) {
+            SecurityConfig.graduateProbation(this, packageName);
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        // Rate limit: at least 2500ms between consecutive probation visual audits
+        if (now - mLastProbationScanTimestamp < 2500 || mIsProbationScanInFlight) {
+            return;
+        }
+
+        if (mPendingProbationAuditRunnable != null) {
+            mHandler.removeCallbacks(mPendingProbationAuditRunnable);
+        }
+
+        mPendingProbationAuditRunnable = new Runnable() {
+            @Override
+            public void run() {
+                mPendingProbationAuditRunnable = null;
+                if (mIsProbationScanInFlight) return;
+                if (!SecurityConfig.isUnderProbation(ImpulseGuardService.this, packageName)) return;
+
+                int currentShots = SecurityConfig.getProbationShotCount(ImpulseGuardService.this, packageName);
+                if (currentShots >= SecurityConfig.MAX_PROBATION_SHOTS) {
+                    SecurityConfig.graduateProbation(ImpulseGuardService.this, packageName);
+                    return;
+                }
+
+                mIsProbationScanInFlight = true;
+                Log.i(TAG, "Triggering Visual Probation Screenshot Audit [" + (currentShots + 1) + "/" + SecurityConfig.MAX_PROBATION_SHOTS + "] for [" + packageName + "]...");
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        takeScreenshot(Display.DEFAULT_DISPLAY, mBgExecutor, new TakeScreenshotCallback() {
+                            @Override
+                            public void onSuccess(ScreenshotResult screenshotResult) {
+                                try {
+                                    mLastProbationScanTimestamp = System.currentTimeMillis();
+                                    HardwareBuffer hardwareBuffer = screenshotResult.getHardwareBuffer();
+                                    ColorSpace colorSpace = screenshotResult.getColorSpace();
+                                    Bitmap bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace);
+                                    if (bitmap != null) {
+                                        Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 512, 512, false);
+                                        bitmap.recycle();
+                                        hardwareBuffer.close();
+
+                                        if (scaledBitmap != null) {
+                                            Bitmap softwareBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, false);
+                                            if (scaledBitmap != softwareBitmap) {
+                                                scaledBitmap.recycle();
+                                            }
+
+                                            if (softwareBitmap != null) {
+                                                AiAppAuditor.auditScreenshotAsync(ImpulseGuardService.this, packageName, softwareBitmap, new AiAppAuditor.ScreenshotAuditCallback() {
+                                                    @Override
+                                                    public void onResult(boolean isBrowserUi, double confidence, String reason) {
+                                                        mIsProbationScanInFlight = false;
+                                                        if (isBrowserUi && confidence >= 0.70) {
+                                                            Log.w(TAG, "🚨 VISUAL PROBATION REVOCATION for [" + packageName + "]: " + reason + " (confidence=" + confidence + ")");
+                                                            performGlobalAction(GLOBAL_ACTION_HOME);
+                                                            SecurityConfig.revokeProbation(ImpulseGuardService.this, packageName, reason);
+                                                            mHandler.post(new Runnable() {
+                                                                @Override
+                                                                public void run() {
+                                                                    Toast.makeText(ImpulseGuardService.this, "🔒 Unmanaged Web Browser Blocked: " + packageName, Toast.LENGTH_LONG).show();
+                                                                }
+                                                            });
+                                                        } else {
+                                                            int shots = SecurityConfig.incrementProbationShotCount(ImpulseGuardService.this, packageName);
+                                                            Log.i(TAG, "Visual probation clean shot #" + shots + " recorded for [" + packageName + "]");
+                                                            if (shots >= SecurityConfig.MAX_PROBATION_SHOTS) {
+                                                                SecurityConfig.graduateProbation(ImpulseGuardService.this, packageName);
+                                                            }
+                                                        }
+                                                    }
+                                                });
+                                                return;
+                                            }
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error in probation screenshot processing", e);
+                                }
+                                mIsProbationScanInFlight = false;
+                            }
+
+                            @Override
+                            public void onFailure(int errorCode) {
+                                mIsProbationScanInFlight = false;
+                                Log.w(TAG, "Probation takeScreenshot failed with error code: " + errorCode);
+                            }
+                        });
+                    } catch (Exception e) {
+                        mIsProbationScanInFlight = false;
+                        Log.e(TAG, "Error requesting probation screenshot", e);
+                    }
+                } else {
+                    mIsProbationScanInFlight = false;
+                }
+            }
+        };
+
+        mHandler.postDelayed(mPendingProbationAuditRunnable, delayMs);
     }
 
     // =====================================================================================
