@@ -328,7 +328,7 @@ public class AiAppAuditor {
                         "3. VPN_AND_PROXY_TUNNEL: Standalone VPNs, proxies, or DNS tunnels that bypass network-level adult filters (e.g. Turbo VPN, Psiphon, SuperVPN).\n" +
                         "4. ADULT_DATING_CHAT_NSFW: Casual dating/hookup apps (Tinder, Grindr, Badoo), live adult cam chats, or uncensored NSFW AI companions.\n\n" +
                         "ALL OTHER APPS ARE SAFE (\"is_risky\": false):\n" +
-                        "Standard productivity, utility, communication, gaming, banking, audio, and local media creation apps without arbitrary web browsing or video scraping are SAFE. When in doubt, mark \"is_risky\": false.\n\n" +
+                        "Standard productivity, utility, communication, gaming, banking, audio, and local media creation apps without arbitrary web browsing or video scraping are SAFE. When in doubt, mark \"is_risky\": true.\n\n" +
                         "OUTPUT JSON FORMAT:\n" +
                         "{\n" +
                         "  \"app_summary\": \"<brief description>\",\n" +
