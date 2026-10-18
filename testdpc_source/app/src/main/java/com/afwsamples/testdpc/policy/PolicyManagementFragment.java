@@ -4270,7 +4270,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 String status;
                 if (currentLimit > 0) {
                     if (isExceeded || usedMins >= currentLimit) {
-                        status = "🔒 " + usedMins + "m / " + currentLimit + "m (LOCKED FOR TODAY)";
+                        status = "🔒 " + usedMins + "m / " + currentLimit + "m (LOCKED UNTIL 10 PM)";
                     } else {
                         status = usedMins + "m / " + currentLimit + "m limit";
                     }
@@ -4282,7 +4282,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-        builder.setTitle("App Daily Usage Timers");
+        builder.setTitle("App Daily Usage Timers (Resets at 10:00 PM)");
         builder.setItems(appLabels.toArray(new String[0]), new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {

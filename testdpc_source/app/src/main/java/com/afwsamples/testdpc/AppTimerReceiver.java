@@ -33,7 +33,10 @@ public class AppTimerReceiver extends BroadcastReceiver {
     // Intent action fired when UsageStatsObserver trips a registered time threshold
     public static final String ACTION_LIMIT_EXCEEDED = "com.afwsamples.testdpc.ACTION_LIMIT_EXCEEDED";
 
-    // Intent action scheduled via AlarmManager to trigger nightly at midnight (00:00:00)
+    // Intent action scheduled via AlarmManager to trigger nightly at 10:00 PM (22:00:00)
+    public static final String ACTION_DAILY_RESET = "com.afwsamples.testdpc.ACTION_DAILY_RESET";
+
+    // Backwards compatibility alias for midnight reset
     public static final String ACTION_MIDNIGHT_RESET = "com.afwsamples.testdpc.ACTION_MIDNIGHT_RESET";
 
     // Key for extracting the target package name from the broadcast's Intent extras
@@ -76,12 +79,12 @@ public class AppTimerReceiver extends BroadcastReceiver {
                         dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{packageName}, true);
 
                         // 3. User feedback: notify user why the application was suddenly locked
-                        Toast.makeText(context.getApplicationContext(), "⏳ Daily time limit reached! App locked until tomorrow.", Toast.LENGTH_LONG).show();
+                        Toast.makeText(context.getApplicationContext(), "⏳ Daily time limit reached! App locked until 10:00 PM.", Toast.LENGTH_LONG).show();
 
                         Log.i(TAG, "SUSPENDED " + packageName + " due to daily timer limit.");
 
                         // 4. Audit trail logging to persistent security log
-                        SecurityLogger.log(context, "[DAILY_TIMER_LIMIT]", "Daily limit exceeded for [" + packageName + "] -> Locked for the remainder of today.");
+                        SecurityLogger.log(context, "[DAILY_TIMER_LIMIT]", "Daily limit exceeded for [" + packageName + "] -> Locked until 10:00 PM.");
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error suspending package on limit exceeded", e);
@@ -89,10 +92,10 @@ public class AppTimerReceiver extends BroadcastReceiver {
             }
         }
         // ---------------------------------------------------------------------------------
-        // CASE 2: Daily Midnight Reset (ACTION_MIDNIGHT_RESET)
+        // CASE 2: Daily Reset (10:00 PM) (ACTION_DAILY_RESET / ACTION_MIDNIGHT_RESET)
         // ---------------------------------------------------------------------------------
-        else if (ACTION_MIDNIGHT_RESET.equals(action)) {
-            Log.i(TAG, "Executing Midnight Reset: Clearing daily limit locks for new day...");
+        else if (ACTION_DAILY_RESET.equals(action) || ACTION_MIDNIGHT_RESET.equals(action)) {
+            Log.i(TAG, "Executing Daily Reset (10:00 PM): Clearing daily limit locks for new cycle...");
 
             // 1. Clear SharedPreferences lockout flags and un-suspend apps via DPM
             AppTimerManager.clearDailyExceededFlags(context);
@@ -100,8 +103,11 @@ public class AppTimerReceiver extends BroadcastReceiver {
             // 2. Re-register UsageStatsManager observers with fresh daily time quotas
             AppTimerManager.registerAllObservers(context);
 
-            // 3. Record reset event in security log
-            SecurityLogger.log(context, "[MIDNIGHT_RESET]", "Daily app timer limits reset for new day.");
+            // 3. User feedback toast
+            Toast.makeText(context.getApplicationContext(), "🌙 10:00 PM Reset: App timers refreshed for the night!", Toast.LENGTH_SHORT).show();
+
+            // 4. Record reset event in security log
+            SecurityLogger.log(context, "[DAILY_RESET_10PM]", "Daily app timer limits reset at 10:00 PM for new cycle.");
         }
         // ---------------------------------------------------------------------------------
         // CASE 3: Device Reboot Completed (ACTION_BOOT_COMPLETED)
@@ -121,6 +127,7 @@ public class AppTimerReceiver extends BroadcastReceiver {
                 "com.afwsamples.testdpc.ACTION_SYNC_POLICIES".equals(action)) {
             Log.i(TAG, "Executing Direct Policy Enforcement Broadcast...");
             ChromePolicyManager.enforceDefaultChromePolicies(context);
+            AppTimerManager.registerAllObservers(context);
             String auditPkg = intent.getStringExtra("extra_audit_package");
             if (auditPkg != null && !auditPkg.trim().isEmpty()) {
                 Log.i(TAG, "Triggering immediate package audit for: " + auditPkg);

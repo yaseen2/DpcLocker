@@ -159,6 +159,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="com.afwsamples.testdpc.ACTION_LIMIT_EXCEEDED" />
+                <action android:name="com.afwsamples.testdpc.ACTION_DAILY_RESET" />
                 <action android:name="com.afwsamples.testdpc.ACTION_MIDNIGHT_RESET" />
                 <action android:name="com.afwsamples.testdpc.ACTION_ENFORCE_POLICIES" />
                 <action android:name="com.afwsamples.testdpc.ACTION_SYNC_POLICIES" />

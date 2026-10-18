@@ -45,8 +45,8 @@ import java.util.concurrent.TimeUnit;
  *      Uses hidden system reflection on `UsageStatsManager.registerAppUsageObserver()` to register
  *      a kernel/framework level watchdog that triggers `AppTimerReceiver.ACTION_LIMIT_EXCEEDED`
  *      the exact instant the limit is reached, without needing a continuous polling loop.
- *   4. Midnight Rollover (AlarmManager):
- *      Schedules an exact/inexact daily alarm at 00:00:02 to clear daily lockout flags and
+ *   4. Daily 10:00 PM Rollover (AlarmManager):
+ *      Schedules an exact daily alarm at 22:00:02 (10:00 PM) to clear daily lockout flags and
  *      re-enable apps with a brand new daily allowance.
  * =========================================================================================
  */
@@ -62,6 +62,14 @@ public class AppTimerManager {
     public static final String KEY_EXCEEDED_PREFIX = "exceeded_today_"; // Stores date string (yyyyMMdd) when limit was hit
     public static final String KEY_USAGE_MILLIS_PREFIX = "usage_today_";// Stores local accumulated milliseconds
 
+    // Daily Cycle Reset Schedule: 10:00 PM (22:00:00)
+    public static final int RESET_HOUR_OF_DAY = 22; // 10:00 PM
+    public static final int RESET_MINUTE = 0;       // 00 minutes
+
+    // Broadcast Intent actions
+    public static final String ACTION_DAILY_RESET = "com.afwsamples.testdpc.ACTION_DAILY_RESET";
+    public static final String ACTION_MIDNIGHT_RESET = "com.afwsamples.testdpc.ACTION_MIDNIGHT_RESET";
+
     /**
      * Helper to retrieve SharedPreferences for app timers.
      */
@@ -70,11 +78,24 @@ public class AppTimerManager {
     }
 
     /**
-     * Returns today's calendar date formatted as "yyyyMMdd" (e.g., "20260906").
-     * Used as a partition key to detect whether a lockout belongs to today or an earlier date.
+     * Returns the partition key for the active 24-hour cycle (10:00 PM to 10:00 PM).
+     * Format: "yyyyMMdd" representing the date the current cycle started at 10:00 PM.
+     * - If current time is between 22:00:00 and 23:59:59, cycle started today (date = today).
+     * - If current time is between 00:00:00 and 21:59:59, cycle started yesterday at 22:00 (date = yesterday).
+     */
+    public static String getCycleKey() {
+        Calendar cal = Calendar.getInstance();
+        if (cal.get(Calendar.HOUR_OF_DAY) < RESET_HOUR_OF_DAY) {
+            cal.add(Calendar.DAY_OF_YEAR, -1);
+        }
+        return new SimpleDateFormat("yyyyMMdd", Locale.US).format(cal.getTime());
+    }
+
+    /**
+     * Internal delegate: maps today key to the active 10:00 PM cycle partition key.
      */
     private static String getTodayKey() {
-        return new SimpleDateFormat("yyyyMMdd", Locale.US).format(new Date());
+        return getCycleKey();
     }
 
     // =====================================================================================
@@ -304,10 +325,13 @@ public class AppTimerManager {
             UsageStatsManager usm = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
             if (usm == null) return 0L;
 
-            // Compute midnight timestamp (00:00:00.000) of the current day
+            // Compute cycle start timestamp (22:00:00.000) of the active 24-hour cycle
             Calendar calendar = Calendar.getInstance();
-            calendar.set(Calendar.HOUR_OF_DAY, 0);
-            calendar.set(Calendar.MINUTE, 0);
+            if (calendar.get(Calendar.HOUR_OF_DAY) < RESET_HOUR_OF_DAY) {
+                calendar.add(Calendar.DAY_OF_YEAR, -1);
+            }
+            calendar.set(Calendar.HOUR_OF_DAY, RESET_HOUR_OF_DAY);
+            calendar.set(Calendar.MINUTE, RESET_MINUTE);
             calendar.set(Calendar.SECOND, 0);
             calendar.set(Calendar.MILLISECOND, 0);
             long startTime = calendar.getTimeInMillis();
@@ -467,52 +491,75 @@ public class AppTimerManager {
         for (Map.Entry<String, Integer> entry : limits.entrySet()) {
             updateAppObserver(context, entry.getKey(), entry.getValue());
         }
-        scheduleMidnightReset(context);
+        scheduleDailyReset(context);
         checkAndEnforceLimits(context);
     }
 
     // =====================================================================================
-    // SECTION 6: Daily Midnight Alarm Scheduling
+    // SECTION 6: Daily Reset Alarm Scheduling (10:00 PM)
     // =====================================================================================
 
     /**
-     * Schedules a recurring AlarmManager broadcast set to wake up the system at 00:00:02
-     * each night to fire ACTION_MIDNIGHT_RESET.
+     * Schedules an exact AlarmManager broadcast to wake up the system at 22:00:02 (10:00 PM)
+     * each day to fire ACTION_DAILY_RESET. Uses setExactAndAllowWhileIdle to guarantee execution
+     * even when the device is in Android Doze mode.
      */
-    public static void scheduleMidnightReset(Context context) {
+    public static void scheduleDailyReset(Context context) {
         try {
             AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
             if (alarmManager == null) return;
 
-            // Intent fired at midnight
             Intent intent = new Intent(context, AppTimerReceiver.class);
-            intent.setAction(AppTimerReceiver.ACTION_MIDNIGHT_RESET);
+            intent.setAction(ACTION_DAILY_RESET);
             PendingIntent pendingIntent = PendingIntent.getBroadcast(
                     context,
-                    99999, // Unique request code for midnight reset alarm
+                    99999, // Unique request code for daily reset alarm
                     intent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
 
-            // Calculate tomorrow at 00:00:02
-            Calendar midnight = Calendar.getInstance();
-            midnight.add(Calendar.DAY_OF_YEAR, 1);
-            midnight.set(Calendar.HOUR_OF_DAY, 0);
-            midnight.set(Calendar.MINUTE, 0);
-            midnight.set(Calendar.SECOND, 2);
-            midnight.set(Calendar.MILLISECOND, 0);
+            // Target next occurrence of 22:00:02
+            Calendar target = Calendar.getInstance();
+            target.set(Calendar.HOUR_OF_DAY, RESET_HOUR_OF_DAY); // 22
+            target.set(Calendar.MINUTE, RESET_MINUTE);           // 0
+            target.set(Calendar.SECOND, 2);
+            target.set(Calendar.MILLISECOND, 0);
 
-            // Inexact repeating alarm to conserve battery while guaranteeing nightly reset
-            alarmManager.setInexactRepeating(
-                    AlarmManager.RTC_WAKEUP,
-                    midnight.getTimeInMillis(),
-                    AlarmManager.INTERVAL_DAY,
-                    pendingIntent
-            );
-            Log.i(TAG, "Scheduled Midnight Reset Alarm for " + midnight.getTime());
+            // If 22:00:02 today has already passed, schedule for tomorrow 22:00:02
+            if (System.currentTimeMillis() >= target.getTimeInMillis()) {
+                target.add(Calendar.DAY_OF_YEAR, 1);
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        target.getTimeInMillis(),
+                        pendingIntent
+                );
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                alarmManager.setExact(
+                        AlarmManager.RTC_WAKEUP,
+                        target.getTimeInMillis(),
+                        pendingIntent
+                );
+            } else {
+                alarmManager.set(
+                        AlarmManager.RTC_WAKEUP,
+                        target.getTimeInMillis(),
+                        pendingIntent
+                );
+            }
+            Log.i(TAG, "Scheduled Daily Reset Alarm (10:00 PM) for: " + target.getTime());
         } catch (Exception e) {
-            Log.e(TAG, "Error scheduling midnight reset", e);
+            Log.e(TAG, "Error scheduling daily reset alarm", e);
         }
+    }
+
+    /**
+     * Backwards-compatibility alias for scheduleDailyReset.
+     */
+    public static void scheduleMidnightReset(Context context) {
+        scheduleDailyReset(context);
     }
 }
 
