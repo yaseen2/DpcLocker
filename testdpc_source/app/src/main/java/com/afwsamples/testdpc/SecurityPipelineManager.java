@@ -136,6 +136,19 @@ public class SecurityPipelineManager {
     }
 
     /**
+     * Purges a package from the safe cache so fresh installs or updates are re-evaluated.
+     */
+    public static void evictFromSafeCache(Context context, String packageName) {
+        if (packageName == null) return;
+        String lower = packageName.trim().toLowerCase();
+        Set<String> safeSet = getCachedSafePackages(context);
+        if (safeSet.remove(lower)) {
+            getCachePrefs(context).edit().putStringSet(KEY_SAFE_PACKAGES, safeSet).apply();
+            Log.i(TAG, "Evicted " + lower + " from safe package cache.");
+        }
+    }
+
+    /**
      * Core Security Gatekeeper:
      * Checks if a package is permanently prohibited by any policy rule.
      * Used by ImpulseGuardService and AppTimerManager to prevent temporary timer expirations
@@ -194,6 +207,9 @@ public class SecurityPipelineManager {
     public static void onPackageAddedOrUpdated(final Context context, final String packageName) {
         if (packageName == null || packageName.isEmpty()) return;
         final String lowerPkg = packageName.trim().toLowerCase();
+
+        // Fresh installation or update: always purge from safe cache to force re-evaluation!
+        evictFromSafeCache(context, lowerPkg);
 
         sBgExecutor.execute(new Runnable() {
             @Override
@@ -339,6 +355,13 @@ public class SecurityPipelineManager {
                             continue;
                         }
 
+                        // 2.5 Alternative Browser match -> queue for hardware suspension
+                        if (BrowserBlocker.isAutoBlockEnabled(context) && BrowserBlocker.isNonChromeBrowser(context, pkg)) {
+                            packagesToSuspend.add(pkg);
+                            markPackageBlocked(context, pkg);
+                            continue;
+                        }
+
                         // 3. Active Probation app -> ensure unsuspended for visual monitoring
                         if (SecurityConfig.isUnderProbation(context, pkg)) {
                             packagesToUnsuspend.add(pkg);
@@ -367,12 +390,13 @@ public class SecurityPipelineManager {
                         dpm.setPackagesSuspended(admin, packagesToSuspend.toArray(new String[0]), true);
                     }
 
-                    // Batch unsuspend rescued innocent apps (verifying timer and visual penalty status)
+                    // Batch unsuspend rescued innocent apps (verifying timer, visual penalty, and blocklist status)
                     if (isDeviceOwner && !packagesToUnsuspend.isEmpty()) {
                         List<String> validUnsuspend = new java.util.ArrayList<>();
                         for (String p : packagesToUnsuspend) {
                             if (!AppTimerManager.isDailyLimitExceeded(context, p) &&
-                                    !ImpulseGuardService.isTemporarilySuspended(context, p)) {
+                                    !ImpulseGuardService.isTemporarilySuspended(context, p) &&
+                                    !SecurityConfig.isBlocklisted(context, p)) {
                                 validUnsuspend.add(p);
                             }
                         }

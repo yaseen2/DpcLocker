@@ -9,6 +9,10 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.util.Log;
 
 import android.graphics.Bitmap;
@@ -26,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -126,6 +131,47 @@ public class AiAppAuditor {
     // SECTION 1: Offline Deferred Audit Queue
     // =====================================================================================
 
+    private static boolean sNetworkCallbackRegistered = false;
+
+    /**
+     * Registers a ConnectivityManager.NetworkCallback to automatically drain the pending
+     * offline audit queue the instant network connectivity is restored.
+     */
+    public static synchronized void initNetworkCallback(final Context context) {
+        if (sNetworkCallbackRegistered) return;
+        try {
+            ConnectivityManager cm = (ConnectivityManager) context.getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+                    @Override
+                    public void onAvailable(Network network) {
+                        Log.i(TAG, "🌐 Network connectivity available. Draining pending AI audit queue...");
+                        processPendingAudits(context.getApplicationContext());
+                    }
+                });
+                sNetworkCallbackRegistered = true;
+                Log.i(TAG, "Registered NetworkCallback for pending AI audits.");
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                NetworkRequest request = new NetworkRequest.Builder()
+                        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        .build();
+                cm.registerNetworkCallback(request, new ConnectivityManager.NetworkCallback() {
+                    @Override
+                    public void onAvailable(Network network) {
+                        Log.i(TAG, "🌐 Network connectivity available. Draining pending AI audit queue...");
+                        processPendingAudits(context.getApplicationContext());
+                    }
+                });
+                sNetworkCallbackRegistered = true;
+                Log.i(TAG, "Registered NetworkCallback for pending AI audits.");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to register NetworkCallback", e);
+        }
+    }
+
     /**
      * Enqueues an unclassified package for deferred AI evaluation when internet connectivity is restored.
      */
@@ -135,6 +181,7 @@ public class AiAppAuditor {
         queue.add(packageName.trim().toLowerCase());
         getPrefs(context).edit().putStringSet(KEY_PENDING_QUEUE, queue).apply();
         Log.i(TAG, "Enqueued " + packageName + " for deferred AI audit when network connects.");
+        initNetworkCallback(context);
     }
 
     /**
@@ -461,9 +508,19 @@ public class AiAppAuditor {
                 SecurityPipelineManager.markPackageBlocked(context, packageName);
                 SecurityLogger.log(context, "[AI_OFFLINE]", packageName + " -> Explicit Blocklist Match maintained");
             } else if (!isRescueMode) {
-                // Fail-safe open: allow clean user apps to run while offline, queue for audit upon reconnect
-                SecurityPipelineManager.markPackageSafe(context, packageName);
-                SecurityLogger.log(context, "[OFFLINE_DEFERRED]", packageName + " -> Allowed temporarily (Enqueued for Gemini AI audit upon network connection)");
+                // If package looks like an alternative browser/downloader, quarantine provisionally
+                String lower = packageName.toLowerCase(Locale.US);
+                boolean suspiciousOffline = lower.contains("browser") || lower.contains("orbit") ||
+                        lower.contains("smartbrowse") || lower.contains("downloader") || lower.contains("tube") ||
+                        lower.contains("vpn") || lower.contains("proxy");
+                if (suspiciousOffline) {
+                    suspendPackage(context, packageName, "Offline quarantine pending AI verification");
+                    SecurityPipelineManager.markPackageBlocked(context, packageName);
+                    SecurityLogger.log(context, "[OFFLINE_QUARANTINE]", packageName + " -> Suspended pending AI audit once online.");
+                } else {
+                    // Do NOT mark safe in cache! Keep pending for audit upon network reconnect
+                    SecurityLogger.log(context, "[OFFLINE_DEFERRED]", packageName + " -> Enqueued for Gemini AI audit upon network connection.");
+                }
             } else {
                 SecurityLogger.log(context, "[AI_OFFLINE]", packageName + " -> Tier 2 provisional block maintained (Enqueued for AI rescue check)");
             }

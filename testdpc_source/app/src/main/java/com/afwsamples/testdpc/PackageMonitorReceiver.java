@@ -28,6 +28,10 @@ public class PackageMonitorReceiver extends BroadcastReceiver {
         if (replacing) {
             return;
         }
+        if (Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
+            SecurityPipelineManager.evictFromSafeCache(context, packageName);
+            AiAppAuditor.removePendingAudit(context, packageName);
+        }
         String notificationBody = buildNotificationText(context, packageName, action);
         Notification notification = NotificationUtil.getNotificationBuilder(context)
             .setSmallIcon(R.drawable.ic_launcher)

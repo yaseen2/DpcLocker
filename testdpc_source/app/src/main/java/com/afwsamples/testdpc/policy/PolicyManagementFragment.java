@@ -2401,9 +2401,9 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
 
         layout.addView(addBar);
 
-        // Section 1: Manually Added Uninstalled Packages Container
+        // Section 1: Manually Blocked Packages Container
         TextView customTitle = new TextView(activity);
-        customTitle.setText("\n📋 Proactively Blocked Packages (Uninstalled):");
+        customTitle.setText("\n📋 Manually Blocked Packages:");
         customTitle.setTypeface(null, android.graphics.Typeface.BOLD);
         layout.addView(customTitle);
 
@@ -2416,7 +2416,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
             @Override
             public void run() {
                 customPackagesContainer.removeAllViews();
-                Set<String> set = SecurityConfig.getUserBlocklist(activity);
+                Set<String> set = SecurityConfig.getCustomUserBlocklist(activity);
 
                 Set<String> installedPkgs = new HashSet<>();
                 List<ApplicationInfo> apps = mPackageManager.getInstalledApplications(0);
@@ -2426,32 +2426,34 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
 
                 int count = 0;
                 for (final String pkg : set) {
-                    if (!installedPkgs.contains(pkg.toLowerCase(Locale.US))) {
-                        count++;
-                        LinearLayout row = new LinearLayout(activity);
-                        row.setOrientation(LinearLayout.HORIZONTAL);
-                        row.setPadding(0, 8, 0, 8);
+                    count++;
+                    LinearLayout row = new LinearLayout(activity);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    row.setPadding(0, 8, 0, 8);
 
-                        TextView pkgTv = new TextView(activity);
-                        pkgTv.setText("🚫 " + pkg);
-                        pkgTv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
-                        row.addView(pkgTv);
+                    boolean isInstalled = installedPkgs.contains(pkg.toLowerCase(Locale.US));
+                    String statusText = isInstalled ? " [Installed - Suspended]" : " [Not Installed - Proactively Blocked]";
 
-                        Button removeBtn = new Button(activity);
-                        removeBtn.setText("Remove");
-                        removeBtn.setOnClickListener(v -> {
-                            removePackageFromBlocklist(activity, pkg);
-                            run(); // Refresh list
-                        });
-                        row.addView(removeBtn);
+                    TextView pkgTv = new TextView(activity);
+                    pkgTv.setText("🚫 " + pkg + statusText);
+                    pkgTv.setTextColor(isInstalled ? 0xFFC62828 : 0xFF616161);
+                    pkgTv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+                    row.addView(pkgTv);
 
-                        customPackagesContainer.addView(row);
-                    }
+                    Button removeBtn = new Button(activity);
+                    removeBtn.setText("Remove");
+                    removeBtn.setOnClickListener(v -> {
+                        removePackageFromBlocklist(activity, pkg);
+                        run(); // Refresh list
+                    });
+                    row.addView(removeBtn);
+
+                    customPackagesContainer.addView(row);
                 }
 
                 if (count == 0) {
                     TextView emptyTv = new TextView(activity);
-                    emptyTv.setText("No uninstalled packages manually added.");
+                    emptyTv.setText("No custom packages manually added.");
                     emptyTv.setTextColor(0xFF888888);
                     customPackagesContainer.addView(emptyTv);
                 }
@@ -2462,7 +2464,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
 
         // Section 2: Installed Apps
         TextView installedTitle = new TextView(activity);
-        installedTitle.setText("\n📱 Installed Non-System Applications:");
+        installedTitle.setText("\n📱 Installed Applications:");
         installedTitle.setTypeface(null, android.graphics.Typeface.BOLD);
         layout.addView(installedTitle);
 
@@ -2471,7 +2473,13 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
         Collections.sort(applicationInfoList, new ApplicationInfo.DisplayNameComparator(mPackageManager));
 
         for (ApplicationInfo applicationInfo : applicationInfoList) {
-            if ((applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
+            String lowerPkg = applicationInfo.packageName.toLowerCase(Locale.US);
+            if (SecurityConfig.IMMUTABLE_CORE_PACKAGES.contains(lowerPkg) || activity.getPackageName().equalsIgnoreCase(lowerPkg)) {
+                continue; // Skip core OS bedrock (Settings, SystemUI, Framework) and TestDPC itself
+            }
+            boolean isUserApp = (applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0;
+            boolean hasLaunchIntent = mPackageManager.getLaunchIntentForPackage(applicationInfo.packageName) != null;
+            if (isUserApp || hasLaunchIntent) {
                 ResolveInfo resolveInfo = new ResolveInfo();
                 resolveInfo.resolvePackageName = applicationInfo.packageName;
                 resolveInfoList.add(resolveInfo);

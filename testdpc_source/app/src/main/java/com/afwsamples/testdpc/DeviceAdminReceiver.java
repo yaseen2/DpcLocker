@@ -108,6 +108,7 @@ public class DeviceAdminReceiver extends android.app.admin.DeviceAdminReceiver {
                 // Re-evaluate all installed packages and re-enforce suspensions
                 SecurityPipelineManager.onBootCompleted(context);
                 // Flush and resume background AI audits for pending apps
+                AiAppAuditor.initNetworkCallback(context);
                 AiAppAuditor.processPendingAudits(context);
             }
         }

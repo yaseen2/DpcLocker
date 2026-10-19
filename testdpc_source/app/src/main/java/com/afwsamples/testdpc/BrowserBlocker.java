@@ -14,6 +14,7 @@ import android.os.UserHandle;
 import android.util.Log;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * =========================================================================================
@@ -223,6 +224,56 @@ public class BrowserBlocker {
             if (httpResolvers != null && !httpResolvers.isEmpty()) {
                 Log.i(TAG, "Package " + packageName + " confirmed as open-ended HTTP Web Browser");
                 return true;
+            }
+
+            // Step 6: Dynamic Check 4 - Generic HTTPS ACTION_VIEW (without requiring CATEGORY_BROWSABLE)
+            // Catches browsers that omit CATEGORY_BROWSABLE to avoid default handler dialogs (e.g. Orbit Browser)
+            Intent genericViewIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"));
+            genericViewIntent.setPackage(packageName);
+            List<ResolveInfo> genericResolvers = pm.queryIntentActivities(genericViewIntent, 0);
+            if (genericResolvers != null && !genericResolvers.isEmpty()) {
+                Log.i(TAG, "Package " + packageName + " confirmed as Web Browser via generic ACTION_VIEW");
+                return true;
+            }
+
+            // Step 7: Dynamic Check 5 - Standard Web Search Intent Filter
+            Intent webSearchIntent = new Intent(Intent.ACTION_WEB_SEARCH);
+            webSearchIntent.setPackage(packageName);
+            List<ResolveInfo> searchResolvers = pm.queryIntentActivities(webSearchIntent, 0);
+            if (searchResolvers != null && !searchResolvers.isEmpty()) {
+                Log.i(TAG, "Package " + packageName + " confirmed as Web Browser via ACTION_WEB_SEARCH");
+                return true;
+            }
+
+            // Step 8: Dynamic Check 6 - Targeted Web Browser Signature Check
+            // Inspect package name and application label for browser identifiers, verifying INTERNET permission
+            String lowerPkg = packageName.toLowerCase(Locale.US);
+
+            // Direct recognition of unmanaged browser conduits (Google Go, AOSP Browser)
+            if ("com.google.android.apps.searchlite".equals(lowerPkg) || "com.android.browser".equals(lowerPkg)) {
+                Log.i(TAG, "Package " + packageName + " confirmed as unmanaged Web Browser conduit");
+                return true;
+            }
+
+            CharSequence labelSeq = pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0));
+            String lowerLabel = (labelSeq != null) ? labelSeq.toString().toLowerCase(Locale.US) : "";
+
+            boolean hasBrowserKeyword = lowerPkg.contains("browser") || lowerPkg.contains("smartbrowse") ||
+                    lowerPkg.contains("astroorbit") || lowerLabel.contains("browser");
+
+            if (hasBrowserKeyword) {
+                // Ensure it is not a file browser, photo browser, or database viewer
+                boolean isFileManager = lowerPkg.contains("filemanager") || lowerPkg.contains("fileexplorer") ||
+                        lowerPkg.contains("explorer.file") || lowerPkg.contains("db.browser") ||
+                        lowerLabel.contains("file manager") || lowerLabel.contains("file explorer");
+
+                if (!isFileManager) {
+                    int internetPerm = pm.checkPermission(android.Manifest.permission.INTERNET, packageName);
+                    if (internetPerm == PackageManager.PERMISSION_GRANTED) {
+                        Log.i(TAG, "Package " + packageName + " (" + lowerLabel + ") confirmed as Web Browser via signature & INTERNET permission");
+                        return true;
+                    }
+                }
             }
 
         } catch (Exception e) {

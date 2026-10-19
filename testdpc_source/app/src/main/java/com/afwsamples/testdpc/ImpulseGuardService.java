@@ -728,6 +728,24 @@ public class ImpulseGuardService extends AccessibilityService {
         // and evaluate if the daily time allowance has been exhausted.
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             handleAppTimerWindowStateChange(packageName);
+
+            // =================================================================================
+            // PHASE 0.1: PROACTIVE BLOCKLIST HARD-ENFORCEMENT
+            // =================================================================================
+            if (SecurityConfig.isBlocklisted(this, packageName)) {
+                Log.w(TAG, "🚨 Proactive blocklist violation: [" + packageName + "] opened! Kicking to home.");
+                performGlobalAction(GLOBAL_ACTION_HOME);
+                try {
+                    DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
+                    if (dpm != null && dpm.isDeviceOwnerApp(getPackageName())) {
+                        dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(this), new String[]{packageName}, true);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error suspending blocklisted package " + packageName, e);
+                }
+                mHandler.post(() -> Toast.makeText(ImpulseGuardService.this, "🚫 " + packageName + " is blocked by security policy.", Toast.LENGTH_SHORT).show());
+                return;
+            }
         }
 
         // =================================================================================

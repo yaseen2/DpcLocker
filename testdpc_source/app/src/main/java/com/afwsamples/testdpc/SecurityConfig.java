@@ -55,6 +55,20 @@ public class SecurityConfig {
     public static final String KEY_NOTORIOUS_SET = "blocked_packages";
 
     /**
+     * Critical immutable operating system packages that must never be suspended or blocked.
+     * Suspending these could cause bootloops or lock the user out of the device.
+     */
+    public static final Set<String> IMMUTABLE_CORE_PACKAGES = new HashSet<>(Arrays.asList(
+            "com.afwsamples.testdpc",                 // TestDPC itself (Device Owner)
+            "android",                                // Android OS core framework
+            "com.android.systemui",                   // Android Navigation Bar, Status Bar, Quick Settings
+            "com.android.settings",                   // Android System Settings
+            "com.google.android.inputmethod.latin",   // Gboard / Virtual Keyboard (required for lockscreen PIN/password)
+            "com.google.android.apps.nexuslauncher",  // Pixel / AOSP Home Launcher
+            "com.android.vending"                     // Google Play Store
+    ));
+
+    /**
      * Set of core operating system packages and critical utilities.
      * These apps are hard-exempt from any suspension, blocking, or AI auditing.
      * Note: "com.google.android.youtube" is handled with custom logic in isWhitelisted().
@@ -228,11 +242,17 @@ public class SecurityConfig {
      *
      * Evaluation Hierarchy:
      *   1. Empty/null -> considered safe (returns true).
-     *   2. System core packages -> returns true.
-     *   3. System prefixes ("com.android.", "com.google.android.") -> returns true,
-     *      EXCEPT for "com.google.android.youtube" which must be regulated by AppTimerManager.
-     *   4. Custom user whitelist -> returns true if present.
-     *   5. Otherwise -> returns false.
+     *   2. Immutable OS core packages (Settings, Framework, SystemUI, TestDPC, Gboard, Launcher, Vending) -> returns true.
+     *   3. Explicit custom user blocklist -> returns false (User's manual blocklist ALWAYS takes precedence!).
+     *   4. Custom user whitelist -> returns true if present in user whitelist.
+     *   5. Default notorious packages (YouTube, TikTok, Reddit, etc.) -> returns false.
+     *   6. Apps with configured usage timers (AppTimerManager) -> returns false (regulated by timer).
+     *   7. Consumer Google apps / Alternative Browsers (Google Go, YouTube Music, YouTube Kids, AOSP Browser) -> returns false.
+     *   8. Static system core utility packages (Maps, Gmail, Photos, Calculator, Clock, WhatsApp) -> returns true.
+     *   9. System framework namespace prefixes ("com.android.", "com.google.android."):
+     *      - Consumer app namespace ("com.google.android.apps.") -> returns false (must be inspectable/blockable).
+     *      - Low-level OS framework services (GMS, GSF, telephony, package installer, etc.) -> returns true.
+     *  10. Otherwise -> returns false.
      *
      * @param context     Application context
      * @param packageName Package identifier to test
@@ -242,42 +262,101 @@ public class SecurityConfig {
         if (packageName == null || packageName.isEmpty()) return true;
         String lower = packageName.trim().toLowerCase();
 
-        // Check against static system core packages and safe system namespace prefixes
-        if (SYSTEM_CORE_PACKAGES.contains(lower) || lower.startsWith("com.afwsamples.testdpc") ||
-                lower.startsWith("com.android.") || lower.startsWith("com.google.android.")) {
-            // Explicit exceptions: YouTube (has timer limits) and AOSP browser (unmanaged web conduit)
-            if ("com.google.android.youtube".equals(lower) || "com.android.browser".equals(lower)) {
-                return false;
-            }
+        // 1. Immutable OS bedrock - critical packages that cannot be suspended without bricking the device
+        if (IMMUTABLE_CORE_PACKAGES.contains(lower)) {
             return true;
         }
 
-        // Check user custom whitelist set
+        // 2. Explicit custom user blocklist: If the user manually added this package, it is NEVER whitelisted!
+        if (getCustomUserBlocklist(context).contains(lower)) {
+            return false;
+        }
+
+        // 3. User custom whitelist: user explicitly whitelisted this package in the UI
         Set<String> userWhitelist = getUserWhitelist(context);
-        return userWhitelist.contains(lower);
+        if (userWhitelist.contains(lower)) {
+            return true;
+        }
+
+        // 4. Default notorious packages (e.g. YouTube, TikTok, Reddit, Twitter)
+        for (String notorious : DEFAULT_NOTORIOUS_PACKAGES) {
+            if (notorious.equalsIgnoreCase(lower)) {
+                return false;
+            }
+        }
+
+        // 5. Apps with active usage quotas (regulated by AppTimerManager)
+        if (AppTimerManager.getAppLimitMinutes(context, lower) > 0) {
+            return false;
+        }
+
+        // 6. Known Google consumer apps & alternative browsers that bypass enterprise Chrome restrictions
+        if ("com.google.android.apps.searchlite".equals(lower) ||      // Google Go (unmanaged browser)
+                "com.google.android.apps.youtube.music".equals(lower) || // YouTube Music
+                "com.google.android.apps.youtube.kids".equals(lower) ||  // YouTube Kids
+                "com.google.android.youtube".equals(lower) ||            // YouTube
+                "com.android.browser".equals(lower)) {                   // AOSP Browser
+            return false;
+        }
+
+        // 7. Static system core utility packages (e.g. Maps, Gmail, Photos, Calculator, Clock, WhatsApp)
+        if (SYSTEM_CORE_PACKAGES.contains(lower)) {
+            return true;
+        }
+
+        // 8. System framework namespace prefixes:
+        // Exclude Google consumer applications under "com.google.android.apps." so they can be blocked/audited
+        if (lower.startsWith("com.google.android.apps.")) {
+            return false;
+        }
+
+        // Low-level Android framework and Google Play Services (e.g. com.google.android.gms, com.android.phone)
+        if (lower.startsWith("com.android.") || lower.startsWith("com.google.android.")) {
+            return true;
+        }
+
+        return false;
     }
 
     // =====================================================================================
     // SECTION 3: Unified User Proactive Blocklist
     // =====================================================================================
 
+    // Key storing explicitly removed notorious packages
+    public static final String KEY_REMOVED_NOTORIOUS = "removed_notorious_packages";
+
+    /**
+     * Returns strictly the custom packages manually added to the blocklist by the user.
+     * Does NOT include the hardcoded default notorious packages.
+     */
+    public static Set<String> getCustomUserBlocklist(Context context) {
+        SharedPreferences primaryPrefs = getPrefs(context);
+        Set<String> userSet = primaryPrefs.getStringSet(KEY_USER_BLOCKLIST, null);
+        if (userSet != null) {
+            return new HashSet<>(userSet);
+        }
+        return new HashSet<>();
+    }
+
     /**
      * Returns the aggregated set of blocked packages merged across:
-     * 1. Built-in DEFAULT_NOTORIOUS_PACKAGES
-     * 2. Modern unified blocklist store
+     * 1. Built-in DEFAULT_NOTORIOUS_PACKAGES (minus any explicitly removed by user)
+     * 2. Modern unified custom blocklist store (getCustomUserBlocklist)
      * 3. Legacy "proactive_package_blocklist"
      * 4. Legacy "dpclocker_notorious_blocker"
      */
     public static Set<String> getUserBlocklist(Context context) {
-        // Start with default hardcoded notorious apps
-        Set<String> result = new HashSet<>(Arrays.asList(DEFAULT_NOTORIOUS_PACKAGES));
-
-        // 1. Load and merge from primary config
         SharedPreferences primaryPrefs = getPrefs(context);
-        Set<String> userSet = primaryPrefs.getStringSet(KEY_USER_BLOCKLIST, null);
-        if (userSet != null) {
-            result.addAll(userSet);
+
+        // Start with default hardcoded notorious apps minus any explicitly removed
+        Set<String> result = new HashSet<>(Arrays.asList(DEFAULT_NOTORIOUS_PACKAGES));
+        Set<String> removedSet = primaryPrefs.getStringSet(KEY_REMOVED_NOTORIOUS, null);
+        if (removedSet != null) {
+            result.removeAll(removedSet);
         }
+
+        // 1. Load and merge from custom user blocklist
+        result.addAll(getCustomUserBlocklist(context));
 
         // 2. Merge from legacy proactive_package_blocklist
         SharedPreferences proactivePrefs = context.getSharedPreferences(PREFS_PROACTIVE_BLOCKLIST, Context.MODE_PRIVATE);
@@ -307,20 +386,30 @@ public class SecurityConfig {
         if (packageName == null || packageName.trim().isEmpty()) return;
         String lower = packageName.trim().toLowerCase();
 
-        Set<String> blocklist = getUserBlocklist(context);
-        blocklist.add(lower);
+        // 1. Update custom user set
+        Set<String> customList = getCustomUserBlocklist(context);
+        customList.add(lower);
+        getPrefs(context).edit().putStringSet(KEY_USER_BLOCKLIST, customList).apply();
 
-        // 1. Synchronize persistence across all preference files
-        getPrefs(context).edit().putStringSet(KEY_USER_BLOCKLIST, blocklist).apply();
+        // 2. If it was in removed notorious, un-remove it
+        SharedPreferences primaryPrefs = getPrefs(context);
+        Set<String> removedSet = primaryPrefs.getStringSet(KEY_REMOVED_NOTORIOUS, null);
+        if (removedSet != null && removedSet.contains(lower)) {
+            Set<String> newRemoved = new HashSet<>(removedSet);
+            newRemoved.remove(lower);
+            primaryPrefs.edit().putStringSet(KEY_REMOVED_NOTORIOUS, newRemoved).apply();
+        }
+
+        // 3. Update legacy stores for compatibility
         context.getSharedPreferences(PREFS_PROACTIVE_BLOCKLIST, Context.MODE_PRIVATE)
-                .edit().putStringSet(KEY_PROACTIVE_SET, blocklist).apply();
+                .edit().putStringSet(KEY_PROACTIVE_SET, customList).apply();
         context.getSharedPreferences(PREFS_NOTORIOUS, Context.MODE_PRIVATE)
-                .edit().putStringSet(KEY_NOTORIOUS_SET, blocklist).apply();
+                .edit().putStringSet(KEY_NOTORIOUS_SET, customList).apply();
 
-        // 2. Update pipeline cache so subsequent accessibility checks instantly reject this app
+        // 4. Update pipeline cache so subsequent accessibility checks instantly reject this app
         SecurityPipelineManager.markPackageBlocked(context, lower);
 
-        // 3. Immediate enterprise suspension if installed on device
+        // 5. Immediate enterprise suspension if installed on device
         try {
             DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
             ComponentName admin = DeviceAdminReceiver.getComponentName(context);
@@ -346,25 +435,42 @@ public class SecurityConfig {
         if (packageName == null) return;
         String lower = packageName.trim().toLowerCase();
 
-        Set<String> blocklist = getUserBlocklist(context);
-        blocklist.remove(lower);
+        // 1. Remove from custom user set
+        Set<String> customList = getCustomUserBlocklist(context);
+        customList.remove(lower);
+        getPrefs(context).edit().putStringSet(KEY_USER_BLOCKLIST, customList).apply();
 
-        // 1. Synchronize persistence across all preference files
-        getPrefs(context).edit().putStringSet(KEY_USER_BLOCKLIST, blocklist).apply();
+        // 2. If this was a default notorious package, record in removed_notorious
+        boolean isDefaultNotorious = false;
+        for (String notorious : DEFAULT_NOTORIOUS_PACKAGES) {
+            if (notorious.equalsIgnoreCase(lower)) {
+                isDefaultNotorious = true;
+                break;
+            }
+        }
+        if (isDefaultNotorious) {
+            Set<String> removedSet = new HashSet<>(getPrefs(context).getStringSet(KEY_REMOVED_NOTORIOUS, new HashSet<String>()));
+            removedSet.add(lower);
+            getPrefs(context).edit().putStringSet(KEY_REMOVED_NOTORIOUS, removedSet).apply();
+        }
+
+        // 3. Sync legacy stores
         context.getSharedPreferences(PREFS_PROACTIVE_BLOCKLIST, Context.MODE_PRIVATE)
-                .edit().putStringSet(KEY_PROACTIVE_SET, blocklist).apply();
+                .edit().putStringSet(KEY_PROACTIVE_SET, customList).apply();
         context.getSharedPreferences(PREFS_NOTORIOUS, Context.MODE_PRIVATE)
-                .edit().putStringSet(KEY_NOTORIOUS_SET, blocklist).apply();
+                .edit().putStringSet(KEY_NOTORIOUS_SET, customList).apply();
 
-        // 2. Mark package safe in pipeline cache
+        // 4. Mark package safe in pipeline cache
         SecurityPipelineManager.markPackageSafe(context, lower);
 
-        // 3. Unsuspend package if currently installed
+        // 5. Unsuspend package if currently installed (and not locked by AppTimerManager)
         try {
             DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
             ComponentName admin = DeviceAdminReceiver.getComponentName(context);
             if (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName())) {
-                dpm.setPackagesSuspended(admin, new String[]{lower}, false);
+                if (!AppTimerManager.isDailyLimitExceeded(context, lower)) {
+                    dpm.setPackagesSuspended(admin, new String[]{lower}, false);
+                }
             }
         } catch (Exception e) {
             Log.w(TAG, "Could not unsuspend package: " + lower);
@@ -378,9 +484,11 @@ public class SecurityConfig {
      * Evaluates whether a package is considered blocklisted.
      *
      * Rules:
-     *   1. If whitelisted -> NEVER blocked (returns false).
-     *   2. If found in getUserBlocklist() -> returns true.
-     *   3. Otherwise -> returns false.
+     *   1. If in IMMUTABLE_CORE_PACKAGES -> NEVER blocked (returns false).
+     *   2. If found in getCustomUserBlocklist() -> ALWAYS blocked (returns true).
+     *   3. If found in getUserWhitelist() -> whitelisted by user (returns false).
+     *   4. If found in getUserBlocklist() -> blocked (returns true).
+     *   5. Otherwise -> returns false.
      *
      * @param context     Application context
      * @param packageName Package identifier to test
@@ -390,11 +498,22 @@ public class SecurityConfig {
         if (packageName == null || packageName.isEmpty()) return false;
         String lower = packageName.trim().toLowerCase();
 
-        // Whitelist always takes absolute precedence
-        if (isWhitelisted(context, lower)) {
+        // 1. Immutable OS bedrock can NEVER be blocklisted
+        if (IMMUTABLE_CORE_PACKAGES.contains(lower)) {
             return false;
         }
 
+        // 2. Explicit custom user blocklist ALWAYS takes absolute precedence!
+        if (getCustomUserBlocklist(context).contains(lower)) {
+            return true;
+        }
+
+        // 3. User custom whitelist takes precedence over default notorious apps
+        if (getUserWhitelist(context).contains(lower)) {
+            return false;
+        }
+
+        // 4. Default notorious list or legacy stores
         Set<String> blocklist = getUserBlocklist(context);
         return blocklist.contains(lower);
     }
