@@ -156,8 +156,17 @@ public class ImpulseGuardService extends AccessibilityService {
     // Main thread Handler for UI interactions and scheduled delays
     private final Handler mHandler = new Handler(Looper.getMainLooper());
 
-    // Single-thread background executor to serialize AI requests and screenshot processing
+    // Single-thread background executor to serialize cloud AI requests
     private final ExecutorService mBgExecutor = Executors.newSingleThreadExecutor();
+
+    // Dedicated single-thread executor for low-latency on-device screenshot & Falcons ViT processing
+    private final ExecutorService mVisionExecutor = Executors.newSingleThreadExecutor();
+
+    // Timestamp of last expired-suspension cleanup check (throttled to once every 5s)
+    private long mLastSuspensionCleanupTime = 0L;
+
+    // Dynamically registered broadcast receiver reference for clean lifecycle unregistration
+    private BroadcastReceiver mServiceReceiver = null;
 
     // In-memory caches to deduplicate evaluation events and prevent duplicate penalties
     private final ConcurrentHashMap<String, String> mLastEvaluatedTextMap = new ConcurrentHashMap<>();
@@ -205,6 +214,7 @@ public class ImpulseGuardService extends AccessibilityService {
      */
     private static final Set<String> DEFAULT_BROWSERS = new HashSet<>(Arrays.asList(
             "com.android.chrome",
+            "com.google.android.googlequicksearchbox",
             "com.google.android.youtube",
             "app.revanced.android.youtube",
             "org.mozilla.firefox",
@@ -625,7 +635,13 @@ public class ImpulseGuardService extends AccessibilityService {
         filter.addAction(ACTION_RUN_FALCONS_DIAGNOSTICS);
         filter.addAction(Intent.ACTION_SCREEN_OFF);
 
-        registerReceiver(new BroadcastReceiver() {
+        if (mServiceReceiver != null) {
+            try {
+                unregisterReceiver(mServiceReceiver);
+            } catch (Exception ignored) {
+            }
+        }
+        mServiceReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if (intent == null) return;
@@ -634,7 +650,7 @@ public class ImpulseGuardService extends AccessibilityService {
                 // Benchmarking trigger: runs on-device Falcons.ai ViT engine diagnostics in background
                 if (ACTION_RUN_FALCONS_DIAGNOSTICS.equals(action)) {
                     Log.i(TAG, "Received ACTION_RUN_FALCONS_DIAGNOSTICS. Triggering hardware benchmarks...");
-                    mBgExecutor.execute(() -> {
+                    mVisionExecutor.execute(() -> {
                         String report = FalconsVisionGuardEngine.runSelfDiagnostics(ImpulseGuardService.this);
                         Log.i("FalconsDiagnostic", "\n" + report);
                     });
@@ -645,7 +661,8 @@ public class ImpulseGuardService extends AccessibilityService {
                     commitActiveSessionUsage();
                 }
             }
-        }, filter);
+        };
+        registerReceiver(mServiceReceiver, filter);
     }
 
     /**
@@ -658,6 +675,13 @@ public class ImpulseGuardService extends AccessibilityService {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        if (mServiceReceiver != null) {
+            try {
+                unregisterReceiver(mServiceReceiver);
+            } catch (Exception ignored) {
+            }
+            mServiceReceiver = null;
+        }
         // Persist accumulated active session time before process termination
         commitActiveSessionUsage();
     }
@@ -784,8 +808,20 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         }
 
-        // Housekeeping: purge any suspensions that have finished their lockout penalty duration
-        checkAndCleanExpiredSuspensions();
+        // =================================================================================
+        // PHASE 2: SYSTEM WHITELIST PROTECTION (Fast-Exit Before IPC & Disk Reads)
+        // =================================================================================
+        // Exempt critical OS components (launchers, system UI), keyboards/IMEs, and TestDPC
+        if (SYSTEM_WHITELIST.contains(packageName) || packageName.startsWith("com.afwsamples.testdpc") || packageName.contains("inputmethod") || packageName.contains("keyboard")) {
+            return;
+        }
+
+        // Housekeeping (throttled to every 5s): purge any suspensions that have finished their lockout penalty duration
+        long nowMs = System.currentTimeMillis();
+        if (nowMs - mLastSuspensionCleanupTime >= 5000L) {
+            mLastSuspensionCleanupTime = nowMs;
+            checkAndCleanExpiredSuspensions();
+        }
 
         // Check if either inspection engine is active in SharedPreferences
         boolean geminiActive = GeminiGuardEngine.isEnabled(this);
@@ -811,24 +847,18 @@ public class ImpulseGuardService extends AccessibilityService {
         }
 
         // =================================================================================
-        // PHASE 2: SYSTEM WHITELIST PROTECTION
-        // =================================================================================
-        // Exempt critical OS components (launchers, system UI), keyboards/IMEs, and TestDPC
-        if (SYSTEM_WHITELIST.contains(packageName) || packageName.startsWith("com.afwsamples.testdpc") || packageName.contains("inputmethod") || packageName.contains("keyboard")) {
-            return;
-        }
-
-        // =================================================================================
         // PHASE 3: MONITORED APPS REGISTRY & DYNAMIC DISCOVERY
         // =================================================================================
         // Only inspect apps that the user/admin has registered for monitoring
         if (!isMonitoredApp(this, packageName)) {
-            // Dynamic Pull: If this app looks like a web browser or search engine and hasn't been
-            // dismissed before, prompt user with an interactive notification asking to monitor it
-            if (isLikelyBrowserOrSearchApp(packageName) && !isNeverAskApp(this, packageName)) {
-                triggerAppMonitoringNotificationPull(packageName);
+            // Mandatory Browser Auto-Enrollment: If this app looks like a web browser or search engine,
+            // enroll it into live monitoring automatically so users cannot bypass via "Keep Whitelisted".
+            if (isLikelyBrowserOrSearchApp(packageName)) {
+                setMonitoredApp(this, packageName, true);
+                Log.i(TAG, "Auto-enrolled detected browser/search app into Impulse Guard monitoring: " + packageName);
+            } else {
+                return; // Not monitored; bypass inspection
             }
-            return; // Not monitored; bypass inspection
         }
 
         // =================================================================================
@@ -902,8 +932,8 @@ public class ImpulseGuardService extends AccessibilityService {
                                 }
                             };
 
-                            // Schedule execution after 1200ms idle pause
-                            mHandler.postDelayed(mPendingAuditRunnable, 1200);
+                            // Schedule execution after 650ms idle pause
+                            mHandler.postDelayed(mPendingAuditRunnable, 650);
                         }
                     }
                 }
@@ -1035,51 +1065,72 @@ public class ImpulseGuardService extends AccessibilityService {
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     try {
-                        takeScreenshot(Display.DEFAULT_DISPLAY, mBgExecutor, new TakeScreenshotCallback() {
+                        takeScreenshot(Display.DEFAULT_DISPLAY, mVisionExecutor, new TakeScreenshotCallback() {
                             @Override
                             public void onSuccess(ScreenshotResult screenshotResult) {
+                                HardwareBuffer hardwareBuffer = null;
+                                Bitmap bitmap = null;
+                                Bitmap scaledBitmap = null;
                                 try {
                                     mLastProbationScanTimestamp = System.currentTimeMillis();
-                                    HardwareBuffer hardwareBuffer = screenshotResult.getHardwareBuffer();
+                                    hardwareBuffer = screenshotResult.getHardwareBuffer();
                                     ColorSpace colorSpace = screenshotResult.getColorSpace();
-                                    Bitmap bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace);
+                                    if (hardwareBuffer != null) {
+                                        bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace);
+                                    }
                                     if (bitmap != null) {
-                                        Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 512, 512, false);
+                                        scaledBitmap = Bitmap.createScaledBitmap(bitmap, 512, 512, false);
+                                        if (scaledBitmap != bitmap) {
+                                            bitmap.recycle();
+                                            bitmap = null;
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error wrapping probation hardware buffer", e);
+                                } finally {
+                                    if (bitmap != null && !bitmap.isRecycled() && bitmap != scaledBitmap) {
                                         bitmap.recycle();
-                                        hardwareBuffer.close();
+                                    }
+                                    if (hardwareBuffer != null) {
+                                        try {
+                                            hardwareBuffer.close();
+                                        } catch (Exception ignored) {
+                                        }
+                                    }
+                                }
 
-                                        if (scaledBitmap != null) {
-                                            Bitmap softwareBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, false);
-                                            if (scaledBitmap != softwareBitmap) {
-                                                scaledBitmap.recycle();
-                                            }
+                                try {
+                                    if (scaledBitmap != null) {
+                                        Bitmap softwareBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, false);
+                                        if (scaledBitmap != softwareBitmap) {
+                                            scaledBitmap.recycle();
+                                        }
 
-                                            if (softwareBitmap != null) {
-                                                AiAppAuditor.auditScreenshotAsync(ImpulseGuardService.this, packageName, softwareBitmap, new AiAppAuditor.ScreenshotAuditCallback() {
-                                                    @Override
-                                                    public void onResult(boolean isBrowserUi, double confidence, String reason) {
-                                                        mIsProbationScanInFlight = false;
-                                                        if (isBrowserUi && confidence >= 0.70) {
-                                                            Log.w(TAG, "🚨 VISUAL PROBATION REVOCATION for [" + packageName + "]: " + reason + " (confidence=" + confidence + ")");
-                                                            performGlobalAction(GLOBAL_ACTION_HOME);
-                                                            SecurityConfig.revokeProbation(ImpulseGuardService.this, packageName, reason);
-                                                            mHandler.post(new Runnable() {
-                                                                @Override
-                                                                public void run() {
-                                                                    Toast.makeText(ImpulseGuardService.this, "🔒 Unmanaged Web Browser Blocked: " + packageName, Toast.LENGTH_LONG).show();
-                                                                }
-                                                            });
-                                                        } else {
-                                                            int shots = SecurityConfig.incrementProbationShotCount(ImpulseGuardService.this, packageName);
-                                                            Log.i(TAG, "Visual probation clean shot #" + shots + " recorded for [" + packageName + "]");
-                                                            if (shots >= SecurityConfig.MAX_PROBATION_SHOTS) {
-                                                                SecurityConfig.graduateProbation(ImpulseGuardService.this, packageName);
+                                        if (softwareBitmap != null) {
+                                            AiAppAuditor.auditScreenshotAsync(ImpulseGuardService.this, packageName, softwareBitmap, new AiAppAuditor.ScreenshotAuditCallback() {
+                                                @Override
+                                                public void onResult(boolean isBrowserUi, double confidence, String reason) {
+                                                    mIsProbationScanInFlight = false;
+                                                    if (isBrowserUi && confidence >= 0.70) {
+                                                        Log.w(TAG, "🚨 VISUAL PROBATION REVOCATION for [" + packageName + "]: " + reason + " (confidence=" + confidence + ")");
+                                                        performGlobalAction(GLOBAL_ACTION_HOME);
+                                                        SecurityConfig.revokeProbation(ImpulseGuardService.this, packageName, reason);
+                                                        mHandler.post(new Runnable() {
+                                                            @Override
+                                                            public void run() {
+                                                                Toast.makeText(ImpulseGuardService.this, "🔒 Unmanaged Web Browser Blocked: " + packageName, Toast.LENGTH_LONG).show();
                                                             }
+                                                        });
+                                                    } else {
+                                                        int shots = SecurityConfig.incrementProbationShotCount(ImpulseGuardService.this, packageName);
+                                                        Log.i(TAG, "Visual probation clean shot #" + shots + " recorded for [" + packageName + "]");
+                                                        if (shots >= SecurityConfig.MAX_PROBATION_SHOTS) {
+                                                            SecurityConfig.graduateProbation(ImpulseGuardService.this, packageName);
                                                         }
                                                     }
-                                                });
-                                                return;
-                                            }
+                                                }
+                                            });
+                                            return;
                                         }
                                     }
                                 } catch (Exception e) {
@@ -1162,67 +1213,80 @@ public class ImpulseGuardService extends AccessibilityService {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     try {
                         // Request an instantaneous, secure screenshot of the default display without overlaying chrome
-                        takeScreenshot(Display.DEFAULT_DISPLAY, mBgExecutor, new TakeScreenshotCallback() {
+                        takeScreenshot(Display.DEFAULT_DISPLAY, mVisionExecutor, new TakeScreenshotCallback() {
                             @Override
                             public void onSuccess(ScreenshotResult screenshotResult) {
+                                HardwareBuffer hardwareBuffer = null;
+                                Bitmap bitmap = null;
+                                Bitmap scaledBitmap = null;
                                 try {
                                     mLastFalconsScanTimestamp = System.currentTimeMillis();
 
                                     // Extract the low-level GPU hardware buffer and color space
-                                    HardwareBuffer hardwareBuffer = screenshotResult.getHardwareBuffer();
+                                    hardwareBuffer = screenshotResult.getHardwareBuffer();
                                     ColorSpace colorSpace = screenshotResult.getColorSpace();
 
                                     // Wrap the hardware buffer into an Android Bitmap without copying pixels
-                                    Bitmap bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace);
+                                    if (hardwareBuffer != null) {
+                                        bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace);
+                                    }
                                     if (bitmap != null) {
                                         // High-speed downscale directly from GPU hardware buffer to 224x224.
                                         // This critically eliminates copying a 1080x2400 (10MB+) software bitmap.
-                                        Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 224, 224, false);
-                                        bitmap.recycle(); // Free the native hardware buffer wrapper
-                                        hardwareBuffer.close(); // Release the hardware buffer handle
+                                        scaledBitmap = Bitmap.createScaledBitmap(bitmap, 224, 224, false);
+                                        if (scaledBitmap != bitmap) {
+                                            bitmap.recycle(); // Free the native hardware buffer wrapper
+                                            bitmap = null;
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error wrapping Falcons hardware buffer", e);
+                                } finally {
+                                    if (bitmap != null && !bitmap.isRecycled() && bitmap != scaledBitmap) {
+                                        bitmap.recycle();
+                                    }
+                                    if (hardwareBuffer != null) {
+                                        try {
+                                            hardwareBuffer.close(); // Always release the hardware buffer handle
+                                        } catch (Exception ignored) {
+                                        }
+                                    }
+                                }
 
-                                        if (scaledBitmap != null) {
-                                            // Convert the 224x224 hardware bitmap into software ARGB_8888 for TensorFlow Lite input
-                                            Bitmap softwareBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, false);
-                                            if (scaledBitmap != softwareBitmap) {
-                                                scaledBitmap.recycle();
-                                            }
+                                try {
+                                    if (scaledBitmap != null) {
+                                        // Convert the 224x224 hardware bitmap into software ARGB_8888 for ONNX Runtime input
+                                        Bitmap softwareBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, false);
+                                        if (scaledBitmap != softwareBitmap) {
+                                            scaledBitmap.recycle();
+                                        }
 
-                                            if (softwareBitmap != null) {
-                                                // Optional diagnostic: save the downscaled frame to disk for developer verification
-                                                try {
-                                                    File debugFile = new File(getFilesDir(), "falcons_debug_last_frame.jpg");
-                                                    try (FileOutputStream fos = new FileOutputStream(debugFile)) {
-                                                        softwareBitmap.compress(Bitmap.CompressFormat.JPEG, 85, fos);
-                                                    }
-                                                } catch (Exception ignored) {}
+                                        if (softwareBitmap != null) {
+                                            // Run on-device ViT inference using the FalconsVisionGuardEngine
+                                            FalconsVisionGuardEngine.VisionResult result =
+                                                    FalconsVisionGuardEngine.evaluateBitmap(ImpulseGuardService.this, packageName, softwareBitmap);
+                                            softwareBitmap.recycle(); // Immediately free software pixel memory
 
-                                                // Run on-device ViT inference using the FalconsVisionGuardEngine
-                                                FalconsVisionGuardEngine.VisionResult result =
-                                                        FalconsVisionGuardEngine.evaluateBitmap(ImpulseGuardService.this, packageName, softwareBitmap);
-                                                softwareBitmap.recycle(); // Immediately free software pixel memory
+                                            // Evaluate AI classification verdict
+                                            if (result.isNsfw) {
+                                                long now = System.currentTimeMillis();
+                                                // 5-second grace cooldown to prevent recording multiple strikes for
+                                                // the exact same screen frame while the user is reacting or exiting
+                                                if (now - sLastStrikeTimestamp < 5000) {
+                                                    Log.i(TAG, "Falcons NSFW detected inside 5s grace cooldown. Skipping duplicate strike.");
+                                                } else {
+                                                    sLastStrikeTimestamp = now;
+                                                    // Atomically increment the persistent daily strike counter
+                                                    final int strikeCount = incrementDailyStrikes(ImpulseGuardService.this);
+                                                    Log.w(TAG, "🚨 FALCONS.AI VISUAL NSFW VIOLATION in [" + packageName + "] (NSFW=" + String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100) + ") -> STRIKE #" + strikeCount + " TODAY!");
 
-                                                // Evaluate AI classification verdict
-                                                if (result.isNsfw) {
-                                                    long now = System.currentTimeMillis();
-                                                    // 5-second grace cooldown to prevent recording multiple strikes for
-                                                    // the exact same screen frame while the user is reacting or exiting
-                                                    if (now - sLastStrikeTimestamp < 5000) {
-                                                        Log.i(TAG, "Falcons NSFW detected inside 5s grace cooldown. Skipping duplicate strike.");
-                                                    } else {
-                                                        sLastStrikeTimestamp = now;
-                                                        // Atomically increment the persistent daily strike counter
-                                                        final int strikeCount = incrementDailyStrikes(ImpulseGuardService.this);
-                                                        Log.w(TAG, "🚨 FALCONS.AI VISUAL NSFW VIOLATION in [" + packageName + "] (NSFW=" + String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100) + ") -> STRIKE #" + strikeCount + " TODAY!");
-
-                                                        // Post enforcement action to the Main UI thread
-                                                        mHandler.post(new Runnable() {
-                                                            @Override
-                                                            public void run() {
-                                                                handleVisualNsfwStrike(packageName, strikeCount);
-                                                            }
-                                                        });
-                                                    }
+                                                    // Post enforcement action to the Main UI thread
+                                                    mHandler.post(new Runnable() {
+                                                        @Override
+                                                        public void run() {
+                                                            handleVisualNsfwStrike(packageName, strikeCount);
+                                                        }
+                                                    });
                                                 }
                                             }
                                         }
@@ -1272,8 +1336,8 @@ public class ImpulseGuardService extends AccessibilityService {
         if (root == null) return null;
 
         StringBuilder sb = new StringBuilder();
-        // Use identity hash codes to detect and break recursive tree cycles
-        collectNodeTextRecursive(root, sb, new HashSet<Integer>());
+        // Use node hash codes and depth cap to detect and break recursive tree cycles
+        collectNodeTextRecursive(root, sb, new HashSet<Integer>(), 0);
 
         // Collapse consecutive whitespace into single spaces and trim
         String result = sb.toString().replaceAll("\\s+", " ").trim();
@@ -1296,11 +1360,11 @@ public class ImpulseGuardService extends AccessibilityService {
      * @param sb The StringBuilder accumulating screen text.
      * @param visited Set of identity hash codes tracking already visited nodes to prevent cycles.
      */
-    private void collectNodeTextRecursive(AccessibilityNodeInfo node, StringBuilder sb, Set<Integer> visited) {
-        if (node == null) return;
+    private void collectNodeTextRecursive(AccessibilityNodeInfo node, StringBuilder sb, Set<Integer> visited, int depth) {
+        if (node == null || depth > 35 || sb.length() > 4500) return;
 
-        // Cycle prevention check using object identity hash code
-        int id = System.identityHashCode(node);
+        // Cycle prevention check using AccessibilityNodeInfo structural hashCode
+        int id = node.hashCode();
         if (visited.contains(id)) return;
         visited.add(id);
 
@@ -1333,10 +1397,11 @@ public class ImpulseGuardService extends AccessibilityService {
             }
 
             // Recurse through all child nodes in the view hierarchy
-            for (int i = 0; i < node.getChildCount(); i++) {
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
                 AccessibilityNodeInfo child = node.getChild(i);
                 if (child != null) {
-                    collectNodeTextRecursive(child, sb, visited);
+                    collectNodeTextRecursive(child, sb, visited, depth + 1);
                 }
             }
         } catch (Exception ignored) {
@@ -1479,11 +1544,18 @@ public class ImpulseGuardService extends AccessibilityService {
         try {
             // Check root window node hierarchy
             AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root != null && inspectNodeForToggleScreen(root)) {
+            boolean[] flags = new boolean[2]; // [0] = hasServiceLabel, [1] = hasToggleOrDangerControl
+            if (root != null && inspectNodeForToggleScreen(root, new HashSet<Integer>(), 0, flags)) {
+                return true;
+            }
+            if (flags[0] && flags[1]) {
                 return true;
             }
             // Check event source node
-            if (event != null && event.getSource() != null && inspectNodeForToggleScreen(event.getSource())) {
+            if (event != null && event.getSource() != null && inspectNodeForToggleScreen(event.getSource(), new HashSet<Integer>(), 0, flags)) {
+                return true;
+            }
+            if (flags[0] && flags[1]) {
                 return true;
             }
             // Check event text list
@@ -1520,22 +1592,52 @@ public class ImpulseGuardService extends AccessibilityService {
 
     /**
      * Recursive DFS helper to inspect an accessibility node and its children for tamper triggers.
+     * Also detects language-independent toggle switches on an "Impulse Guard" detail page.
      *
      * @param node The current node to inspect.
      * @return True if this node or any child contains tamper triggers.
      */
-    private boolean inspectNodeForToggleScreen(AccessibilityNodeInfo node) {
-        if (node == null) return false;
+    private boolean inspectNodeForToggleScreen(AccessibilityNodeInfo node, Set<Integer> visited, int depth, boolean[] flags) {
+        if (node == null || depth > 35) return false;
+        int id = node.hashCode();
+        if (visited.contains(id)) return false;
+        visited.add(id);
+
+        CharSequence className = node.getClassName();
+        if (className != null) {
+            String cls = className.toString().toLowerCase(Locale.US);
+            if (cls.contains("switch") || cls.contains("togglebutton")) {
+                flags[1] = true;
+            }
+        }
 
         // Check node primary text
         CharSequence text = node.getText();
-        if (text != null && isTriggerTamperText(text.toString())) {
-            return true;
+        if (text != null) {
+            String str = text.toString();
+            if (isTriggerTamperText(str)) {
+                return true;
+            }
+            String lower = str.toLowerCase(Locale.US);
+            if (lower.equals("impulse guard") || lower.contains("impulse guard:")) {
+                flags[0] = true;
+            }
         }
 
         // Check node accessibility content description
         CharSequence desc = node.getContentDescription();
-        if (desc != null && isTriggerTamperText(desc.toString())) {
+        if (desc != null) {
+            String str = desc.toString();
+            if (isTriggerTamperText(str)) {
+                return true;
+            }
+            String lower = str.toLowerCase(Locale.US);
+            if (lower.equals("impulse guard") || lower.contains("impulse guard:")) {
+                flags[0] = true;
+            }
+        }
+
+        if (flags[0] && flags[1]) {
             return true;
         }
 
@@ -1544,30 +1646,31 @@ public class ImpulseGuardService extends AccessibilityService {
         for (int i = 0; i < count; i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
-                if (inspectNodeForToggleScreen(child)) {
+                if (inspectNodeForToggleScreen(child, visited, depth + 1, flags)) {
                     return true;
                 }
             }
         }
-        return false;
+        return flags[0] && flags[1];
     }
 
     /**
-     * Filters out non-query placeholder strings, hints, breadcrumbs, and raw web URLs.
+     * Filters out non-query placeholder strings, hints, and breadcrumbs.
+     * Allows typed/pasted URLs so their stripped domains and paths are evaluated by Phase 4.
      *
      * @param str The candidate text string.
-     * @return True if the string represents an actual user search term.
+     * @return True if the string represents an actual user search term or URL.
      */
     private boolean isMeaningfulSearchText(String str) {
         if (str == null || str.length() < 3) return false;
-        String lower = str.toLowerCase(Locale.US);
+        String lower = str.toLowerCase(Locale.US).trim();
 
-        // Filter out search placeholders, navigation indicators, and raw URLs
+        // Filter out search placeholders, navigation indicators, and bare URL prefixes without domain
         if (str.startsWith(">>") || lower.startsWith(">>") ||
                 lower.equals("search with meta ai") || lower.equals("search google or type url") ||
                 lower.equals("search or type url") || lower.equals("search youtube") ||
                 lower.equals("search") || lower.equals("application icon") ||
-                lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("www.")) {
+                lower.equals("http://") || lower.equals("https://") || lower.equals("www.")) {
             return false;
         }
         return true;
@@ -1619,9 +1722,18 @@ public class ImpulseGuardService extends AccessibilityService {
      * @return Extracted meaningful search query text, or null.
      */
     private String findSearchNodeText(AccessibilityNodeInfo node) {
-        if (node == null) {
+        return findSearchNodeTextRecursive(node, new HashSet<Integer>(), 0);
+    }
+
+    private String findSearchNodeTextRecursive(AccessibilityNodeInfo node, Set<Integer> visited, int depth) {
+        if (node == null || depth > 25) {
             return null;
         }
+        int id = node.hashCode();
+        if (visited.contains(id)) {
+            return null;
+        }
+        visited.add(id);
 
         // Check if current node is a search/input node with meaningful text
         if (isSearchOrInputNode(node)) {
@@ -1635,10 +1747,11 @@ public class ImpulseGuardService extends AccessibilityService {
         }
 
         // Recurse through children
-        for (int i = 0; i < node.getChildCount(); i++) {
+        int count = node.getChildCount();
+        for (int i = 0; i < count; i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
-                String childText = findSearchNodeText(child);
+                String childText = findSearchNodeTextRecursive(child, visited, depth + 1);
                 if (childText != null) {
                     return childText;
                 }
@@ -1680,6 +1793,24 @@ public class ImpulseGuardService extends AccessibilityService {
 
         // Evaluate query through GeminiGuardEngine
         GeminiGuardEngine.EvaluationResult result = GeminiGuardEngine.evaluateTextDetailed(this, packageName, typedText);
+
+        // If an earlier request was still in flight, clear deduplication entry and retry shortly so the final query is never dropped
+        if ("request_in_flight".equals(result.reason)) {
+            mLastEvaluatedTextMap.remove(packageName);
+            final String retryQuery = typedText;
+            mHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    mBgExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            evaluateAndEnforceImpulseGuard(packageName, retryQuery);
+                        }
+                    });
+                }
+            }, 500);
+            return;
+        }
 
         if (result.isRisky) {
             // Immediate lockout enforcement
@@ -1738,7 +1869,7 @@ public class ImpulseGuardService extends AccessibilityService {
      * ----------------------------------------------------------------------
      * Strike 1: Press BACK button to dismiss offending content + Warning Toast (1/2).
      * Strike 2: Press BACK button + Double Haptic Pulse + Final Warning Toast (2/2).
-     * Strike 3+: Enforces 10-minute app lockout via Device Policy Manager package suspension.
+     * Strike 3+: Enforces escalating app lockout via Device Policy Manager package suspension.
      *
      * @param packageName The package name of the violating app.
      * @param strikeCount The accumulated daily strike count (1, 2, or 3+).
@@ -1758,10 +1889,9 @@ public class ImpulseGuardService extends AccessibilityService {
             SecurityLogger.log(this, "[FALCONS_STRIKE_2]", "Strike 2 in [" + packageName + "]: Triggered BACK action & Haptic Warning.");
 
         } else {
-            // Strike 3+: Hard lockout. Suspend package for 10 minutes via Device Policy Manager.
-            Toast.makeText(this, "🔒 Content Blocked - App locked for 10 minutes", Toast.LENGTH_LONG).show();
+            // Strike 3+: Hard lockout. Suspend package via Device Policy Manager (PenaltyManager displays accurate duration Toast).
             enforcePackageSuspension(packageName, "FALCONS_AI_3RD_STRIKE_LOCKOUT");
-            SecurityLogger.log(this, "[FALCONS_STRIKE_3]", "Strike 3 in [" + packageName + "]: Enforced 10-min suspension lockout.");
+            SecurityLogger.log(this, "[FALCONS_STRIKE_3]", "Strike 3 in [" + packageName + "]: Enforced suspension lockout.");
         }
     }
 
@@ -2019,11 +2149,15 @@ public class ImpulseGuardService extends AccessibilityService {
                 setMonitoredApp(context, pkg, true);
                 Log.i(TAG, "User chose to MONITOR app: " + pkg);
             }
-            // User chose to exempt app: remove from monitored list and remember decision
+            // User chose to exempt app: only allow if not a default browser
             else if (ACTION_WHITELIST_APP.equals(intent.getAction())) {
-                setMonitoredApp(context, pkg, false);
-                setNeverAskApp(context, pkg);
-                Log.i(TAG, "User chose to KEEP WHITELISTED app: " + pkg);
+                if (!DEFAULT_BROWSERS.contains(pkg)) {
+                    setMonitoredApp(context, pkg, false);
+                    setNeverAskApp(context, pkg);
+                    Log.i(TAG, "User chose to KEEP WHITELISTED app: " + pkg);
+                } else {
+                    Log.w(TAG, "Refusing to un-monitor default browser via broadcast: " + pkg);
+                }
             }
 
             // Dismiss the notification banner

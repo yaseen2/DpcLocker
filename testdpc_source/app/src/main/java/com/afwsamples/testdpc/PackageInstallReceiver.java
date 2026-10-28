@@ -66,6 +66,15 @@ public class PackageInstallReceiver extends BroadcastReceiver {
                     SecurityPipelineManager.onPackageAddedOrUpdated(context, packageName);
                 }
             }
+        } else if (Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
+            boolean replacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false);
+            if (!replacing && intent.getData() != null) {
+                String packageName = intent.getData().getSchemeSpecificPart();
+                if (packageName != null && !packageName.isEmpty()) {
+                    SecurityPipelineManager.evictFromSafeCache(context, packageName);
+                    AiAppAuditor.removePendingAudit(context, packageName);
+                }
+            }
         }
     }
 }

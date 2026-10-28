@@ -195,7 +195,7 @@ public class FalconsVisionGuardEngine {
     /**
      * Appends an entry to the rolling circular vision log (capped at 10,000 characters).
      */
-    public static void appendLog(Context context, String entry) {
+    public static synchronized void appendLog(Context context, String entry) {
         String timestamp = new SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(new Date());
         String currentLogs = getPrefs(context).getString(KEY_LOGS, "");
         String newLogs = "[" + timestamp + "] " + entry + "\n" + currentLogs;
@@ -237,7 +237,22 @@ public class FalconsVisionGuardEngine {
             return modelFile;
         }
 
-        // Discovery Check 1: Sideloaded folder in Download storage
+        // Discovery Check 1: Bundled APK assets (trusted primary source)
+        try (InputStream is = context.getAssets().open("models/" + MODEL_FILE_NAME);
+             FileOutputStream fos = new FileOutputStream(modelFile)) {
+            byte[] buffer = new byte[16384];
+            int read;
+            while ((read = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, read);
+            }
+            fos.flush();
+            Log.i(TAG, "Successfully extracted " + MODEL_FILE_NAME + " from assets to internal storage.");
+            return modelFile;
+        } catch (Exception e) {
+            Log.w(TAG, "Model not found in assets. Checking download storage: " + e.getMessage());
+        }
+
+        // Discovery Check 2: Sideloaded folder in Download storage (fallback only if not bundled in APK)
         File externalModel = new File("/sdcard/Download/falcons_models/" + MODEL_FILE_NAME);
         if (externalModel.exists() && externalModel.length() > 1000000) {
             try (InputStream is = new java.io.FileInputStream(externalModel);
@@ -253,21 +268,6 @@ public class FalconsVisionGuardEngine {
             } catch (Exception e) {
                 Log.w(TAG, "Could not copy from external storage: " + e.getMessage());
             }
-        }
-
-        // Discovery Check 2: Bundled APK assets
-        try (InputStream is = context.getAssets().open("models/" + MODEL_FILE_NAME);
-             FileOutputStream fos = new FileOutputStream(modelFile)) {
-            byte[] buffer = new byte[16384];
-            int read;
-            while ((read = is.read(buffer)) != -1) {
-                fos.write(buffer, 0, read);
-            }
-            fos.flush();
-            Log.i(TAG, "Successfully extracted " + MODEL_FILE_NAME + " from assets to internal storage.");
-            return modelFile;
-        } catch (Exception e) {
-            Log.w(TAG, "Model not found in assets. Checking download storage: " + e.getMessage());
         }
 
         return modelFile.exists() ? modelFile : null;
@@ -435,8 +435,8 @@ public class FalconsVisionGuardEngine {
                     packageName, latencyMs, probNsfw * 100f, probNormal * 100f, Math.round(threshold * 100), isNsfw ? "🚨 ADULT BLOCKED" : "✅ SAFE PASS");
             Log.i(TAG, logEntry);
 
-            appendLog(context, logEntry);
             if (isNsfw) {
+                appendLog(context, logEntry);
                 SecurityLogger.log(context, "[FALCONS_NSFW]", logEntry);
             }
 
@@ -538,14 +538,19 @@ public class FalconsVisionGuardEngine {
     }
 
     /**
-     * Computes a quick 16-sample spatial hash of a Bitmap to accelerate cache lookups for static screens.
+     * Computes a quick 64-sample interior spatial hash of a Bitmap to accelerate cache lookups for static screens.
      */
     private static long computeQuickHash(Bitmap bitmap) {
         int w = bitmap.getWidth();
         int h = bitmap.getHeight();
+        if (w <= 0 || h <= 0) return 0L;
         long hash = 17;
-        for (int x = 0; x < w; x += w / 4) {
-            for (int y = 0; y < h; y += h / 4) {
+        int stepX = Math.max(1, w / 9);
+        int stepY = Math.max(1, h / 9);
+        for (int ix = 1; ix <= 8; ix++) {
+            int x = Math.min(w - 1, ix * stepX);
+            for (int iy = 1; iy <= 8; iy++) {
+                int y = Math.min(h - 1, iy * stepY);
                 hash = hash * 31 + bitmap.getPixel(x, y);
             }
         }

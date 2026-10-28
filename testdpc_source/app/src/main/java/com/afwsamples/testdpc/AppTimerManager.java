@@ -3,6 +3,7 @@ package com.afwsamples.testdpc;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.app.admin.DevicePolicyManager;
+import android.app.usage.UsageEvents;
 import android.app.usage.UsageStats;
 import android.app.usage.UsageStatsManager;
 import android.content.Context;
@@ -166,14 +167,18 @@ public class AppTimerManager {
         java.util.List<String> packagesToUnsuspend = new java.util.ArrayList<>();
 
         // Iterate through all preference keys to find exceeded flags and usage counters
+        String activeCycleKey = getTodayKey();
         for (String key : prefs.getAll().keySet()) {
             if (key.startsWith(KEY_EXCEEDED_PREFIX)) {
-                String pkg = key.substring(KEY_EXCEEDED_PREFIX.length());
-                packagesToUnsuspend.add(pkg);
-                editor.remove(key); // Clear lockout flag
+                String savedCycle = prefs.getString(key, "");
+                if (!activeCycleKey.equals(savedCycle)) {
+                    String pkg = key.substring(KEY_EXCEEDED_PREFIX.length());
+                    packagesToUnsuspend.add(pkg);
+                    editor.remove(key); // Clear lockout flag from previous cycle
+                }
             }
-            if (key.startsWith(KEY_USAGE_MILLIS_PREFIX)) {
-                editor.remove(key); // Reset recorded usage milliseconds
+            if (key.startsWith(KEY_USAGE_MILLIS_PREFIX) && !key.startsWith(KEY_USAGE_MILLIS_PREFIX + activeCycleKey + "_")) {
+                editor.remove(key); // Reset recorded usage milliseconds from previous cycle
             }
         }
         editor.apply();
@@ -337,27 +342,27 @@ public class AppTimerManager {
             long startTime = calendar.getTimeInMillis();
             long endTime = System.currentTimeMillis();
 
-            // 1. Primary Method: High-precision queryAndAggregateUsageStats
-            Map<String, UsageStats> statsMap = usm.queryAndAggregateUsageStats(startTime, endTime);
-            if (statsMap != null && statsMap.containsKey(packageName)) {
-                UsageStats stats = statsMap.get(packageName);
-                if (stats != null && stats.getTotalTimeInForeground() > 0) {
-                    return stats.getTotalTimeInForeground();
-                }
-            }
-
-            // 2. Fallback Method: Standard daily interval queryUsageStats
-            List<UsageStats> statsList = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime);
-            if (statsList != null) {
-                long totalTime = 0;
-                for (UsageStats stats : statsList) {
-                    if (packageName.equals(stats.getPackageName())) {
-                        if (stats.getTotalTimeInForeground() > totalTime) {
-                            totalTime = stats.getTotalTimeInForeground();
+            // 1. Primary Method: Exact Event Stream Calculation for 22:00 cycle boundary
+            UsageEvents usageEvents = usm.queryEvents(startTime, endTime);
+            if (usageEvents != null) {
+                long totalEventTime = 0L;
+                long lastResumeTimestamp = 0L;
+                UsageEvents.Event event = new UsageEvents.Event();
+                while (usageEvents.hasNextEvent()) {
+                    usageEvents.getNextEvent(event);
+                    if (packageName.equals(event.getPackageName())) {
+                        int type = event.getEventType();
+                        if (type == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+                            lastResumeTimestamp = Math.max(startTime, event.getTimeStamp());
+                        } else if (type == UsageEvents.Event.MOVE_TO_BACKGROUND || type == 23 /* ACTIVITY_STOPPED */) {
+                            if (lastResumeTimestamp > 0L && event.getTimeStamp() > lastResumeTimestamp) {
+                                totalEventTime += (event.getTimeStamp() - lastResumeTimestamp);
+                                lastResumeTimestamp = 0L;
+                            }
                         }
                     }
                 }
-                return totalTime;
+                return totalEventTime;
             }
         } catch (Exception e) {
             Log.e(TAG, "Error querying usage stats for " + packageName, e);
@@ -470,8 +475,10 @@ public class AppTimerManager {
                                 TimeUnit.class,
                                 PendingIntent.class
                         );
-                        method.invoke(usm, observerId, new String[]{packageName}, (long) limitMinutes, TimeUnit.MINUTES, pendingIntent);
-                        Log.i(TAG, "Registered UsageObserver via reflection for " + packageName + " limit " + limitMinutes + " mins");
+                        long usedMillis = getTodayUsageMillis(context, packageName);
+                        long remainingSeconds = Math.max(1L, ((limitMinutes * 60000L) - usedMillis) / 1000L);
+                        method.invoke(usm, observerId, new String[]{packageName}, remainingSeconds, TimeUnit.SECONDS, pendingIntent);
+                        Log.i(TAG, "Registered UsageObserver via reflection for " + packageName + " remaining " + remainingSeconds + "s / limit " + limitMinutes + " mins");
                     } catch (Exception e) {
                         Log.w(TAG, "Reflection registerAppUsageObserver failed: " + e.getMessage());
                     }

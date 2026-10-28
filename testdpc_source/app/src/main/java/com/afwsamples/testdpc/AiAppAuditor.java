@@ -380,7 +380,7 @@ public class AiAppAuditor {
                         "3. VPN_AND_PROXY_TUNNEL: Standalone VPNs, proxies, or DNS tunnels that bypass network-level adult filters (e.g. Turbo VPN, Psiphon, SuperVPN).\n" +
                         "4. ADULT_DATING_CHAT_NSFW: Casual dating/hookup apps (Tinder, Grindr, Badoo), live adult cam chats, or uncensored NSFW AI companions.\n\n" +
                         "ALL OTHER APPS ARE SAFE (\"is_risky\": false):\n" +
-                        "Standard productivity, utility, communication, gaming, banking, audio, and local media creation apps without arbitrary web browsing or video scraping are SAFE. When in doubt, mark \"is_risky\": true.\n\n" +
+                        "Standard productivity, utility, communication, gaming, banking, audio, and local media creation apps without arbitrary web browsing or video scraping are SAFE. Only mark \"is_risky\": true when there is clear evidence that the app belongs to one of the 4 categories above (confidence >= 0.90).\n\n" +
                         "OUTPUT JSON FORMAT:\n" +
                         "{\n" +
                         "  \"app_summary\": \"<brief description>\",\n" +
@@ -392,9 +392,16 @@ public class AiAppAuditor {
                     );
                     systemInstruction.put("parts", new JSONArray().put(sysParts));
 
+                    List<String> cappedPerms = requestedPermissions.size() > 25 ? requestedPermissions.subList(0, 25) : requestedPermissions;
+                    List<String> cappedActs = declaredActivities.size() > 25 ? declaredActivities.subList(0, 25) : declaredActivities;
+
                     JSONObject contentObj = new JSONObject();
                     JSONObject userPart = new JSONObject();
-                    userPart.put("text", "Identify and classify the application:\nPackage Name: " + packageName + "\nApp Label: " + appLabel + "\nApp Category: " + appCategory);
+                    userPart.put("text", "Identify and classify the application:\nPackage Name: " + packageName +
+                            "\nApp Label: " + appLabel +
+                            "\nApp Category: " + appCategory +
+                            "\nRequested Permissions: " + cappedPerms.toString() +
+                            "\nDeclared Activities (sample): " + cappedActs.toString());
                     contentObj.put("parts", new JSONArray().put(userPart));
 
                     JSONObject genConfig = new JSONObject();

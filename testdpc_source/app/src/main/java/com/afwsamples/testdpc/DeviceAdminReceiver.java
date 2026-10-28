@@ -90,6 +90,9 @@ public class DeviceAdminReceiver extends android.app.admin.DeviceAdminReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         // Step 1: Initialize LauncherApps callback for real-time package install monitoring
+        if (intent == null || intent.getAction() == null) {
+            return;
+        }
         BrowserBlocker.initLauncherAppsCallback(context);
 
         // Step 2: Register UsageStats observers for app usage timer enforcement

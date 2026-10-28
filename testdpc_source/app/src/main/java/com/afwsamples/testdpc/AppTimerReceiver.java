@@ -66,6 +66,13 @@ public class AppTimerReceiver extends BroadcastReceiver {
             Log.i(TAG, "Limit exceeded broadcast received for: " + packageName);
 
             if (packageName != null && !packageName.isEmpty()) {
+                String cleanPkg = packageName.trim().toLowerCase( java.util.Locale.US );
+                if (SecurityConfig.IMMUTABLE_CORE_PACKAGES.contains(cleanPkg) ||
+                        AppTimerManager.getAppLimitMinutes(context, packageName) <= 0 ||
+                        !AppTimerManager.isDailyLimitExceeded(context, packageName)) {
+                    Log.w(TAG, "Ignoring unverified or exempt ACTION_LIMIT_EXCEEDED for: " + packageName);
+                    return;
+                }
                 try {
                     // Obtain DevicePolicyManager system service
                     DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);

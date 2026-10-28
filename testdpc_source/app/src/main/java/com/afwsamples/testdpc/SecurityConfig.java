@@ -54,6 +54,13 @@ public class SecurityConfig {
     public static final String PREFS_NOTORIOUS = "dpclocker_notorious_blocker";
     public static final String KEY_NOTORIOUS_SET = "blocked_packages";
 
+    // Volatile in-memory caches to eliminate SharedPreferences & HashSet allocations on hot Accessibility paths
+    private static volatile Set<String> sCachedUserWhitelist = null;
+    private static volatile Set<String> sCachedCustomBlocklist = null;
+    private static volatile Set<String> sCachedFullBlocklist = null;
+    private static volatile Set<String> sCachedProbationSet = null;
+    private static volatile String sCachedHomeLauncher = null;
+
     /**
      * Critical immutable operating system packages that must never be suspended or blocked.
      * Suspending these could cause bootloops or lock the user out of the device.
@@ -190,6 +197,10 @@ public class SecurityConfig {
      * If uninitialized, seeds the set with safe, educational, and communication apps.
      */
     public static Set<String> getUserWhitelist(Context context) {
+        Set<String> cached = sCachedUserWhitelist;
+        if (cached != null) {
+            return new HashSet<>(cached);
+        }
         SharedPreferences prefs = getPrefs(context);
         if (!prefs.contains(KEY_USER_WHITELIST)) {
             // Seed default whitelist
@@ -201,9 +212,21 @@ public class SecurityConfig {
                     "app.revanced.android.gms"
             ));
             prefs.edit().putStringSet(KEY_USER_WHITELIST, defaults).apply();
+            sCachedUserWhitelist = Collections.unmodifiableSet(new HashSet<>(defaults));
             return defaults;
         }
-        return new HashSet<>(prefs.getStringSet(KEY_USER_WHITELIST, new HashSet<String>()));
+        Set<String> loaded = new HashSet<>(prefs.getStringSet(KEY_USER_WHITELIST, new HashSet<String>()));
+        sCachedUserWhitelist = Collections.unmodifiableSet(new HashSet<>(loaded));
+        return loaded;
+    }
+
+    private static Set<String> getUserWhitelistInternal(Context context) {
+        Set<String> cached = sCachedUserWhitelist;
+        if (cached != null) {
+            return cached;
+        }
+        getUserWhitelist(context);
+        return sCachedUserWhitelist != null ? sCachedUserWhitelist : Collections.<String>emptySet();
     }
 
     /**
@@ -219,6 +242,7 @@ public class SecurityConfig {
         Set<String> set = getUserWhitelist(context);
         set.add(lower);
         getPrefs(context).edit().putStringSet(KEY_USER_WHITELIST, set).apply();
+        sCachedUserWhitelist = Collections.unmodifiableSet(new HashSet<>(set));
         
         // Ensure whitelisted packages are not simultaneously present in the blocklist
         removeFromUserBlocklist(context, lower);
@@ -234,6 +258,7 @@ public class SecurityConfig {
         Set<String> set = getUserWhitelist(context);
         set.remove(lower);
         getPrefs(context).edit().putStringSet(KEY_USER_WHITELIST, set).apply();
+        sCachedUserWhitelist = Collections.unmodifiableSet(new HashSet<>(set));
         Log.i(TAG, "Removed package from User Whitelist: " + lower);
     }
 
@@ -263,17 +288,17 @@ public class SecurityConfig {
         String lower = packageName.trim().toLowerCase();
 
         // 1. Immutable OS bedrock - critical packages that cannot be suspended without bricking the device
-        if (IMMUTABLE_CORE_PACKAGES.contains(lower)) {
+        if (IMMUTABLE_CORE_PACKAGES.contains(lower) || isDefaultHomeLauncher(context, lower)) {
             return true;
         }
 
         // 2. Explicit custom user blocklist: If the user manually added this package, it is NEVER whitelisted!
-        if (getCustomUserBlocklist(context).contains(lower)) {
+        if (getCustomUserBlocklistInternal(context).contains(lower)) {
             return false;
         }
 
         // 3. User custom whitelist: user explicitly whitelisted this package in the UI
-        Set<String> userWhitelist = getUserWhitelist(context);
+        Set<String> userWhitelist = getUserWhitelistInternal(context);
         if (userWhitelist.contains(lower)) {
             return true;
         }
@@ -325,17 +350,47 @@ public class SecurityConfig {
     // Key storing explicitly removed notorious packages
     public static final String KEY_REMOVED_NOTORIOUS = "removed_notorious_packages";
 
+    private static boolean isDefaultHomeLauncher(Context context, String lowerPkg) {
+        try {
+            String cachedLauncher = sCachedHomeLauncher;
+            if (cachedLauncher == null && context != null) {
+                android.content.Intent homeIntent = new android.content.Intent(android.content.Intent.ACTION_MAIN);
+                homeIntent.addCategory(android.content.Intent.CATEGORY_HOME);
+                android.content.pm.ResolveInfo ri = context.getPackageManager().resolveActivity(homeIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+                if (ri != null && ri.activityInfo != null && ri.activityInfo.packageName != null) {
+                    cachedLauncher = ri.activityInfo.packageName.toLowerCase(java.util.Locale.US);
+                    sCachedHomeLauncher = cachedLauncher;
+                }
+            }
+            return cachedLauncher != null && cachedLauncher.equals(lowerPkg);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     /**
      * Returns strictly the custom packages manually added to the blocklist by the user.
      * Does NOT include the hardcoded default notorious packages.
      */
     public static Set<String> getCustomUserBlocklist(Context context) {
+        Set<String> cached = sCachedCustomBlocklist;
+        if (cached != null) {
+            return new HashSet<>(cached);
+        }
         SharedPreferences primaryPrefs = getPrefs(context);
         Set<String> userSet = primaryPrefs.getStringSet(KEY_USER_BLOCKLIST, null);
-        if (userSet != null) {
-            return new HashSet<>(userSet);
+        Set<String> loaded = (userSet != null) ? new HashSet<>(userSet) : new HashSet<String>();
+        sCachedCustomBlocklist = Collections.unmodifiableSet(new HashSet<>(loaded));
+        return loaded;
+    }
+
+    private static Set<String> getCustomUserBlocklistInternal(Context context) {
+        Set<String> cached = sCachedCustomBlocklist;
+        if (cached != null) {
+            return cached;
         }
-        return new HashSet<>();
+        getCustomUserBlocklist(context);
+        return sCachedCustomBlocklist != null ? sCachedCustomBlocklist : Collections.<String>emptySet();
     }
 
     /**
@@ -346,6 +401,10 @@ public class SecurityConfig {
      * 4. Legacy "dpclocker_notorious_blocker"
      */
     public static Set<String> getUserBlocklist(Context context) {
+        Set<String> cached = sCachedFullBlocklist;
+        if (cached != null) {
+            return new HashSet<>(cached);
+        }
         SharedPreferences primaryPrefs = getPrefs(context);
 
         // Start with default hardcoded notorious apps minus any explicitly removed
@@ -356,7 +415,7 @@ public class SecurityConfig {
         }
 
         // 1. Load and merge from custom user blocklist
-        result.addAll(getCustomUserBlocklist(context));
+        result.addAll(getCustomUserBlocklistInternal(context));
 
         // 2. Merge from legacy proactive_package_blocklist
         SharedPreferences proactivePrefs = context.getSharedPreferences(PREFS_PROACTIVE_BLOCKLIST, Context.MODE_PRIVATE);
@@ -372,7 +431,17 @@ public class SecurityConfig {
             result.addAll(notoriousSet);
         }
 
+        sCachedFullBlocklist = Collections.unmodifiableSet(new HashSet<>(result));
         return result;
+    }
+
+    private static Set<String> getUserBlocklistInternal(Context context) {
+        Set<String> cached = sCachedFullBlocklist;
+        if (cached != null) {
+            return cached;
+        }
+        getUserBlocklist(context);
+        return sCachedFullBlocklist != null ? sCachedFullBlocklist : Collections.<String>emptySet();
     }
 
     /**
@@ -390,6 +459,8 @@ public class SecurityConfig {
         Set<String> customList = getCustomUserBlocklist(context);
         customList.add(lower);
         getPrefs(context).edit().putStringSet(KEY_USER_BLOCKLIST, customList).apply();
+        sCachedCustomBlocklist = Collections.unmodifiableSet(new HashSet<>(customList));
+        sCachedFullBlocklist = null;
 
         // 2. If it was in removed notorious, un-remove it
         SharedPreferences primaryPrefs = getPrefs(context);
@@ -405,6 +476,7 @@ public class SecurityConfig {
                 .edit().putStringSet(KEY_PROACTIVE_SET, customList).apply();
         context.getSharedPreferences(PREFS_NOTORIOUS, Context.MODE_PRIVATE)
                 .edit().putStringSet(KEY_NOTORIOUS_SET, customList).apply();
+        getUserBlocklist(context); // Refresh full cache
 
         // 4. Update pipeline cache so subsequent accessibility checks instantly reject this app
         SecurityPipelineManager.markPackageBlocked(context, lower);
@@ -439,6 +511,8 @@ public class SecurityConfig {
         Set<String> customList = getCustomUserBlocklist(context);
         customList.remove(lower);
         getPrefs(context).edit().putStringSet(KEY_USER_BLOCKLIST, customList).apply();
+        sCachedCustomBlocklist = Collections.unmodifiableSet(new HashSet<>(customList));
+        sCachedFullBlocklist = null;
 
         // 2. If this was a default notorious package, record in removed_notorious
         boolean isDefaultNotorious = false;
@@ -459,6 +533,7 @@ public class SecurityConfig {
                 .edit().putStringSet(KEY_PROACTIVE_SET, customList).apply();
         context.getSharedPreferences(PREFS_NOTORIOUS, Context.MODE_PRIVATE)
                 .edit().putStringSet(KEY_NOTORIOUS_SET, customList).apply();
+        getUserBlocklist(context); // Refresh full cache
 
         // 4. Mark package safe in pipeline cache
         SecurityPipelineManager.markPackageSafe(context, lower);
@@ -499,22 +574,22 @@ public class SecurityConfig {
         String lower = packageName.trim().toLowerCase();
 
         // 1. Immutable OS bedrock can NEVER be blocklisted
-        if (IMMUTABLE_CORE_PACKAGES.contains(lower)) {
+        if (IMMUTABLE_CORE_PACKAGES.contains(lower) || isDefaultHomeLauncher(context, lower)) {
             return false;
         }
 
         // 2. Explicit custom user blocklist ALWAYS takes absolute precedence!
-        if (getCustomUserBlocklist(context).contains(lower)) {
+        if (getCustomUserBlocklistInternal(context).contains(lower)) {
             return true;
         }
 
         // 3. User custom whitelist takes precedence over default notorious apps
-        if (getUserWhitelist(context).contains(lower)) {
+        if (getUserWhitelistInternal(context).contains(lower)) {
             return false;
         }
 
         // 4. Default notorious list or legacy stores
-        Set<String> blocklist = getUserBlocklist(context);
+        Set<String> blocklist = getUserBlocklistInternal(context);
         return blocklist.contains(lower);
     }
 
@@ -528,25 +603,31 @@ public class SecurityConfig {
     public static final int MAX_PROBATION_SHOTS = 5;
     public static final long PROBATION_DURATION_MS = 5 * 60 * 1000L; // 5 minutes active window
 
-    public static synchronized boolean isUnderProbation(Context context, String packageName) {
+    public static boolean isUnderProbation(Context context, String packageName) {
         if (packageName == null || packageName.isEmpty()) return false;
         String lower = packageName.trim().toLowerCase();
-        if (isWhitelisted(context, lower) || isBlocklisted(context, lower)) {
+        Set<String> cachedProbation = sCachedProbationSet;
+        if (cachedProbation != null && !cachedProbation.contains(lower)) {
             return false;
         }
-        SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);
-        Set<String> activeSet = prefs.getStringSet(KEY_PROBATION_ACTIVE_SET, Collections.<String>emptySet());
-        if (activeSet.contains(lower)) {
-            long startTime = prefs.getLong(KEY_PROBATION_START_PREFIX + lower, 0L);
-            int shots = prefs.getInt(KEY_PROBATION_SHOTS_PREFIX + lower, 0);
-            if (startTime > 0 && (System.currentTimeMillis() - startTime > PROBATION_DURATION_MS) && shots >= 2) {
-                // Auto graduate after 5 minutes of clean monitoring with at least 2 shots
-                graduateProbation(context, lower);
+        synchronized (SecurityConfig.class) {
+            if (isWhitelisted(context, lower) || isBlocklisted(context, lower)) {
                 return false;
             }
-            return true;
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);
+            Set<String> activeSet = prefs.getStringSet(KEY_PROBATION_ACTIVE_SET, Collections.<String>emptySet());
+            sCachedProbationSet = Collections.unmodifiableSet(new HashSet<>(activeSet));
+            if (activeSet.contains(lower)) {
+                int shots = prefs.getInt(KEY_PROBATION_SHOTS_PREFIX + lower, 0);
+                if (shots >= MAX_PROBATION_SHOTS) {
+                    // Auto graduate only after completing all MAX_PROBATION_SHOTS (5) clean visual scans
+                    graduateProbation(context, lower);
+                    return false;
+                }
+                return true;
+            }
+            return false;
         }
-        return false;
     }
 
     public static synchronized void startProbation(Context context, String packageName) {
@@ -563,6 +644,7 @@ public class SecurityConfig {
                 .putInt(KEY_PROBATION_SHOTS_PREFIX + lower, 0)
                 .putLong(KEY_PROBATION_START_PREFIX + lower, System.currentTimeMillis())
                 .apply();
+        sCachedProbationSet = Collections.unmodifiableSet(new HashSet<>(activeSet));
 
         // Also register in ImpulseGuardService so text/proxy inspection is active
         ImpulseGuardService.setMonitoredApp(context, lower, true);
@@ -595,6 +677,7 @@ public class SecurityConfig {
         if (activeSet.remove(lower)) {
             prefs.edit().putStringSet(KEY_PROBATION_ACTIVE_SET, activeSet).apply();
         }
+        sCachedProbationSet = Collections.unmodifiableSet(new HashSet<>(activeSet));
         // Mark package as verified safe in cache
         SecurityPipelineManager.markPackageSafe(context, lower);
         Log.i(TAG, "Package graduated from Visual Probation: " + lower);
@@ -609,6 +692,7 @@ public class SecurityConfig {
         if (activeSet.remove(lower)) {
             prefs.edit().putStringSet(KEY_PROBATION_ACTIVE_SET, activeSet).apply();
         }
+        sCachedProbationSet = Collections.unmodifiableSet(new HashSet<>(activeSet));
         // Permanently add to blocklist, update pipeline cache, and suspend via DPM
         addToUserBlocklist(context, lower);
 

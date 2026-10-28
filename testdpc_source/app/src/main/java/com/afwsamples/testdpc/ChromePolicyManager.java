@@ -34,6 +34,7 @@ public class ChromePolicyManager {
 
     // Target application package for managed restrictions
     public static final String CHROME_PACKAGE = "com.android.chrome";
+    private static volatile boolean sPoliciesEnforcedInProcess = false;
 
     /**
      * Builds and enforces the enterprise policy bundle on Google Chrome.
@@ -66,7 +67,7 @@ public class ChromePolicyManager {
             //   1 = Incognito mode disabled (recommended for strict adult protection)
             //   2 = Incognito mode forced
             // --------------------------------------------------------------------------
-            chromeBundle.putInt("IncognitoModeAvailability", 0);
+            chromeBundle.putInt("IncognitoModeAvailability", 1);
 
             // --------------------------------------------------------------------------
             // 3. Force Google SafeSearch:
@@ -233,9 +234,12 @@ public class ChromePolicyManager {
             // process forces it to re-read the newly injected restrictions on next launch.
             // --------------------------------------------------------------------------
             try {
-                ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-                if (am != null) {
-                    am.killBackgroundProcesses(CHROME_PACKAGE);
+                if (!sPoliciesEnforcedInProcess) {
+                    sPoliciesEnforcedInProcess = true;
+                    ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+                    if (am != null) {
+                        am.killBackgroundProcesses(CHROME_PACKAGE);
+                    }
                 }
             } catch (Exception e) {
                 Log.w(TAG, "killBackgroundProcesses ignored: " + e.getMessage());
