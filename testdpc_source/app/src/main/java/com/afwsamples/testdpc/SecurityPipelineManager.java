@@ -6,11 +6,15 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.UserManager;
 import android.util.Log;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -59,6 +63,10 @@ public class SecurityPipelineManager {
     // Single-thread background worker executor to serialize package pipeline evaluations
     private static final ExecutorService sBgExecutor = Executors.newSingleThreadExecutor();
 
+    // High-speed volatile in-memory caches for verified safe and blocked packages
+    private static volatile Set<String> sCachedSafeSet = null;
+    private static volatile Set<String> sCachedBlockedSet = null;
+
     /**
      * Helper to retrieve SharedPreferences for package state cache.
      */
@@ -74,14 +82,34 @@ public class SecurityPipelineManager {
      * Returns the cached set of verified safe package names.
      */
     public static Set<String> getCachedSafePackages(Context context) {
-        return new HashSet<>(getCachePrefs(context).getStringSet(KEY_SAFE_PACKAGES, new HashSet<String>()));
+        Set<String> cached = sCachedSafeSet;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (SecurityPipelineManager.class) {
+            if (sCachedSafeSet == null) {
+                sCachedSafeSet = Collections.unmodifiableSet(
+                        new HashSet<>(getCachePrefs(context).getStringSet(KEY_SAFE_PACKAGES, new HashSet<String>())));
+            }
+            return sCachedSafeSet;
+        }
     }
 
     /**
      * Returns the cached set of confirmed blocked package names.
      */
     public static Set<String> getCachedBlockedPackages(Context context) {
-        return new HashSet<>(getCachePrefs(context).getStringSet(KEY_BLOCKED_PACKAGES, new HashSet<String>()));
+        Set<String> cached = sCachedBlockedSet;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (SecurityPipelineManager.class) {
+            if (sCachedBlockedSet == null) {
+                sCachedBlockedSet = Collections.unmodifiableSet(
+                        new HashSet<>(getCachePrefs(context).getStringSet(KEY_BLOCKED_PACKAGES, new HashSet<String>())));
+            }
+            return sCachedBlockedSet;
+        }
     }
 
     /**
@@ -91,9 +119,9 @@ public class SecurityPipelineManager {
      * @param context     Application context
      * @param packageName Package identifier to mark safe
      */
-    public static void markPackageSafe(Context context, String packageName) {
+    public static synchronized void markPackageSafe(Context context, String packageName) {
         if (packageName == null) return;
-        String lower = packageName.trim().toLowerCase();
+        String lower = packageName.trim().toLowerCase(Locale.US);
 
         // Hard Blocklist Protection: Never allow AI or auto-rescue to override an explicit user blocklist entry!
         if (SecurityConfig.isBlocklisted(context, lower)) {
@@ -103,10 +131,13 @@ public class SecurityPipelineManager {
         }
 
         // Add to safe set and remove from blocked set
-        Set<String> safeSet = getCachedSafePackages(context);
+        Set<String> safeSet = new HashSet<>(getCachedSafePackages(context));
         safeSet.add(lower);
-        Set<String> blockedSet = getCachedBlockedPackages(context);
+        Set<String> blockedSet = new HashSet<>(getCachedBlockedPackages(context));
         blockedSet.remove(lower);
+
+        sCachedSafeSet = Collections.unmodifiableSet(new HashSet<>(safeSet));
+        sCachedBlockedSet = Collections.unmodifiableSet(new HashSet<>(blockedSet));
 
         // Commit both sets atomically to cache preferences
         getCachePrefs(context).edit()
@@ -121,13 +152,16 @@ public class SecurityPipelineManager {
      * @param context     Application context
      * @param packageName Package identifier to mark blocked
      */
-    public static void markPackageBlocked(Context context, String packageName) {
+    public static synchronized void markPackageBlocked(Context context, String packageName) {
         if (packageName == null) return;
-        String lower = packageName.trim().toLowerCase();
-        Set<String> safeSet = getCachedSafePackages(context);
+        String lower = packageName.trim().toLowerCase(Locale.US);
+        Set<String> safeSet = new HashSet<>(getCachedSafePackages(context));
         safeSet.remove(lower);
-        Set<String> blockedSet = getCachedBlockedPackages(context);
+        Set<String> blockedSet = new HashSet<>(getCachedBlockedPackages(context));
         blockedSet.add(lower);
+
+        sCachedSafeSet = Collections.unmodifiableSet(new HashSet<>(safeSet));
+        sCachedBlockedSet = Collections.unmodifiableSet(new HashSet<>(blockedSet));
 
         getCachePrefs(context).edit()
                 .putStringSet(KEY_SAFE_PACKAGES, safeSet)
@@ -138,11 +172,12 @@ public class SecurityPipelineManager {
     /**
      * Purges a package from the safe cache so fresh installs or updates are re-evaluated.
      */
-    public static void evictFromSafeCache(Context context, String packageName) {
+    public static synchronized void evictFromSafeCache(Context context, String packageName) {
         if (packageName == null) return;
-        String lower = packageName.trim().toLowerCase();
-        Set<String> safeSet = getCachedSafePackages(context);
+        String lower = packageName.trim().toLowerCase(Locale.US);
+        Set<String> safeSet = new HashSet<>(getCachedSafePackages(context));
         if (safeSet.remove(lower)) {
+            sCachedSafeSet = Collections.unmodifiableSet(new HashSet<>(safeSet));
             getCachePrefs(context).edit().putStringSet(KEY_SAFE_PACKAGES, safeSet).apply();
             Log.i(TAG, "Evicted " + lower + " from safe package cache.");
         }
@@ -307,6 +342,32 @@ public class SecurityPipelineManager {
     // =====================================================================================
 
     /**
+     * Enforces OS-level Device Owner anti-tamper restrictions:
+     * 1. DISALLOW_CONFIG_DATE_TIME + AutoTime: Prevents rolling the clock forward to bypass 10:00 PM timers or penalty lockouts.
+     * 2. DISALLOW_SAFE_BOOT: Prevents rebooting into Android Safe Mode where Accessibility Services are disabled.
+     * 3. DISALLOW_ADD_USER: Prevents switching to a Guest user or secondary user profile to bypass restrictions.
+     */
+    public static void enforceCoreDeviceOwnerTamperRestrictions(Context context) {
+        try {
+            DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            if (dpm == null || !dpm.isDeviceOwnerApp(context.getPackageName())) {
+                return;
+            }
+            ComponentName admin = DeviceAdminReceiver.getComponentName(context);
+            dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_DATE_TIME);
+            dpm.addUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT);
+            dpm.addUserRestriction(admin, UserManager.DISALLOW_ADD_USER);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                dpm.setAutoTimeEnabled(admin, true);
+            } else {
+                dpm.setAutoTimeRequired(admin, true);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not enforce core Device Owner tamper restrictions: " + e.getMessage());
+        }
+    }
+
+    /**
      * High-Performance Boot Optimizer:
      * Executes upon device reboot (ACTION_BOOT_COMPLETED).
      *
@@ -322,6 +383,8 @@ public class SecurityPipelineManager {
             @Override
             public void run() {
                 try {
+                    enforceCoreDeviceOwnerTamperRestrictions(context);
+
                     DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
                     ComponentName admin = DeviceAdminReceiver.getComponentName(context);
                     boolean isDeviceOwner = (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName()));
@@ -339,7 +402,7 @@ public class SecurityPipelineManager {
 
                     // Iterate over every app installed on the device
                     for (ApplicationInfo ai : installedApps) {
-                        String pkg = ai.packageName.toLowerCase();
+                        String pkg = ai.packageName.toLowerCase(Locale.US);
 
                         // 1. Whitelist override -> always unsuspend and ensure marked safe
                         if (SecurityConfig.isWhitelisted(context, pkg)) {
@@ -355,16 +418,20 @@ public class SecurityPipelineManager {
                             continue;
                         }
 
-                        // 2.5 Alternative Browser match -> queue for hardware suspension
-                        if (BrowserBlocker.isAutoBlockEnabled(context) && BrowserBlocker.isNonChromeBrowser(context, pkg)) {
-                            packagesToSuspend.add(pkg);
-                            markPackageBlocked(context, pkg);
+                        // 3. Active Probation app -> ensure unsuspended for visual monitoring (checked BEFORE browser heuristic!)
+                        if (SecurityConfig.isUnderProbation(context, pkg)) {
+                            packagesToUnsuspend.add(pkg);
                             continue;
                         }
 
-                        // 3. Active Probation app -> ensure unsuspended for visual monitoring
-                        if (SecurityConfig.isUnderProbation(context, pkg)) {
-                            packagesToUnsuspend.add(pkg);
+                        // 3.5 Alternative Browser match -> queue for hardware suspension
+                        if (BrowserBlocker.isAutoBlockEnabled(context) && BrowserBlocker.isNonChromeBrowser(context, pkg)) {
+                            boolean alreadyBlocked = blockedCache.contains(pkg);
+                            packagesToSuspend.add(pkg);
+                            markPackageBlocked(context, pkg);
+                            if (!alreadyBlocked) {
+                                AiAppAuditor.verifyAndRescuePackageAsync(context, pkg, "Boot Browser Check");
+                            }
                             continue;
                         }
 

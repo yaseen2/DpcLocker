@@ -89,10 +89,11 @@ public class BrowserBlocker {
      * Available on Android 5.0 (API 21) and above.
      */
     public static synchronized void initLauncherAppsCallback(final Context context) {
-        if (isCallbackRegistered) return; // Prevent duplicate observer registration
+        if (isCallbackRegistered || context == null) return; // Prevent duplicate observer registration
+        final Context appContext = context.getApplicationContext();
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                LauncherApps launcherApps = (LauncherApps) context.getSystemService(Context.LAUNCHER_APPS_SERVICE);
+                LauncherApps launcherApps = (LauncherApps) appContext.getSystemService(Context.LAUNCHER_APPS_SERVICE);
                 if (launcherApps != null) {
                     launcherApps.registerCallback(new LauncherApps.Callback() {
                         /**
@@ -102,9 +103,9 @@ public class BrowserBlocker {
                         public void onPackageAdded(String packageName, UserHandle user) {
                             Log.i(TAG, "LauncherApps onPackageAdded: " + packageName);
                             // Send package into the unified pipeline for static audit and browser verification
-                            SecurityPipelineManager.onPackageAddedOrUpdated(context, packageName);
+                            SecurityPipelineManager.onPackageAddedOrUpdated(appContext, packageName);
                             // Re-evaluate app timer restrictions
-                            AppTimerManager.checkAndEnforceLimits(context);
+                            AppTimerManager.checkAndEnforceLimits(appContext);
                         }
 
                         /**
@@ -113,7 +114,7 @@ public class BrowserBlocker {
                         @Override
                         public void onPackageChanged(String packageName, UserHandle user) {
                             Log.i(TAG, "LauncherApps onPackageChanged: " + packageName);
-                            SecurityPipelineManager.onPackageAddedOrUpdated(context, packageName);
+                            SecurityPipelineManager.onPackageAddedOrUpdated(appContext, packageName);
                         }
 
                         /**
@@ -121,8 +122,9 @@ public class BrowserBlocker {
                          */
                         @Override
                         public void onPackageRemoved(String packageName, UserHandle user) {
-                            // Purge any pending background AI audit work
-                            AiAppAuditor.removePendingAudit(context, packageName);
+                            // Purge any safe cache entry and pending background AI audit work
+                            SecurityPipelineManager.evictFromSafeCache(appContext, packageName);
+                            AiAppAuditor.removePendingAudit(appContext, packageName);
                         }
 
                         /**
@@ -132,7 +134,7 @@ public class BrowserBlocker {
                         public void onPackagesAvailable(String[] packageNames, UserHandle user, boolean replacing) {
                             if (packageNames != null) {
                                 for (String pkg : packageNames) {
-                                    SecurityPipelineManager.onPackageAddedOrUpdated(context, pkg);
+                                    SecurityPipelineManager.onPackageAddedOrUpdated(appContext, pkg);
                                 }
                             }
                         }
@@ -249,8 +251,17 @@ public class BrowserBlocker {
             // Inspect package name and application label for browser identifiers, verifying INTERNET permission
             String lowerPkg = packageName.toLowerCase(Locale.US);
 
-            // Direct recognition of unmanaged browser conduits (Google Go, AOSP Browser)
-            if ("com.google.android.apps.searchlite".equals(lowerPkg) || "com.android.browser".equals(lowerPkg)) {
+            // Direct recognition of unmanaged browser conduits (Google Go, AOSP Browser, stealth/privacy browsers)
+            if ("com.google.android.apps.searchlite".equals(lowerPkg) ||
+                    "com.android.browser".equals(lowerPkg) ||
+                    "mark.via.gp".equals(lowerPkg) ||
+                    "mark.via".equals(lowerPkg) ||
+                    "org.cromite.cromite".equals(lowerPkg) ||
+                    "us.spotco.fennec_dos".equals(lowerPkg) ||
+                    "org.torproject.torbrowser".equals(lowerPkg) ||
+                    "com.duckduckgo.mobile.android".equals(lowerPkg) ||
+                    "com.cloudmosa.puffinfree".equals(lowerPkg) ||
+                    lowerPkg.startsWith("com.chrome.")) {
                 Log.i(TAG, "Package " + packageName + " confirmed as unmanaged Web Browser conduit");
                 return true;
             }
@@ -298,7 +309,8 @@ public class BrowserBlocker {
     }
 
     /**
-     * Unsuspends all third-party browsers when auto-block protection is disabled.
+     * Unsuspends all third-party browsers when auto-block protection is disabled,
+     * while preserving explicit blocklist locks and daily usage timer locks.
      */
     public static void unSuspendAllBrowsers(Context context) {
         try {
@@ -310,10 +322,16 @@ public class BrowserBlocker {
             PackageManager pm = context.getPackageManager();
             List<ApplicationInfo> apps = pm.getInstalledApplications(0);
             for (ApplicationInfo app : apps) {
+                String pkg = app.packageName;
+                if (SecurityConfig.isBlocklisted(context, pkg) ||
+                        AppTimerManager.isDailyLimitExceeded(context, pkg) ||
+                        ImpulseGuardService.isTemporarilySuspended(context, pkg)) {
+                    continue;
+                }
                 // If it is an alternative browser, lift the DPM suspension
-                if (isNonChromeBrowser(context, app.packageName)) {
-                    dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{app.packageName}, false);
-                    Log.i(TAG, "UNSUSPENDED BROWSER: " + app.packageName);
+                if (isNonChromeBrowser(context, pkg)) {
+                    dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{pkg}, false);
+                    Log.i(TAG, "UNSUSPENDED BROWSER: " + pkg);
                 }
             }
         } catch (Exception e) {

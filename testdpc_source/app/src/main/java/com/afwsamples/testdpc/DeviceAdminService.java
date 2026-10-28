@@ -20,6 +20,12 @@ public class DeviceAdminService extends android.app.admin.DeviceAdminService {
     public void onCreate() {
         super.onCreate();
         registerPackageChangesReceiver();
+        SecurityPipelineManager.enforceCoreDeviceOwnerTamperRestrictions(this);
+        BrowserBlocker.initLauncherAppsCallback(this);
+        AppTimerManager.registerAllObservers(this);
+        ChromePolicyManager.enforceDefaultChromePolicies(this);
+        ImpulseGuardService.ensureAccessibilityServiceEnabled(this);
+        AiAppAuditor.initNetworkCallback(this);
     }
 
     @Override
@@ -31,6 +37,7 @@ public class DeviceAdminService extends android.app.admin.DeviceAdminService {
     private void registerPackageChangesReceiver() {
         IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
+        intentFilter.addAction(Intent.ACTION_PACKAGE_REPLACED);
         intentFilter.addAction(Intent.ACTION_PACKAGE_REMOVED);
         intentFilter.addDataScheme("package");
         mPackageChangedReceiver = new PackageMonitorReceiver();

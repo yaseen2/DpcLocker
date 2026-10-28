@@ -67,9 +67,11 @@ public class AppTimerReceiver extends BroadcastReceiver {
 
             if (packageName != null && !packageName.isEmpty()) {
                 String cleanPkg = packageName.trim().toLowerCase( java.util.Locale.US );
+                int limitMins = AppTimerManager.getAppLimitMinutes(context, packageName);
+                long usedMillis = AppTimerManager.getTodayUsageMillis(context, packageName);
                 if (SecurityConfig.IMMUTABLE_CORE_PACKAGES.contains(cleanPkg) ||
-                        AppTimerManager.getAppLimitMinutes(context, packageName) <= 0 ||
-                        !AppTimerManager.isDailyLimitExceeded(context, packageName)) {
+                        limitMins <= 0 ||
+                        (!AppTimerManager.isDailyLimitExceeded(context, packageName) && usedMillis < (limitMins * 60000L))) {
                     Log.w(TAG, "Ignoring unverified or exempt ACTION_LIMIT_EXCEEDED for: " + packageName);
                     return;
                 }

@@ -133,7 +133,7 @@ public class PenaltyManager {
      * @param pkgName Package name of the violating app (e.g. "com.android.chrome")
      * @return PenaltyInfo containing the new violation count, duration in minutes, and duration in ms
      */
-    public static PenaltyInfo recordViolationAndGetPenalty(Context context, String pkgName) {
+    public static synchronized PenaltyInfo recordViolationAndGetPenalty(Context context, String pkgName) {
         SharedPreferences prefs = context.getSharedPreferences(PREF_PENALTIES, Context.MODE_PRIVATE);
 
         // Keys unique to each package so apps have independent penalty escalation histories
@@ -144,6 +144,11 @@ public class PenaltyManager {
         long lastTime = prefs.getLong(timeKey, 0L);
         int currentCount = prefs.getInt(countKey, 0);
         long now = System.currentTimeMillis();
+
+        // Guard against backward clock tampering: if lastTime is in the future, clamp it to now
+        if (lastTime > now) {
+            lastTime = now;
+        }
 
         // --------------------------------------------------------------------------
         // 24-Hour Reset Rule:

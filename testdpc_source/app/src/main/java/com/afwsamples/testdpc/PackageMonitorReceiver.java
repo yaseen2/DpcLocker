@@ -15,8 +15,12 @@ public class PackageMonitorReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        if (intent == null || intent.getAction() == null) {
+            return;
+        }
         String action = intent.getAction();
         if (!Intent.ACTION_PACKAGE_ADDED.equals(action)
+                && !Intent.ACTION_PACKAGE_REPLACED.equals(action)
                 && !Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
             return;
         }
@@ -25,10 +29,18 @@ public class PackageMonitorReceiver extends BroadcastReceiver {
             return;
         }
         boolean replacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false);
-        if (replacing) {
-            return;
-        }
-        if (Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
+
+        if (Intent.ACTION_PACKAGE_ADDED.equals(action) || Intent.ACTION_PACKAGE_REPLACED.equals(action)) {
+            if (!packageName.startsWith("com.afwsamples.testdpc")) {
+                SecurityPipelineManager.onPackageAddedOrUpdated(context, packageName);
+            }
+            if (replacing) {
+                return;
+            }
+        } else if (Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
+            if (replacing) {
+                return;
+            }
             SecurityPipelineManager.evictFromSafeCache(context, packageName);
             AiAppAuditor.removePendingAudit(context, packageName);
         }

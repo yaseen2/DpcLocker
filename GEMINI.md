@@ -6,3 +6,4 @@
 ## 2. Gemini Model Identifiers (3.5 / 3.8 Series)
 - `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-3.6-flash`, and `gemini-3.8-flash` are valid, available, high-speed models in this environment and are preferred over `2.5` or `1.5` series models.
 - Never treat these model identifiers as typos/404s or downgrade them to older `gemini-2.5-*` or `gemini-1.5-*` models unless explicitly instructed by the user.
+

@@ -36,11 +36,21 @@ public class PolicyManagementActivity extends Activity implements
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        // Always enforce core security watchdogs when activity is launched, even if UI lock is active
+        SecurityPipelineManager.enforceCoreDeviceOwnerTamperRestrictions(this);
+        BrowserBlocker.initLauncherAppsCallback(this);
+        BrowserBlocker.scanAndSuspendAllBrowsers(this);
+        AppTimerManager.registerAllObservers(this);
+        ChromePolicyManager.enforceDefaultChromePolicies(this);
+        NotoriousAppBlocker.scanAndSuspendAllNotoriousApps(this);
+        ImpulseGuardService.ensureAccessibilityServiceEnabled(this);
+
         int lockEnabled = android.provider.Settings.Global.getInt(getContentResolver(), "dpclocker_enabled", 1);
         if (lockEnabled == 1) {
             android.widget.Toast.makeText(this, "Protection Active! Connect via USB ADB to unlock.", android.widget.Toast.LENGTH_LONG).show();
             finish();
-            super.onCreate(null);
             return;
         }
 
@@ -49,16 +59,9 @@ public class PolicyManagementActivity extends Activity implements
         if (!isOwner) {
             startActivity(new android.content.Intent(this, SetupManagementActivity.class));
             finish();
-            super.onCreate(null);
             return;
         }
 
-        super.onCreate(savedInstanceState);
-        BrowserBlocker.initLauncherAppsCallback(this);
-        BrowserBlocker.scanAndSuspendAllBrowsers(this);
-        AppTimerManager.registerAllObservers(this);
-        ChromePolicyManager.enforceDefaultChromePolicies(this);
-        NotoriousAppBlocker.scanAndSuspendAllNotoriousApps(this);
         setContentView(R.layout.activity_main);
         if (savedInstanceState == null) {
             getFragmentManager().beginTransaction().add(R.id.container,

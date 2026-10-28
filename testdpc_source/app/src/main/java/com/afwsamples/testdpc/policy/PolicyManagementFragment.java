@@ -4731,11 +4731,19 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
                 })
                 .setPositiveButton("Save Whitelist", (dialog, which) -> {
                     for (int i = 0; i < pkgNames.length; i++) {
+                        String pkg = pkgNames[i];
+                        boolean wasWhitelisted = currentWhitelist.contains(pkg.toLowerCase(Locale.US));
                         if (checkedItems[i]) {
-                            SecurityConfig.addToUserWhitelist(context, pkgNames[i]);
-                            SecurityPipelineManager.markPackageSafe(context, pkgNames[i]);
-                        } else {
-                            SecurityConfig.removeFromUserWhitelist(context, pkgNames[i]);
+                            SecurityConfig.addToUserWhitelist(context, pkg);
+                            SecurityPipelineManager.markPackageSafe(context, pkg);
+                            if (!wasWhitelisted && mDevicePolicyManager != null && mDevicePolicyManager.isDeviceOwnerApp(mPackageName)) {
+                                if (!AppTimerManager.isDailyLimitExceeded(context, pkg)) {
+                                    mDevicePolicyManager.setPackagesSuspended(mAdminComponentName, new String[]{pkg}, false);
+                                }
+                            }
+                        } else if (wasWhitelisted) {
+                            SecurityConfig.removeFromUserWhitelist(context, pkg);
+                            SecurityPipelineManager.onPackageAddedOrUpdated(context, pkg);
                         }
                     }
                     Toast.makeText(context, "User Whitelist updated!", Toast.LENGTH_SHORT).show();
