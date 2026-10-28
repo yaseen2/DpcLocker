@@ -11,6 +11,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.provider.Settings;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -90,6 +94,7 @@ public class ImpulseGuardService extends AccessibilityService {
     private static final String PREF_SUSPENSIONS = "impulse_guard_active_suspensions";
     private static final String PREF_MONITORED_APPS = "impulse_guard_monitored_apps";
     private static final String PREF_NEVER_ASK_APPS = "impulse_guard_never_ask_apps";
+    private static final String PREF_OFFLINE_QUERIES = "impulse_guard_offline_queries";
     private static final String PREF_KEY_DAILY_STRIKES = "falcons_daily_strikes";
     private static final String PREF_KEY_LAST_STRIKE_DATE = "falcons_last_strike_date";
 
@@ -168,9 +173,13 @@ public class ImpulseGuardService extends AccessibilityService {
     // Dynamically registered broadcast receiver reference for clean lifecycle unregistration
     private BroadcastReceiver mServiceReceiver = null;
 
+    // Network connectivity callback to immediately audit queries typed while offline once internet reconnects
+    private ConnectivityManager.NetworkCallback mNetworkCallback = null;
+
     // In-memory caches to deduplicate evaluation events and prevent duplicate penalties
     private final ConcurrentHashMap<String, String> mLastEvaluatedTextMap = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> mLastPenalizedQueryMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> mPendingOfflineQueries = new ConcurrentHashMap<>();
 
     // Debounce runnables for typing pauses and screen text aggregation
     private Runnable mPendingAuditRunnable;
@@ -663,6 +672,161 @@ public class ImpulseGuardService extends AccessibilityService {
             }
         };
         registerReceiver(mServiceReceiver, filter);
+
+        // Step 4: Register network connectivity callback to defeat the "type offline -> press enter -> turn on internet" bypass
+        registerNetworkReconnectCallback();
+    }
+
+    /**
+     * Registers a real-time NetworkCallback so that the instant Wi-Fi or Mobile Data is turned back on,
+     * any search queries typed while offline (or any active monitored browser page that auto-reloads)
+     * are audited immediately.
+     */
+    private void registerNetworkReconnectCallback() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return;
+
+            if (mNetworkCallback != null) {
+                try {
+                    cm.unregisterNetworkCallback(mNetworkCallback);
+                } catch (Exception ignored) {
+                }
+            }
+
+            // Load any persisted offline queries from disk into memory
+            SharedPreferences prefs = getSharedPreferences(PREF_OFFLINE_QUERIES, Context.MODE_PRIVATE);
+            Map<String, ?> saved = prefs.getAll();
+            if (saved != null) {
+                for (Map.Entry<String, ?> entry : saved.entrySet()) {
+                    if (entry.getValue() instanceof String) {
+                        mPendingOfflineQueries.put(entry.getKey(), (String) entry.getValue());
+                    }
+                }
+            }
+
+            NetworkRequest request = new NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build();
+
+            mNetworkCallback = new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(Network network) {
+                    Log.i(TAG, "🌐 Network reconnected! Flushing pending offline search queries & auditing active monitored app...");
+                    onNetworkRestored();
+                }
+            };
+            cm.registerNetworkCallback(request, mNetworkCallback);
+        } catch (Exception e) {
+            Log.e(TAG, "Error registering network reconnect callback", e);
+        }
+    }
+
+    /**
+     * Enqueues a search query that was typed while the device had no internet connection,
+     * persisting it in both RAM and SharedPreferences until network connectivity returns.
+     */
+    private void enqueueOfflineQuery(String packageName, String query) {
+        if (packageName == null || query == null || query.trim().length() < 3) return;
+        mPendingOfflineQueries.put(packageName, query.trim());
+        getSharedPreferences(PREF_OFFLINE_QUERIES, Context.MODE_PRIVATE)
+                .edit()
+                .putString(packageName, query.trim())
+                .apply();
+        Log.w(TAG, "⏳ Queued offline search query in [" + packageName + "] for immediate reconnect audit: \"" + query.trim() + "\"");
+    }
+
+    /**
+     * Executed the moment internet connectivity is restored:
+     * 1. Clears offline deduplication state so nothing typed/rendered offline is treated as safe.
+     * 2. Immediately evaluates all queued offline search queries against Gemini AI.
+     * 3. Re-audits the active foreground window (ONLY if it is a monitored app) at T+600ms and T+2000ms
+     *    to catch browsers that automatically submit or reload the pending search once online.
+     * 4. Triggers pending app install audits in AiAppAuditor.
+     */
+    private void onNetworkRestored() {
+        // 1. Clear deduplication map so queries/screens seen while offline are re-verified
+        mLastEvaluatedTextMap.clear();
+
+        // 2. Flush all queued offline search queries immediately
+        if (!mPendingOfflineQueries.isEmpty()) {
+            final Map<String, String> snapshot = new ConcurrentHashMap<>(mPendingOfflineQueries);
+            mPendingOfflineQueries.clear();
+            getSharedPreferences(PREF_OFFLINE_QUERIES, Context.MODE_PRIVATE).edit().clear().apply();
+
+            for (final Map.Entry<String, String> entry : snapshot.entrySet()) {
+                final String pkg = entry.getKey();
+                final String offlineQuery = entry.getValue();
+                if (isMonitoredApp(ImpulseGuardService.this, pkg)) {
+                    mBgExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            Log.i(TAG, "🔍 Auditing queued offline query on reconnect for [" + pkg + "]: \"" + offlineQuery + "\"");
+                            evaluateAndEnforceImpulseGuard(pkg, offlineQuery);
+                        }
+                    });
+                }
+            }
+        }
+
+        // 3. Schedule active window re-inspection at T+600ms and T+2000ms (strictly for monitored apps only)
+        Runnable activeMonitoredWindowAudit = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    AccessibilityNodeInfo root = getRootInActiveWindow();
+                    if (root == null || root.getPackageName() == null) return;
+                    final String activePkg = root.getPackageName().toString();
+
+                    // Strictly respect monitored-apps-only philosophy: do not waste resources on unmonitored apps
+                    if (!isMonitoredApp(ImpulseGuardService.this, activePkg)) {
+                        return;
+                    }
+
+                    // Inspect any search/URL bar text currently sitting in the monitored app
+                    if (GeminiGuardEngine.isEnabled(ImpulseGuardService.this)) {
+                        String searchText = findSearchNodeText(root);
+                        if (searchText != null && searchText.trim().length() >= 3) {
+                            String clean = searchText.trim();
+                            String lower = clean.toLowerCase(Locale.US);
+                            if (lower.startsWith("https://")) clean = clean.substring(8);
+                            else if (lower.startsWith("http://")) clean = clean.substring(7);
+                            if (clean.toLowerCase(Locale.US).startsWith("www.")) clean = clean.substring(4);
+                            final String normalized = clean.trim();
+                            if (normalized.length() >= 3) {
+                                mBgExecutor.execute(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        evaluateAndEnforceImpulseGuard(activePkg, normalized);
+                                    }
+                                });
+                            }
+                        }
+                    }
+
+                    // Inspect visible screen text in the monitored app once page finishes loading
+                    if (GeminiGuardEngine.isScreenGuardEnabled(ImpulseGuardService.this)) {
+                        final String screenText = extractFullScreenText(root);
+                        if (screenText != null && screenText.length() >= 15) {
+                            mBgExecutor.execute(new Runnable() {
+                                @Override
+                                public void run() {
+                                    evaluateAndEnforceScreenGuard(activePkg, screenText);
+                                }
+                            });
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in post-reconnect monitored window audit", e);
+                }
+            }
+        };
+
+        mHandler.postDelayed(activeMonitoredWindowAudit, 600);
+        mHandler.postDelayed(activeMonitoredWindowAudit, 2000);
+
+        // 4. Also flush any pending app installation audits queued while offline
+        AiAppAuditor.processPendingAudits(ImpulseGuardService.this);
     }
 
     /**
@@ -681,6 +845,16 @@ public class ImpulseGuardService extends AccessibilityService {
             } catch (Exception ignored) {
             }
             mServiceReceiver = null;
+        }
+        if (mNetworkCallback != null) {
+            try {
+                ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (cm != null) {
+                    cm.unregisterNetworkCallback(mNetworkCallback);
+                }
+            } catch (Exception ignored) {
+            }
+            mNetworkCallback = null;
         }
         // Persist accumulated active session time before process termination
         commitActiveSessionUsage();
@@ -858,6 +1032,20 @@ public class ImpulseGuardService extends AccessibilityService {
                 Log.i(TAG, "Auto-enrolled detected browser/search app into Impulse Guard monitoring: " + packageName);
             } else {
                 return; // Not monitored; bypass inspection
+            }
+        }
+
+        // If this monitored app has a pending query typed while offline and internet is now connected, flush it immediately
+        if (geminiActive && mPendingOfflineQueries.containsKey(packageName) && GeminiGuardEngine.isNetworkConnected(this)) {
+            final String pendingOfflineQuery = mPendingOfflineQueries.remove(packageName);
+            getSharedPreferences(PREF_OFFLINE_QUERIES, Context.MODE_PRIVATE).edit().remove(packageName).apply();
+            if (pendingOfflineQuery != null) {
+                mBgExecutor.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        evaluateAndEnforceImpulseGuard(packageName, pendingOfflineQuery);
+                    }
+                });
             }
         }
 
@@ -1390,8 +1578,8 @@ public class ImpulseGuardService extends AccessibilityService {
             // Accumulate meaningful text tokens (length > 2 characters)
             if (text != null && text.length() > 2) {
                 String str = text.toString().trim();
-                // Exclude breadcrumb navigation markers, browser URL placeholders, and raw web URLs
-                if (!str.startsWith(">>") && !str.equalsIgnoreCase("Search or type URL") && !str.startsWith("http://") && !str.startsWith("https://")) {
+                // Exclude breadcrumb navigation markers and browser URL placeholders (include URLs so clicked links are audited)
+                if (!str.startsWith(">>") && !str.equalsIgnoreCase("Search or type URL") && !str.equalsIgnoreCase("Search Google or type URL")) {
                     sb.append(str).append(" ");
                 }
             }
@@ -1426,6 +1614,12 @@ public class ImpulseGuardService extends AccessibilityService {
 
         // Run full-screen semantic analysis via GeminiGuardEngine
         GeminiGuardEngine.EvaluationResult result = GeminiGuardEngine.evaluateScreenTextDetailed(this, packageName, screenText);
+
+        // If device was offline or request was in flight, remove from deduplication map so it is re-evaluated once online
+        if ("api_key_missing_or_offline".equals(result.reason) || "gemini_all_models_failed".equals(result.reason) || "request_in_flight".equals(result.reason)) {
+            mLastEvaluatedTextMap.remove(packageName + "_screen");
+            return;
+        }
 
         // If flagged as risky adult content, schedule package suspension on UI thread
         if (result.isRisky) {
@@ -1793,6 +1987,13 @@ public class ImpulseGuardService extends AccessibilityService {
 
         // Evaluate query through GeminiGuardEngine
         GeminiGuardEngine.EvaluationResult result = GeminiGuardEngine.evaluateTextDetailed(this, packageName, typedText);
+
+        // If device was offline when user typed the query, NEVER mark it as evaluated; queue it for immediate audit on reconnect!
+        if ("network_offline".equals(result.reason) || "gemini_all_models_failed".equals(result.reason)) {
+            mLastEvaluatedTextMap.remove(packageName);
+            enqueueOfflineQuery(packageName, typedText);
+            return;
+        }
 
         // If an earlier request was still in flight, clear deduplication entry and retry shortly so the final query is never dropped
         if ("request_in_flight".equals(result.reason)) {

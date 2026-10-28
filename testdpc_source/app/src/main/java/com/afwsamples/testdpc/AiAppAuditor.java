@@ -483,6 +483,8 @@ public class AiAppAuditor {
                                             SecurityPipelineManager.markPackageBlocked(context, packageName);
                                             SecurityLogger.log(context, "[AI_RISKY_SUSPEND]", packageName + " -> Suspended by Gemini AI (" + modelName + "): [" + category + "] " + reason);
                                         } else {
+                                            // Ensure any provisional offline quarantine is lifted once verified safe
+                                            unsuspendPackage(context, packageName);
                                             // If the app has browser/video downloader/tube keywords or confidence < 0.85, enter probation as well
                                             boolean isBrowserCandidate = isBrowserOrDownloaderCandidate(packageName, summary, reason);
                                             if (isBrowserCandidate || confidence < 0.85) {
@@ -515,19 +517,10 @@ public class AiAppAuditor {
                 SecurityPipelineManager.markPackageBlocked(context, packageName);
                 SecurityLogger.log(context, "[AI_OFFLINE]", packageName + " -> Explicit Blocklist Match maintained");
             } else if (!isRescueMode) {
-                // If package looks like an alternative browser/downloader, quarantine provisionally
-                String lower = packageName.toLowerCase(Locale.US);
-                boolean suspiciousOffline = lower.contains("browser") || lower.contains("orbit") ||
-                        lower.contains("smartbrowse") || lower.contains("downloader") || lower.contains("tube") ||
-                        lower.contains("vpn") || lower.contains("proxy");
-                if (suspiciousOffline) {
-                    suspendPackage(context, packageName, "Offline quarantine pending AI verification");
-                    SecurityPipelineManager.markPackageBlocked(context, packageName);
-                    SecurityLogger.log(context, "[OFFLINE_QUARANTINE]", packageName + " -> Suspended pending AI audit once online.");
-                } else {
-                    // Do NOT mark safe in cache! Keep pending for audit upon network reconnect
-                    SecurityLogger.log(context, "[OFFLINE_DEFERRED]", packageName + " -> Enqueued for Gemini AI audit upon network connection.");
-                }
+                // Quarantine newly installed non-whitelisted apps while offline until Gemini AI can verify them once online.
+                // Do NOT mark blocked in SecurityPipelineManager cache so processPendingAudits will audit and unsuspend if safe.
+                suspendPackage(context, packageName, "Offline quarantine pending AI verification upon network reconnect");
+                SecurityLogger.log(context, "[OFFLINE_QUARANTINE]", packageName + " -> Provisionally suspended pending Gemini AI audit upon network connection.");
             } else {
                 SecurityLogger.log(context, "[AI_OFFLINE]", packageName + " -> Tier 2 provisional block maintained (Enqueued for AI rescue check)");
             }

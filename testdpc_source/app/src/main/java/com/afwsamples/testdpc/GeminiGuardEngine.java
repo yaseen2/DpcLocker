@@ -21,6 +21,7 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 /**
  * =========================================================================================
@@ -403,11 +404,34 @@ public class GeminiGuardEngine {
     }
 
     /**
-     * Fast-path deterministic detection for notorious torrent indexers and online VPN proxies (0ms response).
+     * Pre-compiled 0ms word-boundary regex for explicit adult/NSFW terms, adult sites, and web proxies.
+     * Ensures that even if the user turns off the internet before typing a search query, explicit
+     * queries are caught and blocked in 0ms without needing network connectivity.
+     */
+    private static final Pattern OFFLINE_ADULT_PATTERN = Pattern.compile(
+            "\\b(porn|porno|pornography|xxx|nsfw|nude|nudes|nudity|hentai|erotic|erotica|" +
+            "boobs|tits|titties|pussy|dick|cock|penis|vagina|blowjob|handjob|cumshot|creampie|" +
+            "gangbang|threesome|orgasm|masturbate|masturbation|milf|bdsm|fetish|camgirl|camgirls|" +
+            "stripper|strippers|deepfake|rule34|nhentai|redgifs|onlyfans|fansly|chaturbate|stripchat|" +
+            "livejasmin|bongacams|myfreecams|camsoda|manyvids|brazzers|bangbros|realitykings|" +
+            "naughtyamerica|mofos|xvideos|xnxx|pornhub|xhamster|redtube|youporn|spankbang|eporner|" +
+            "motherless|tnaflix|spankwire|tube8|txxx|hclips|upornia|daftsex|hqporner|sxyprn|beeg|" +
+            "javhd|hanime|erome|coomer|fapello|simpcity|sex\\s+video|sex\\s+videos|sex\\s+tape|" +
+            "anal\\s+sex|free\\s+sex|hot\\s+sex|naked\\s+girls|naked\\s+women|translate\\.goog|" +
+            "web\\.archive\\.org|4everproxy|filterbypass)\\b",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    /**
+     * Fast-path deterministic detection for notorious torrent indexers, online VPN proxies,
+     * and explicit adult/NSFW terms (0ms response, works 100% offline).
      */
     public static boolean isNotoriousTorrentOrProxyQuery(String text) {
         if (text == null) return false;
         String lower = text.toLowerCase(Locale.US);
+        if (OFFLINE_ADULT_PATTERN.matcher(lower).find()) {
+            return true;
+        }
         return lower.contains("pirate") || // Catch all pirate bay, pirateproxy, thepiratesproxy, tpb, etc.
                 lower.contains("tpb.") ||
                 lower.contains("1337x") ||
@@ -435,6 +459,13 @@ public class GeminiGuardEngine {
                 lower.contains("brazzers") ||
                 lower.contains("nhentai") ||
                 lower.contains("rule34") ||
+                lower.contains("redgifs") ||
+                lower.contains("erome") ||
+                lower.contains("motherless") ||
+                lower.contains("spankwire") ||
+                lower.contains("hqporner") ||
+                lower.contains("sxyprn") ||
+                lower.contains("translate.goog") ||
                 (lower.contains("online") && lower.contains("vpn")) ||
                 (lower.contains("web") && lower.contains("vpn")) ||
                 (lower.contains("free") && lower.contains("vpn") && lower.contains("online")) ||

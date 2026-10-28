@@ -152,10 +152,10 @@ public class FalconsVisionGuardEngine {
     }
 
     /**
-     * Returns whether on-device Falcons vision scanning is currently enabled by user.
+     * Returns whether on-device Falcons vision scanning is currently enabled by user (default: true).
      */
     public static boolean isEnabled(Context context) {
-        return getPrefs(context).getBoolean(KEY_ENABLED, false);
+        return getPrefs(context).getBoolean(KEY_ENABLED, true);
     }
 
     /**

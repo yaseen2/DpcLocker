@@ -600,7 +600,7 @@ public class SecurityConfig {
     public static final String KEY_PROBATION_ACTIVE_SET = "probation_active_set";
     public static final String KEY_PROBATION_SHOTS_PREFIX = "probation_shots_";
     public static final String KEY_PROBATION_START_PREFIX = "probation_start_";
-    public static final int MAX_PROBATION_SHOTS = 5;
+    public static final int MAX_PROBATION_SHOTS = 10;
     public static final long PROBATION_DURATION_MS = 5 * 60 * 1000L; // 5 minutes active window
 
     public static boolean isUnderProbation(Context context, String packageName) {

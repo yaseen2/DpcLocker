@@ -70,20 +70,28 @@ public class ChromePolicyManager {
             chromeBundle.putInt("IncognitoModeAvailability", 1);
 
             // --------------------------------------------------------------------------
-            // 3. Force Google SafeSearch:
-            // Ensures Google Search results strictly filter explicit adult content.
+            // 3. Force Google SafeSearch & Lock Default Search Provider to Google:
+            // Ensures Google Search results strictly filter explicit adult content and prevents
+            // switching the default search engine to unmoderated providers (Bing, Yandex, DuckDuckGo).
             // ForceGoogleSafeSearch (boolean) and SafeSearchMode (int, 1 = strict)
             // --------------------------------------------------------------------------
             chromeBundle.putBoolean("ForceGoogleSafeSearch", true);
             chromeBundle.putInt("SafeSearchMode", 1);
+            chromeBundle.putBoolean("DefaultSearchProviderEnabled", true);
+            chromeBundle.putString("DefaultSearchProviderName", "Google");
+            chromeBundle.putString("DefaultSearchProviderSearchURL", "https://www.google.com/search?q={searchTerms}&safe=active&ssui=on");
 
             // --------------------------------------------------------------------------
-            // 4. Chrome SafeSites Adult Content Filter:
+            // 4. Chrome SafeSites Adult Content Filter & Family Secure DNS (1.1.1.3):
             // SafeSitesFilterBehavior:
             //   0 = Do not filter adult sites
             //   1 = Filter adult sites using Google SafeSearch API database
+            // DnsOverHttpsTemplates:
+            //   Routes Chrome DNS through Cloudflare Family (blocks malware + adult domains at 0ms cost)
             // --------------------------------------------------------------------------
             chromeBundle.putInt("SafeSitesFilterBehavior", 1);
+            chromeBundle.putString("DnsOverHttpsMode", "secure");
+            chromeBundle.putString("DnsOverHttpsTemplates", "https://family.cloudflare-dns.com/dns-query");
 
             // Enable YouTube Comments (ForceYouTubeRestrict: 0 = unrestricted comments, 1 = moderate, 2 = strict)
             chromeBundle.putInt("ForceYouTubeRestrict", 0);
@@ -209,6 +217,55 @@ public class ChromePolicyManager {
                 "faphouse.com", "[*.]faphouse.com",
                 "nhentai.net", "[*.]nhentai.net",
                 "rule34.xxx", "[*.]rule34.xxx",
+                "redgifs.com", "[*.]redgifs.com",
+                "erome.com", "[*.]erome.com",
+                "motherless.com", "[*.]motherless.com",
+                "tnaflix.com", "[*.]tnaflix.com",
+                "spankwire.com", "[*.]spankwire.com",
+                "tube8.com", "[*.]tube8.com",
+                "txxx.com", "[*.]txxx.com",
+                "hclips.com", "[*.]hclips.com",
+                "upornia.com", "[*.]upornia.com",
+                "daftsex.com", "[*.]daftsex.com",
+                "hqporner.com", "[*.]hqporner.com",
+                "sxyprn.com", "[*.]sxyprn.com",
+                "beeg.com", "[*.]beeg.com",
+                "javhd.com", "[*.]javhd.com",
+                "hanime.tv", "[*.]hanime.tv",
+                "coomer.su", "[*.]coomer.su",
+                "fapello.com", "[*.]fapello.com",
+                "simpcity.su", "[*.]simpcity.su",
+                "fansly.com", "[*.]fansly.com",
+                "manyvids.com", "[*.]manyvids.com",
+                "livejasmin.com", "[*.]livejasmin.com",
+                "myfreecams.com", "[*.]myfreecams.com",
+
+                // Alternative search engines that allow disabling SafeSearch or viewing inline adult video results
+                "bing.com", "[*.]bing.com",
+                "yandex.com", "[*.]yandex.com",
+                "yandex.ru", "[*.]yandex.ru",
+                "duckduckgo.com", "[*.]duckduckgo.com",
+                "search.brave.com", "[*.]search.brave.com",
+                "search.yahoo.com", "[*.]search.yahoo.com",
+                "startpage.com", "[*.]startpage.com",
+                "qwant.com", "[*.]qwant.com",
+                "ecosia.org", "[*.]ecosia.org",
+                "swisscows.com", "[*.]swisscows.com",
+                "dogpile.com", "[*.]dogpile.com",
+                "metacrawler.com", "[*.]metacrawler.com",
+                "mojeek.com", "[*.]mojeek.com",
+
+                // Translation & web archive proxies used to wrap and bypass blocked URLs
+                "translate.goog", "[*.]translate.goog",
+                "web.archive.org", "[*.]web.archive.org",
+                "archive.org", "[*.]archive.org",
+                "archive.is", "[*.]archive.is",
+                "archive.ph", "[*.]archive.ph",
+                "archive.today", "[*.]archive.today",
+                "archive.md", "[*.]archive.md",
+                "12ft.io", "[*.]12ft.io",
+                "anonymouse.org", "[*.]anonymouse.org",
+                "hidester.com", "[*.]hidester.com",
 
                 // Addictive short-form infinite scroll video feeds
                 "youtube.com/shorts",
