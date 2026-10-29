@@ -24,6 +24,12 @@
         testdpc:minSdkVersion="L" />
 
     <PreferenceCategory android:title="DPC Self-Control &amp; Protection">
+        <com.afwsamples.testdpc.common.preference.DpcPreference
+            android:key="lock_testdpc_now"
+            android:title="🔒 Lock TestDPC Now"
+            android:summary="Immediately lock TestDPC and close the app (Requires PC DpcLocker.bat to unlock)."
+            testdpc:admin="any"
+            testdpc:minSdkVersion="L" />
         <com.afwsamples.testdpc.common.preference.DpcSwitchPreference
             android:key="auto_block_browsers"
             android:title="Auto-Block Non-Chrome Browsers"

@@ -323,6 +323,7 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     private static final String INSTALL_EXISTING_PACKAGE_KEY = "install_existing_packages";
     private static final String INSTALL_APK_PACKAGE_KEY = "install_apk_package";
     private static final String UNINSTALL_PACKAGE_KEY = "uninstall_package";
+    private static final String LOCK_TESTDPC_NOW_KEY = "lock_testdpc_now";
     private static final String AUTO_BLOCK_BROWSERS_KEY = "auto_block_browsers";
     private static final String APP_USAGE_TIMERS_KEY = "app_usage_timers";
     private static final String GENERATE_KEY_CERTIFICATE_KEY = "generate_key_and_certificate";
@@ -565,6 +566,11 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     @Override
     public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
         addPreferencesFromResource(R.xml.device_policy_header);
+
+        Preference lockTestDpcPref = findPreference(LOCK_TESTDPC_NOW_KEY);
+        if (lockTestDpcPref != null) {
+            lockTestDpcPref.setOnPreferenceClickListener(this);
+        }
 
         mAutoBlockBrowsersPreference = (DpcSwitchPreference) findPreference(AUTO_BLOCK_BROWSERS_KEY);
         if (mAutoBlockBrowsersPreference != null) {
@@ -952,6 +958,9 @@ public class PolicyManagementFragment extends BaseSearchablePolicyPreferenceFrag
     public boolean onPreferenceClick(Preference preference) {
         String key = preference.getKey();
         switch (key) {
+            case LOCK_TESTDPC_NOW_KEY:
+                com.afwsamples.testdpc.PolicyManagementActivity.showLockTestDpcConfirmationDialog(getActivity());
+                return true;
             case AUTO_BLOCK_BROWSERS_KEY:
                 return true;
             case APP_USAGE_TIMERS_KEY:

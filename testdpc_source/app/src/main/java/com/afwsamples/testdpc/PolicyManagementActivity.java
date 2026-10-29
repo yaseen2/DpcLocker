@@ -90,6 +90,9 @@ public class PolicyManagementActivity extends Activity implements
     @Override
     public boolean onMenuItemSelected(int featureId, MenuItem item) {
         switch (item.getItemId()) {
+            case R.id.action_lock_testdpc:
+                showLockTestDpcConfirmationDialog(this);
+                return true;
             case R.id.action_show_search:
                 getFragmentManager()
                         .beginTransaction()
@@ -102,6 +105,104 @@ public class PolicyManagementActivity extends Activity implements
                 break;
         }
         return false;
+    }
+
+    /**
+     * Shows a confirmation dialog to lock TestDPC one-way from inside the app.
+     * Unlocking remains strictly via PC ADB (DpcLocker.bat).
+     */
+    public static void showLockTestDpcConfirmationDialog(final Activity activity) {
+        if (activity == null || activity.isFinishing()) {
+            return;
+        }
+        new android.app.AlertDialog.Builder(activity)
+                .setTitle("🔒 Lock TestDPC Now?")
+                .setMessage("Once locked, TestDPC will immediately close and cannot be opened on the phone.\n\n"
+                        + "You will need your PC (DpcLocker.bat) to unlock it again.")
+                .setPositiveButton("🔒 Lock Now", new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface dialog, int which) {
+                        lockTestDpcNow(activity);
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /**
+     * Enforces all active protections, writes dpclocker_enabled = 1 to Settings.Global,
+     * sends the user to the Home screen, and removes TestDPC from Recent Apps while
+     * keeping ImpulseGuardService alive in the background.
+     */
+    public static void lockTestDpcNow(final Activity activity) {
+        if (activity == null) {
+            return;
+        }
+        try {
+            // 1. Re-enforce all active Device Owner & Chrome policies before locking
+            SecurityPipelineManager.enforceCoreDeviceOwnerTamperRestrictions(activity);
+            ChromePolicyManager.enforceDefaultChromePolicies(activity);
+            ImpulseGuardService.ensureAccessibilityServiceEnabled(activity);
+        } catch (Throwable ignored) {
+        }
+
+        // 2. Best-effort self-grant of WRITE_SECURE_SETTINGS via DevicePolicyManager
+        try {
+            android.app.admin.DevicePolicyManager dpm =
+                    (android.app.admin.DevicePolicyManager) activity.getSystemService(android.content.Context.DEVICE_POLICY_SERVICE);
+            if (dpm != null && dpm.isDeviceOwnerApp(activity.getPackageName())) {
+                dpm.setPermissionGrantState(
+                        DeviceAdminReceiver.getComponentName(activity),
+                        activity.getPackageName(),
+                        android.Manifest.permission.WRITE_SECURE_SETTINGS,
+                        android.app.admin.DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED);
+            }
+        } catch (Throwable ignored) {
+        }
+
+        // 3. Write dpclocker_enabled = 1 to Settings.Global
+        boolean lockedSuccessfully = false;
+        try {
+            lockedSuccessfully = android.provider.Settings.Global.putInt(
+                    activity.getContentResolver(), "dpclocker_enabled", 1);
+        } catch (SecurityException se) {
+            android.util.Log.e("PolicyManagementActivity", "Missing WRITE_SECURE_SETTINGS to set dpclocker_enabled", se);
+        }
+
+        int verifyLock = android.provider.Settings.Global.getInt(
+                activity.getContentResolver(), "dpclocker_enabled", 0);
+        if (!lockedSuccessfully && verifyLock != 1) {
+            android.widget.Toast.makeText(
+                    activity,
+                    "⚠️ Permission required: Run 'adb shell pm grant com.afwsamples.testdpc android.permission.WRITE_SECURE_SETTINGS' once on PC.",
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        try {
+            SecurityLogger.log(activity, "DPC_LOCKED_IN_APP", "User locked TestDPC via in-app lock button.");
+        } catch (Throwable ignored) {
+        }
+
+        android.widget.Toast.makeText(
+                activity,
+                "🔒 TestDPC Locked! Connect via PC ADB to unlock.",
+                android.widget.Toast.LENGTH_LONG).show();
+
+        // 4. Navigate to Home screen and remove TestDPC task from Recents
+        try {
+            android.content.Intent homeIntent = new android.content.Intent(android.content.Intent.ACTION_MAIN);
+            homeIntent.addCategory(android.content.Intent.CATEGORY_HOME);
+            homeIntent.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity.startActivity(homeIntent);
+        } catch (Throwable ignored) {
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            activity.finishAndRemoveTask();
+        } else {
+            activity.finish();
+        }
     }
 
     @Override

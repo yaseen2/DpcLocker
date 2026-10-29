@@ -190,6 +190,7 @@ if "!ACTIVE_TARGET_MODE!"=="ALL" (
     echo.
     for /L %%i in (1,1,!DEV_TOTAL!) do (
         echo  !C_SUB![*] Device %%i/!DEV_TOTAL!:!R! !C_TXT!!DEV_MODEL_%%i!!R! [!DEV_SERIAL_%%i!]
+        "!ADB!" -s !DEV_SERIAL_%%i! shell pm grant com.afwsamples.testdpc android.permission.WRITE_SECURE_SETTINGS > nul 2>&1
         "!ADB!" -s !DEV_SERIAL_%%i! shell settings put global dpclocker_enabled 0
         "!ADB!" -s !DEV_SERIAL_%%i! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity > nul 2>&1
         echo  !C_OK!    [+] UNLOCKED and Launched Test DPC!R!
@@ -204,6 +205,7 @@ if "!ACTIVE_TARGET_MODE!"=="ALL" (
 
 echo  !C_SUB![*] Target:!R! !C_OK!!CURRENT_TARGET_NAME! [!CURRENT_TARGET_SERIAL!]!R!
 echo  !C_SUB![*] Sending Payload:!R! !C_TXT!dpclocker_enabled = 0 [UNLOCKED]!R!
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell pm grant com.afwsamples.testdpc android.permission.WRITE_SECURE_SETTINGS > nul 2>&1
 "!ADB!" -s !CURRENT_TARGET_SERIAL! shell settings put global dpclocker_enabled 0
 if %ERRORLEVEL% EQU 0 (
     echo  !C_OK![+] SUCCESS: Setting applied [dpclocker_enabled = 0]!R!
@@ -232,6 +234,7 @@ if !DEV_TOTAL! EQU 0 (
     pause
     exit /b 1
 )
+"!ADB!" -s !CURRENT_TARGET_SERIAL! shell pm grant com.afwsamples.testdpc android.permission.WRITE_SECURE_SETTINGS > nul 2>&1
 "!ADB!" -s !CURRENT_TARGET_SERIAL! shell settings put global dpclocker_enabled 0
 ping 127.0.0.1 -n 2 > nul
 "!ADB!" -s !CURRENT_TARGET_SERIAL! shell am start -n com.afwsamples.testdpc/.PolicyManagementActivity
