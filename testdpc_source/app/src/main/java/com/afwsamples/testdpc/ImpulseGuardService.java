@@ -694,24 +694,28 @@ public class ImpulseGuardService extends AccessibilityService {
     private void cleanPollutedProbationMonitoredApps() {
         try {
             SharedPreferences prefs = getSharedPreferences(PREF_MONITORED_APPS, Context.MODE_PRIVATE);
-            if (prefs.getBoolean("probation_monitored_cleanup_v2", false)) {
+            if (prefs.getBoolean("probation_monitored_cleanup_v3", false)) {
                 return;
             }
+            // 1. Clear all legacy safe apps that were falsely placed in Visual Probation by the old "without web browsing" substring bug
+            SecurityConfig.clearAllProbation(this);
+
+            // 2. Un-monitor all non-browser apps in PREF_MONITORED_APPS
             SharedPreferences.Editor editor = prefs.edit();
             Map<String, ?> all = prefs.getAll();
             if (all != null) {
                 for (Map.Entry<String, ?> entry : all.entrySet()) {
                     String pkg = entry.getKey();
-                    if ("probation_monitored_cleanup_v2".equals(pkg)) continue;
+                    if (pkg.startsWith("probation_monitored_cleanup")) continue;
                     if (entry.getValue() instanceof Boolean && (Boolean) entry.getValue()) {
-                        if (!isDefaultBrowser(pkg) && !isLikelyBrowserOrSearchApp(pkg) && !SecurityConfig.isUnderProbation(this, pkg)) {
+                        if (!isDefaultBrowser(pkg) && !isLikelyBrowserOrSearchApp(pkg)) {
                             editor.putBoolean(pkg, false);
                             Log.i(TAG, "🧹 Un-monitored non-browser safe app from Falcons/Gemini runtime scan: " + pkg);
                         }
                     }
                 }
             }
-            editor.putBoolean("probation_monitored_cleanup_v2", true).apply();
+            editor.putBoolean("probation_monitored_cleanup_v3", true).apply();
         } catch (Exception e) {
             Log.e(TAG, "Error cleaning polluted monitored apps", e);
         }

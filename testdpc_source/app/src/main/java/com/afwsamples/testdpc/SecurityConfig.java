@@ -688,6 +688,20 @@ public class SecurityConfig {
         SecurityLogger.log(context, "[PROBATION_GRADUATED]", lower + " -> Passed Visual Probation. Verified Safe Tool.");
     }
 
+    public static synchronized void clearAllProbation(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);
+        Set<String> activeSet = new HashSet<>(prefs.getStringSet(KEY_PROBATION_ACTIVE_SET, Collections.<String>emptySet()));
+        prefs.edit().clear().apply();
+        sCachedProbationSet = Collections.emptySet();
+        for (String pkg : activeSet) {
+            SecurityPipelineManager.markPackageSafe(context, pkg);
+            if (!ImpulseGuardService.isDefaultBrowser(pkg)) {
+                ImpulseGuardService.setMonitoredApp(context, pkg, false);
+            }
+        }
+        Log.i(TAG, "🧹 Cleared " + activeSet.size() + " legacy polluted apps from Visual Probation.");
+    }
+
     public static synchronized void revokeProbation(Context context, String packageName, String reason) {
         if (packageName == null) return;
         String lower = packageName.trim().toLowerCase();
