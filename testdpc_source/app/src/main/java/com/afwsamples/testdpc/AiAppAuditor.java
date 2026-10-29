@@ -32,6 +32,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -81,8 +82,12 @@ public class AiAppAuditor {
             "gemini-3.6-flash",        // Priority 3
             "gemini-3.8-flash",        // Priority 4
             "gemini-2.5-flash",        // Fallback
-            "gemini-2.5-flash-lite"    // Fallback
+            "gemini-2.5-flash-lite",   // Fallback
+            "gemini-2.0-flash"         // Emergency Quota Fallback
     };
+
+    // Per-model circuit breaker cooldowns to skip quota-exhausted (429) or unavailable models immediately
+    private static final ConcurrentHashMap<String, Long> sAuditorModelCooldownUntil = new ConcurrentHashMap<>();
 
     /**
      * Helper to retrieve SharedPreferences for AiAppAuditor.
@@ -356,9 +361,13 @@ public class AiAppAuditor {
         boolean aiSuccess = false;
         String apiKey = getGeminiApiKey(context);
 
-        // Step 2: Query Gemini Cloud AI if API Key is configured
-        if (apiKey != null && !apiKey.isEmpty()) {
+        // Step 2: Query Gemini Cloud AI if API Key is configured and network is online
+        if (apiKey != null && !apiKey.isEmpty() && GeminiGuardEngine.isNetworkConnected(context)) {
             for (String modelName : GEMINI_MODELS) {
+                Long cooldownUntil = sAuditorModelCooldownUntil.get(modelName);
+                if (cooldownUntil != null && System.currentTimeMillis() < cooldownUntil) {
+                    continue;
+                }
                 try {
                     JSONObject metadataJson = new JSONObject();
                     metadataJson.put("package_name", packageName);
@@ -485,9 +494,9 @@ public class AiAppAuditor {
                                         } else {
                                             // Ensure any provisional offline quarantine is lifted once verified safe
                                             unsuspendPackage(context, packageName);
-                                            // If the app has browser/video downloader/tube keywords or confidence < 0.85, enter probation as well
-                                            boolean isBrowserCandidate = isBrowserOrDownloaderCandidate(packageName, summary, reason);
-                                            if (isBrowserCandidate || confidence < 0.85) {
+                                            // Only enter probation if package/label indicates a browser/downloader candidate or AI confidence is low (< 0.80)
+                                            boolean isBrowserCandidate = isBrowserOrDownloaderCandidate(packageName, appLabel, "");
+                                            if (isBrowserCandidate || confidence < 0.80) {
                                                 SecurityConfig.startProbation(context, packageName);
                                                 SecurityLogger.log(context, "[AI_PROBATION_START]", packageName + " -> Gray-area candidate entered Visual Probation: " + summary);
                                             } else {
@@ -501,7 +510,15 @@ public class AiAppAuditor {
                             }
                         }
                     } else {
-                        Log.w(TAG, "Gemini API Model [" + modelName + "] returned HTTP Code: " + responseCode);
+                        long now = System.currentTimeMillis();
+                        if (responseCode == 429) {
+                            sAuditorModelCooldownUntil.put(modelName, now + 90 * 1000L);
+                        } else if (responseCode == 404 || responseCode == 403 || responseCode == 402) {
+                            sAuditorModelCooldownUntil.put(modelName, now + 15 * 60 * 1000L);
+                        } else if (responseCode >= 500) {
+                            sAuditorModelCooldownUntil.put(modelName, now + 30 * 1000L);
+                        }
+                        Log.w(TAG, "Gemini API Model [" + modelName + "] returned HTTP Code: " + responseCode + " (cooldown applied)");
                     }
                     conn.disconnect();
                 } catch (Exception e) {
@@ -510,17 +527,29 @@ public class AiAppAuditor {
             }
         }
 
-        // Step 6: Offline handling: if Gemini calls failed or device is offline, defer to pending queue
+        // Step 6: Offline & Quota-Exhaustion Fallback Handling
         if (!aiSuccess) {
             enqueuePendingAudit(context, packageName);
             if (SecurityConfig.isBlocklisted(context, packageName)) {
                 SecurityPipelineManager.markPackageBlocked(context, packageName);
                 SecurityLogger.log(context, "[AI_OFFLINE]", packageName + " -> Explicit Blocklist Match maintained");
             } else if (!isRescueMode) {
-                // Quarantine newly installed non-whitelisted apps while offline until Gemini AI can verify them once online.
-                // Do NOT mark blocked in SecurityPipelineManager cache so processPendingAudits will audit and unsuspend if safe.
-                suspendPackage(context, packageName, "Offline quarantine pending AI verification upon network reconnect");
-                SecurityLogger.log(context, "[OFFLINE_QUARANTINE]", packageName + " -> Provisionally suspended pending Gemini AI audit upon network connection.");
+                boolean isOffline = !GeminiGuardEngine.isNetworkConnected(context);
+                boolean suspiciousCandidate = isBrowserOrDownloaderCandidate(packageName, appLabel, "");
+                if (isOffline) {
+                    // Device is intentionally offline during app install: quarantine provisionally until network reconnects
+                    suspendPackage(context, packageName, "Offline quarantine pending AI verification upon network reconnect");
+                    SecurityLogger.log(context, "[OFFLINE_QUARANTINE]", packageName + " -> Provisionally suspended pending Gemini AI audit upon network connection.");
+                } else if (suspiciousCandidate) {
+                    // Online, but Gemini API quota/billing exhausted AND package matches browser/downloader/VPN heuristics
+                    suspendPackage(context, packageName, "Quota-fallback quarantine for suspicious browser/downloader/VPN package");
+                    SecurityLogger.log(context, "[QUOTA_FALLBACK_QUARANTINE]", packageName + " -> Suspended by local heuristic while Gemini API is unavailable.");
+                } else {
+                    // Online, Gemini API quota/billing exhausted, and package looks like a normal utility/game/banking app:
+                    // Do NOT lock user out of legitimate apps due to cloud API quota limits!
+                    unsuspendPackage(context, packageName);
+                    SecurityLogger.log(context, "[QUOTA_FALLBACK_ALLOW]", packageName + " -> Allowed by local heuristic while Gemini API quota is exhausted (queued for later audit).");
+                }
             } else {
                 SecurityLogger.log(context, "[AI_OFFLINE]", packageName + " -> Tier 2 provisional block maintained (Enqueued for AI rescue check)");
             }
@@ -576,24 +605,31 @@ public class AiAppAuditor {
     }
 
     /**
-     * Checks if an app's package name, summary, or reason hints at browser, video scraper, or web downloader capabilities.
+     * Checks if an app's package name or label hints at browser, video scraper, VPN/proxy, or web downloader capabilities.
+     * Note: Deliberately excludes Gemini's "reason" text to avoid false matches on phrases like "without arbitrary web browsing".
      */
-    private static boolean isBrowserOrDownloaderCandidate(String packageName, String summary, String reason) {
+    private static boolean isBrowserOrDownloaderCandidate(String packageName, String appLabel, String unused) {
         String combined = ((packageName != null ? packageName : "") + " " +
-                (summary != null ? summary : "") + " " +
-                (reason != null ? reason : "")).toLowerCase();
+                (appLabel != null ? appLabel : "")).toLowerCase(Locale.US);
+        if (combined.startsWith("com.google.android.") && !combined.contains("chrome") && !combined.contains("search")) {
+            return false;
+        }
         return combined.contains("browser") ||
                 combined.contains("downloader") ||
-                combined.contains("saver") ||
-                combined.contains("web") ||
-                combined.contains("surf") ||
-                combined.contains("explore") ||
+                combined.contains("vidmate") ||
+                combined.contains("snaptube") ||
+                combined.contains("newpipe") ||
+                combined.contains("fastsave") ||
+                combined.contains("orbit") ||
+                combined.contains("smartbrowse") ||
+                combined.contains("webapk") ||
                 combined.contains("proxy") ||
-                combined.contains("search") ||
+                combined.contains("vpn") ||
+                combined.contains("torrent") ||
                 combined.contains("tube") ||
                 combined.contains("bing") ||
-                combined.contains("news") ||
-                combined.contains("start");
+                combined.contains("duckduckgo") ||
+                combined.contains("yandex");
     }
 
     // =====================================================================================

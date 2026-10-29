@@ -2,14 +2,18 @@ package com.afwsamples.testdpc;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.util.Base64;
 import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -18,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -67,11 +72,107 @@ public class GeminiGuardEngine {
     private static final String KEY_CACHE_PREFIX = "cache_verdict_";
     private static final String KEY_LOGS = "gemini_guard_logs";
 
-    // Model Fallback Ladder hierarchy
+    // Model Fallback Ladder hierarchy (prioritizing high-speed 3.5/3.6/3.8 series with 2.5/2.0 quota fallbacks)
     private static final String PRIMARY_MODEL = "gemini-3.5-flash-lite";
-    private static final String FALLBACK_MODEL_1 = "gemini-3.1-flash-lite";
-    private static final String FALLBACK_MODEL_2 = "gemini-2.5-flash-lite";
-    private static final String FALLBACK_MODEL_3 = "gemini-1.5-flash-8b";
+    private static final String FALLBACK_MODEL_1 = "gemini-3.5-flash";
+    private static final String FALLBACK_MODEL_2 = "gemini-3.6-flash";
+    private static final String FALLBACK_MODEL_3 = "gemini-3.8-flash";
+    private static final String FALLBACK_MODEL_4 = "gemini-2.5-flash-lite";
+    private static final String FALLBACK_MODEL_5 = "gemini-2.0-flash";
+    private static final String[] MODEL_LADDER = new String[]{
+            PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2, FALLBACK_MODEL_3, FALLBACK_MODEL_4, FALLBACK_MODEL_5
+    };
+
+    // Per-model cooldown circuit breaker (modelName -> timestampMs when cooldown expires)
+    // Prevents latency spikes and battery drain when a model hits HTTP 429 (Quota/Rate Limit), 403, or 503
+    private static final ConcurrentHashMap<String, Long> sModelCooldownUntil = new ConcurrentHashMap<>();
+    // Global cloud cooldown when API key is invalid or account billing/charges limit is completely locked
+    private static volatile long sGlobalCloudCooldownUntil = 0L;
+
+    /**
+     * Outcome of Gemini Vision second-stage verification when Falcons.ai ViT flags a candidate frame.
+     */
+    public enum VisionVerifyOutcome {
+        CONFIRMED_NSFW,         // Gemini confirmed the screenshot contains real explicit/NSFW imagery
+        VETOED_FALSE_POSITIVE,  // Gemini confirmed the screenshot is a safe false positive (UI, face, food, etc.)
+        UNAVAILABLE_FALLBACK    // Offline, API key missing, or all models exhausted quota / timed out
+    }
+
+    /**
+     * Checks whether a specific model is currently healthy and not in a quota/error cooldown window.
+     */
+    private static boolean isModelAvailable(String modelName) {
+        long now = System.currentTimeMillis();
+        if (now < sGlobalCloudCooldownUntil) {
+            return false;
+        }
+        Long cooldownUntil = sModelCooldownUntil.get(modelName);
+        if (cooldownUntil != null) {
+            if (now < cooldownUntil) {
+                return false;
+            }
+            sModelCooldownUntil.remove(modelName);
+        }
+        return true;
+    }
+
+    /**
+     * Inspects HTTP error codes and response bodies from Gemini REST calls to apply smart circuit-breaker
+     * cooldowns for rate limits (429), daily quota exhaustion, billing/charges limits (402/403), and server errors.
+     */
+    private static void handleHttpFailureAndApplyCooldown(String modelName, int code, HttpURLConnection conn) {
+        long now = System.currentTimeMillis();
+        String errorBody = "";
+        try {
+            InputStream errStream = conn != null ? conn.getErrorStream() : null;
+            if (errStream != null) {
+                StringBuilder sb = new StringBuilder();
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(errStream, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = br.readLine()) != null && sb.length() < 1500) {
+                        sb.append(line);
+                    }
+                }
+                errorBody = sb.toString().toLowerCase(Locale.US);
+            }
+        } catch (Exception ignored) {
+        }
+
+        if (code == 429) {
+            // Quota or Rate Limit Exceeded
+            if (errorBody.contains("perday") || errorBody.contains("daily") || errorBody.contains("billing") || errorBody.contains("plan")) {
+                // Daily quota exhausted for this model: cool down for 15 minutes
+                sModelCooldownUntil.put(modelName, now + 15 * 60 * 1000L);
+                Log.w(TAG, "⚠️ Gemini Model [" + modelName + "] hit DAILY QUOTA LIMIT (HTTP 429). Cooling down for 15m; routing to fallback model.");
+            } else {
+                // Per-minute RPM/TPM rate limit spike: cool down for 60 seconds
+                sModelCooldownUntil.put(modelName, now + 60 * 1000L);
+                Log.w(TAG, "⚠️ Gemini Model [" + modelName + "] hit RPM/TPM RATE LIMIT (HTTP 429). Cooling down for 60s; routing to fallback model.");
+            }
+        } else if (code == 402 || code == 401) {
+            // Payment/Billing required or Unauthorized key
+            sGlobalCloudCooldownUntil = now + 10 * 60 * 1000L;
+            Log.e(TAG, "🚨 Gemini API Billing/Auth Error (HTTP " + code + "). Activating 10m global cloud cooldown (using local defenses).");
+        } else if (code == 400 || code == 403) {
+            if (errorBody.contains("api_key_invalid") || errorBody.contains("api key not valid") ||
+                    errorBody.contains("billing_disabled") || errorBody.contains("project_suspended") ||
+                    errorBody.contains("account_deleted") || errorBody.contains("consumer_invalid")) {
+                sGlobalCloudCooldownUntil = now + 10 * 60 * 1000L;
+                Log.e(TAG, "🚨 Gemini API Key / Account Billing Error (HTTP " + code + "). Activating 10m global cloud cooldown.");
+            } else {
+                sModelCooldownUntil.put(modelName, now + 10 * 60 * 1000L);
+                Log.w(TAG, "Gemini Model [" + modelName + "] returned HTTP " + code + ". Cooling down model for 10m.");
+            }
+        } else if (code == 404) {
+            // Model endpoint unavailable
+            sModelCooldownUntil.put(modelName, now + 60 * 60 * 1000L);
+            Log.w(TAG, "Gemini Model [" + modelName + "] returned HTTP 404. Cooling down model for 60m.");
+        } else if (code >= 500) {
+            // Transient server overload (500, 502, 503, 504)
+            sModelCooldownUntil.put(modelName, now + 30 * 1000L);
+            Log.w(TAG, "Gemini Model [" + modelName + "] server overload (HTTP " + code + "). Cooling down model for 30s.");
+        }
+    }
 
     // High-speed LRU memory cache for screen text hashes (500 entries)
     private static final android.util.LruCache<String, Boolean> sRamCache = new android.util.LruCache<>(500);
@@ -367,6 +468,12 @@ public class GeminiGuardEngine {
             return new EvaluationResult(false, 0.0, "safe", "network_offline", 0, "{}", "none");
         }
 
+        // 3b. Global Cloud Cooldown Check (if billing/key/quota is globally locked out, return in 0ms)
+        if (System.currentTimeMillis() < sGlobalCloudCooldownUntil) {
+            Log.d(TAG, "Global cloud cooldown active. Relying on 0ms local regex filter for: " + trimmedText);
+            return new EvaluationResult(false, 0.0, "safe", "gemini_quota_or_api_error", 0, "{}", "none");
+        }
+
         // 4. Single-Flight Lock: drops intermediate rapid keystrokes to prevent thread queuing
         if (!isQueryRequestInFlight.compareAndSet(false, true)) {
             Log.d(TAG, "Single-flight lock active. Skipping intermediate evaluation for: " + trimmedText);
@@ -374,11 +481,13 @@ public class GeminiGuardEngine {
         }
 
         try {
-            // Model Fallback Ladder
-            String[] modelsToTry = new String[]{PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2, FALLBACK_MODEL_3};
+            // Model Fallback Ladder with Per-Model Circuit Breaker
             EvaluationResult finalResult = null;
 
-            for (String modelName : modelsToTry) {
+            for (String modelName : MODEL_LADDER) {
+                if (!isModelAvailable(modelName)) {
+                    continue;
+                }
                 EvaluationResult res = executeGeminiRequest(context, modelName, apiKey, packageName, trimmedText, startTime);
                 if (res != null) {
                     finalResult = res;
@@ -394,8 +503,9 @@ public class GeminiGuardEngine {
                 return finalResult;
             }
 
-            // Default Fail-Safe Open if all model attempts fail
-            return new EvaluationResult(false, 0.0, "safe", "gemini_all_models_failed", System.currentTimeMillis() - startTime, "{}", "none");
+            // Distinguish between offline vs online quota/API failure so we never trigger infinite reconnect loops
+            String failReason = isNetworkConnected(context) ? "gemini_quota_or_api_error" : "network_offline";
+            return new EvaluationResult(false, 0.0, "safe", failReason, System.currentTimeMillis() - startTime, "{}", "none");
 
         } finally {
             // Always release the single-flight lock
@@ -611,7 +721,7 @@ public class GeminiGuardEngine {
                 return new EvaluationResult(isRisky, confidence, category, reason, latency, generatedText, modelName);
 
             } else {
-                Log.w(TAG, "Gemini API Model [" + modelName + "] returned HTTP " + code + ". Attempting fallback...");
+                handleHttpFailureAndApplyCooldown(modelName, code, conn);
                 return null; // Triggers fallback ladder to next model
             }
 
@@ -674,6 +784,10 @@ public class GeminiGuardEngine {
             return new EvaluationResult(false, 0.0, "safe", "api_key_missing_or_offline", 0, "{}", "none");
         }
 
+        if (System.currentTimeMillis() < sGlobalCloudCooldownUntil) {
+            return new EvaluationResult(false, 0.0, "safe", "gemini_quota_or_api_error", 0, "{}", "none");
+        }
+
         // 3. Single-Flight Lock
         if (!isScreenRequestInFlight.compareAndSet(false, true)) {
             Log.d(TAG, "Single-flight lock active. Skipping screen text evaluation.");
@@ -681,10 +795,12 @@ public class GeminiGuardEngine {
         }
 
         try {
-            String[] modelsToTry = new String[]{PRIMARY_MODEL, FALLBACK_MODEL_1, FALLBACK_MODEL_2, FALLBACK_MODEL_3};
             EvaluationResult finalResult = null;
 
-            for (String modelName : modelsToTry) {
+            for (String modelName : MODEL_LADDER) {
+                if (!isModelAvailable(modelName)) {
+                    continue;
+                }
                 EvaluationResult res = executeGeminiScreenRequest(context, modelName, apiKey, packageName, trimmedScreenText, startTime);
                 if (res != null) {
                     finalResult = res;
@@ -701,7 +817,8 @@ public class GeminiGuardEngine {
                 return finalResult;
             }
 
-            return new EvaluationResult(false, 0.0, "safe", "gemini_all_models_failed", System.currentTimeMillis() - startTime, "{}", "none");
+            String failReason = isNetworkConnected(context) ? "gemini_quota_or_api_error" : "api_key_missing_or_offline";
+            return new EvaluationResult(false, 0.0, "safe", failReason, System.currentTimeMillis() - startTime, "{}", "none");
 
         } finally {
             isScreenRequestInFlight.set(false);
@@ -834,6 +951,7 @@ public class GeminiGuardEngine {
                 return new EvaluationResult(isRisky, confidence, category, reason, latency, generatedText, modelName);
 
             } else {
+                handleHttpFailureAndApplyCooldown(modelName, code, conn);
                 return null;
             }
 
@@ -841,6 +959,189 @@ public class GeminiGuardEngine {
             Log.e(TAG, "Error executing Gemini screen request for model: " + modelName, e);
             return null;
         }
+    }
+
+    // =====================================================================================
+    // SECTION 5: Hybrid Second-Stage Vision Verification (Anti-False-Positive Rescue)
+    // =====================================================================================
+
+    /**
+     * Second-stage cloud vision verifier invoked ONLY when on-device Falcons.ai ViT flags a candidate frame.
+     * Prevents false positives on normal social media feeds (faces/selfies, food, warm UI cards, text)
+     * while gracefully handling offline state, rate limits (HTTP 429), and quota exhaustion.
+     *
+     * @param context     Application context
+     * @param packageName Active foreground package name
+     * @param bitmap      Screenshot bitmap to verify
+     * @param falconsProb The probability score reported by Falcons.ai ViT
+     * @return VisionVerifyOutcome (CONFIRMED_NSFW, VETOED_FALSE_POSITIVE, or UNAVAILABLE_FALLBACK)
+     */
+    public static VisionVerifyOutcome verifyVisualNsfwWithGemini(Context context, String packageName, Bitmap bitmap, float falconsProb) {
+        if (bitmap == null || bitmap.isRecycled()) {
+            return VisionVerifyOutcome.UNAVAILABLE_FALLBACK;
+        }
+        String apiKey = getApiKey(context);
+        if (apiKey.isEmpty() || !isNetworkConnected(context)) {
+            return VisionVerifyOutcome.UNAVAILABLE_FALLBACK;
+        }
+        if (System.currentTimeMillis() < sGlobalCloudCooldownUntil) {
+            return VisionVerifyOutcome.UNAVAILABLE_FALLBACK;
+        }
+
+        // Encode bitmap to compact JPEG Base64 (~15-25KB) for sub-400ms transport
+        String base64Jpeg;
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 75, baos);
+            base64Jpeg = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP);
+        } catch (Exception e) {
+            Log.e(TAG, "Error encoding bitmap for Gemini Vision verification", e);
+            return VisionVerifyOutcome.UNAVAILABLE_FALLBACK;
+        }
+
+        for (String modelName : MODEL_LADDER) {
+            if (!isModelAvailable(modelName)) {
+                continue;
+            }
+            long start = System.currentTimeMillis();
+            String endpointUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
+            HttpURLConnection conn = null;
+            try {
+                JSONObject systemInstruction = new JSONObject();
+                JSONObject sysPart = new JSONObject();
+                sysPart.put("text",
+                        "You are an AI vision verifier preventing false positives from a local on-device NSFW detector on an Android phone.\n" +
+                        "Inspect this mobile screenshot and determine if it shows REAL explicit adult, pornographic, erotic, or nude NSFW imagery.\n" +
+                        "IMPORTANT: Normal social media posts, clothed people, close-up faces/selfies, hands, sports, food, text articles, games, and warm-colored app UI are SAFE (\"is_nsfw\": false).\n" +
+                        "Respond ONLY with a valid JSON object: {\"is_nsfw\": true, \"reason\": \"...\"} or {\"is_nsfw\": false, \"reason\": \"...\"}");
+                systemInstruction.put("parts", new JSONArray().put(sysPart));
+
+                JSONObject inlineData = new JSONObject();
+                inlineData.put("mime_type", "image/jpeg");
+                inlineData.put("data", base64Jpeg);
+
+                JSONObject imagePart = new JSONObject();
+                imagePart.put("inline_data", inlineData);
+
+                JSONObject textPart = new JSONObject();
+                textPart.put("text", "Verify screenshot from app [" + packageName + "]. Is this real explicit adult/NSFW content?");
+
+                JSONArray parts = new JSONArray();
+                parts.put(imagePart);
+                parts.put(textPart);
+
+                JSONObject contentObj = new JSONObject();
+                contentObj.put("parts", parts);
+
+                JSONObject genConfig = new JSONObject();
+                genConfig.put("response_mime_type", "application/json");
+                genConfig.put("temperature", 0.0);
+
+                JSONObject payload = new JSONObject();
+                payload.put("system_instruction", systemInstruction);
+                payload.put("contents", new JSONArray().put(contentObj));
+                payload.put("generationConfig", genConfig);
+
+                URL url = new URL(endpointUrl);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(6000);
+                conn.setDoOutput(true);
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    byte[] input = payload.toString().getBytes(StandardCharsets.UTF_8);
+                    os.write(input, 0, input.length);
+                }
+
+                int code = conn.getResponseCode();
+                long latency = System.currentTimeMillis() - start;
+
+                if (code == 200) {
+                    StringBuilder responseBuilder = new StringBuilder();
+                    try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            responseBuilder.append(line.trim());
+                        }
+                    }
+
+                    String rawResponseBody = responseBuilder.toString();
+                    JSONObject jsonResponse = new JSONObject(rawResponseBody);
+
+                    // If Gemini's built-in image safety filter blocked the prompt/response, it is definitely explicit NSFW
+                    JSONObject promptFeedback = jsonResponse.optJSONObject("promptFeedback");
+                    if (promptFeedback != null && !promptFeedback.optString("blockReason", "").isEmpty()) {
+                        String blockReason = promptFeedback.optString("blockReason", "SAFETY");
+                        Log.w(TAG, "Gemini Vision [" + modelName + "] SafetyBlock (" + blockReason + ") -> CONFIRMED NSFW in [" + packageName + "]");
+                        appendLog(context, "[" + packageName + "] Gemini Vision Verify (" + modelName + " • " + latency + "ms): CONFIRMED NSFW (SafetyBlock=" + blockReason + ")");
+                        return VisionVerifyOutcome.CONFIRMED_NSFW;
+                    }
+
+                    JSONArray candidates = jsonResponse.optJSONArray("candidates");
+                    String generatedText = "";
+                    String finishReason = "";
+                    if (candidates != null && candidates.length() > 0) {
+                        JSONObject candidate = candidates.getJSONObject(0);
+                        finishReason = candidate.optString("finishReason", "");
+                        JSONObject candidateContent = candidate.optJSONObject("content");
+                        if (candidateContent != null) {
+                            JSONArray candidateParts = candidateContent.optJSONArray("parts");
+                            if (candidateParts != null && candidateParts.length() > 0) {
+                                generatedText = candidateParts.getJSONObject(0).optString("text", "");
+                            }
+                        }
+                    }
+
+                    if ("SAFETY".equalsIgnoreCase(finishReason) || "PROHIBITED_CONTENT".equalsIgnoreCase(finishReason) ||
+                            "BLOCKLIST".equalsIgnoreCase(finishReason)) {
+                        Log.w(TAG, "Gemini Vision [" + modelName + "] FinishReason=" + finishReason + " -> CONFIRMED NSFW in [" + packageName + "]");
+                        appendLog(context, "[" + packageName + "] Gemini Vision Verify (" + modelName + " • " + latency + "ms): CONFIRMED NSFW (FinishReason=" + finishReason + ")");
+                        return VisionVerifyOutcome.CONFIRMED_NSFW;
+                    }
+
+                    String cleanJson = generatedText.replaceAll("```json", "").replaceAll("```", "").trim();
+                    boolean isNsfw = false;
+                    String reason = "";
+                    try {
+                        JSONObject parsed = new JSONObject(cleanJson);
+                        isNsfw = parsed.optBoolean("is_nsfw", false);
+                        reason = parsed.optString("reason", "");
+                    } catch (Exception e) {
+                        String lower = generatedText.toLowerCase(Locale.US);
+                        if (lower.contains("\"is_nsfw\": true") || lower.contains("\"is_nsfw\":true") || lowerResponseContainsRefusal(lower)) {
+                            isNsfw = true;
+                        }
+                    }
+
+                    if (isNsfw) {
+                        Log.w(TAG, "🚨 Gemini Vision [" + modelName + "] (" + latency + "ms) CONFIRMED Falcons NSFW (" +
+                                String.format(Locale.US, "%.1f%%", falconsProb * 100f) + ") in [" + packageName + "]: " + reason);
+                        appendLog(context, "[" + packageName + "] Gemini Vision Verify (" + modelName + " • " + latency + "ms): CONFIRMED NSFW -> " + reason);
+                        return VisionVerifyOutcome.CONFIRMED_NSFW;
+                    } else {
+                        Log.i(TAG, "🛡️ Gemini Vision [" + modelName + "] (" + latency + "ms) VETOED Falcons False Positive (" +
+                                String.format(Locale.US, "%.1f%%", falconsProb * 100f) + ") in [" + packageName + "]: " + reason);
+                        appendLog(context, "[" + packageName + "] Gemini Vision Verify (" + modelName + " • " + latency + "ms): VETOED FALSE POSITIVE -> " + reason);
+                        return VisionVerifyOutcome.VETOED_FALSE_POSITIVE;
+                    }
+                } else {
+                    handleHttpFailureAndApplyCooldown(modelName, code, conn);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Gemini Vision verify failed on model [" + modelName + "]: " + e.getMessage());
+            } finally {
+                if (conn != null) {
+                    try {
+                        conn.disconnect();
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+
+        return VisionVerifyOutcome.UNAVAILABLE_FALLBACK;
     }
 
     /**

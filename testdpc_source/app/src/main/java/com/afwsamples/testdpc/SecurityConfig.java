@@ -678,6 +678,10 @@ public class SecurityConfig {
             prefs.edit().putStringSet(KEY_PROBATION_ACTIVE_SET, activeSet).apply();
         }
         sCachedProbationSet = Collections.unmodifiableSet(new HashSet<>(activeSet));
+        // Un-enroll graduated safe tool from permanent runtime monitoring unless it is a default browser
+        if (!ImpulseGuardService.isDefaultBrowser(lower)) {
+            ImpulseGuardService.setMonitoredApp(context, lower, false);
+        }
         // Mark package as verified safe in cache
         SecurityPipelineManager.markPackageSafe(context, lower);
         Log.i(TAG, "Package graduated from Visual Probation: " + lower);

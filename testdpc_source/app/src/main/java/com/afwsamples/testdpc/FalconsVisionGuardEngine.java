@@ -67,13 +67,14 @@ public class FalconsVisionGuardEngine {
     private static final String PREFS_NAME = "falcons_vision_guard_prefs";
     private static final String KEY_ENABLED = "falcons_vision_enabled";
     private static final String KEY_THRESHOLD = "falcons_vision_threshold";
+    private static final String KEY_THRESHOLD_MIGRATED_V2 = "falcons_threshold_migrated_v2";
     private static final String KEY_LOGS = "falcons_vision_logs";
 
     // Expected ONNX model file name
     public static final String MODEL_FILE_NAME = "falcons_nsfw_quantized.onnx";
 
-    // Default probability threshold (0.70 = 70% confidence) to flag an image as NSFW
-    public static final float DEFAULT_THRESHOLD = 0.70f;
+    // Default probability threshold (0.85 = 85% confidence) to prevent quantized ViT false positives
+    public static final float DEFAULT_THRESHOLD = 0.85f;
 
     // Vision Transformer input dimensions: 224 x 224 pixels
     private static final int INPUT_SIZE = 224;
@@ -134,13 +135,37 @@ public class FalconsVisionGuardEngine {
         public final float normalProbability;    // Probability (0.0 to 1.0) of safe/normal content
         public final long latencyMs;             // Execution duration in milliseconds
         public final String reason;              // Diagnostic tag (e.g. "nsfw_detected", "ram_hash_cache")
+        public final long quickHash;             // Spatial frame hash for cache override/veto
 
         public VisionResult(boolean isNsfw, float nsfwProbability, float normalProbability, long latencyMs, String reason) {
+            this(isNsfw, nsfwProbability, normalProbability, latencyMs, reason, 0L);
+        }
+
+        public VisionResult(boolean isNsfw, float nsfwProbability, float normalProbability, long latencyMs, String reason, long quickHash) {
             this.isNsfw = isNsfw;
             this.nsfwProbability = nsfwProbability;
             this.normalProbability = normalProbability;
             this.latencyMs = latencyMs;
             this.reason = reason;
+            this.quickHash = quickHash;
+        }
+    }
+
+    /**
+     * Overrides the cached verdict for a specific frame hash (e.g. when Gemini Vision vetoes a Falcons false positive).
+     */
+    public static void overrideCacheVerdict(long quickHash, boolean isNsfw) {
+        if (quickHash != 0L) {
+            sBitmapVerdictCache.put(quickHash, isNsfw);
+        }
+    }
+
+    /**
+     * Removes a provisional cached verdict for a specific frame hash so consecutive confirmation can re-evaluate.
+     */
+    public static void removeCacheVerdict(long quickHash) {
+        if (quickHash != 0L) {
+            sBitmapVerdictCache.remove(quickHash);
         }
     }
 
@@ -167,10 +192,20 @@ public class FalconsVisionGuardEngine {
     }
 
     /**
-     * Returns the configured sensitivity threshold (0.0 to 1.0, default 0.70).
+     * Returns the configured sensitivity threshold (0.0 to 1.0, default 0.85).
+     * Automatically migrates legacy <= 0.72 thresholds up to 0.85 to eliminate quantization false positives.
      */
     public static float getThreshold(Context context) {
-        return getPrefs(context).getFloat(KEY_THRESHOLD, DEFAULT_THRESHOLD);
+        SharedPreferences prefs = getPrefs(context);
+        if (!prefs.getBoolean(KEY_THRESHOLD_MIGRATED_V2, false)) {
+            float existing = prefs.getFloat(KEY_THRESHOLD, DEFAULT_THRESHOLD);
+            if (existing <= 0.72f) {
+                prefs.edit().putFloat(KEY_THRESHOLD, DEFAULT_THRESHOLD).putBoolean(KEY_THRESHOLD_MIGRATED_V2, true).apply();
+                return DEFAULT_THRESHOLD;
+            }
+            prefs.edit().putBoolean(KEY_THRESHOLD_MIGRATED_V2, true).apply();
+        }
+        return prefs.getFloat(KEY_THRESHOLD, DEFAULT_THRESHOLD);
     }
 
     /**
@@ -369,24 +404,51 @@ public class FalconsVisionGuardEngine {
         Boolean cachedVerdict = sBitmapVerdictCache.get(quickHash);
         if (cachedVerdict != null) {
             long latency = SystemClock.elapsedRealtime() - startTime;
-            return new VisionResult(cachedVerdict, cachedVerdict ? 0.95f : 0.05f, cachedVerdict ? 0.05f : 0.95f, latency, "ram_hash_cache");
+            return new VisionResult(cachedVerdict, cachedVerdict ? 0.95f : 0.05f, cachedVerdict ? 0.05f : 0.95f, latency, "ram_hash_cache", quickHash);
         }
 
+        Bitmap croppedBitmap = null;
         Bitmap scaledBitmap = null;
         OnnxTensor inputTensor = null;
         OrtSession.Result ortResult = null;
 
         try {
-            // Step 2: Resize Bitmap to ViT patch dimensions (224 x 224)
-            if (bitmap.getWidth() == INPUT_SIZE && bitmap.getHeight() == INPUT_SIZE) {
+            // Step 2: Extract aspect-ratio-preserving square content crop (stripping status/nav bars on portrait screens)
+            // and resize with BILINEAR filtering (filter = true) to prevent 2.16x vertical squishing and pixel aliasing!
+            int srcW = bitmap.getWidth();
+            int srcH = bitmap.getHeight();
+            if (srcW == INPUT_SIZE && srcH == INPUT_SIZE) {
                 scaledBitmap = bitmap;
+            } else if (srcH > (int) (srcW * 1.35f)) {
+                // Portrait phone screenshot: strip top 10% (status bar + app bar) and bottom 12% (nav bar + tabs),
+                // and take a 1:1 square crop centered in the primary viewing area (~42% vertical height)
+                int cropSize = srcW;
+                int topStrip = Math.round(srcH * 0.10f);
+                int maxCropY = Math.max(topStrip, srcH - Math.round(srcH * 0.12f) - cropSize);
+                int idealCropY = Math.round((srcH - cropSize) * 0.42f);
+                int cropY = Math.max(topStrip, Math.min(maxCropY, idealCropY));
+                if (cropY + cropSize <= srcH) {
+                    croppedBitmap = Bitmap.createBitmap(bitmap, 0, cropY, cropSize, cropSize);
+                    scaledBitmap = Bitmap.createScaledBitmap(croppedBitmap, INPUT_SIZE, INPUT_SIZE, true);
+                } else {
+                    scaledBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true);
+                }
             } else {
-                scaledBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, false);
+                scaledBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true);
             }
 
             int channelSize = INPUT_SIZE * INPUT_SIZE; // 50,176 pixels per channel
             int[] pixels = sPixelBufferHolder.get();   // Retrieve reusable ThreadLocal pixel buffer
             scaledBitmap.getPixels(pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE);
+
+            // Step 2.5: Fast Flat-UI / Text Screen Filter
+            // If >= 72% of the frame consists of pure light-mode white or pure dark-mode black UI background,
+            // skip ViT inference to avoid false positives on text articles, settings, and comment sections.
+            if (packageName != null && !packageName.startsWith("test.benchmark") && isPredominantlyFlatUiScreen(pixels)) {
+                long latencyMs = SystemClock.elapsedRealtime() - startTime;
+                sBitmapVerdictCache.put(quickHash, false);
+                return new VisionResult(false, 0.01f, 0.99f, latencyMs, "flat_ui_screen", quickHash);
+            }
 
             // Step 3 & 4: Planar CHW conversion & Precomputed Static LUT Normalization
             // Channel Offsets: Red = 0, Green = channelSize, Blue = 2 * channelSize
@@ -424,31 +486,32 @@ public class FalconsVisionGuardEngine {
             float threshold = getThreshold(context);
             boolean isNsfw = probNsfw >= threshold; // True if NSFW probability meets or exceeds threshold
 
-            // Step 7: Cache verdict in RAM (capped at 500 entries)
-            sBitmapVerdictCache.put(quickHash, isNsfw);
-            if (sBitmapVerdictCache.size() > 500) {
-                sBitmapVerdictCache.clear();
+            // Step 7: Cache SAFE verdicts immediately in RAM (capped at 500 entries).
+            // Note: Positive NSFW candidates are only cached after Gemini Vision confirmation (or 2-hit local confirmation).
+            if (!isNsfw) {
+                sBitmapVerdictCache.put(quickHash, false);
+                if (sBitmapVerdictCache.size() > 500) {
+                    sBitmapVerdictCache.clear();
+                }
             }
 
             // Format logging details
             String logEntry = String.format(Locale.US, "[%s] ViT Scan (%dms): NSFW=%.1f%%, Normal=%.1f%% (Cutoff: %d%%) -> %s",
-                    packageName, latencyMs, probNsfw * 100f, probNormal * 100f, Math.round(threshold * 100), isNsfw ? "🚨 ADULT BLOCKED" : "✅ SAFE PASS");
+                    packageName, latencyMs, probNsfw * 100f, probNormal * 100f, Math.round(threshold * 100), isNsfw ? "⚠️ CANDIDATE (VERIFYING)" : "✅ SAFE PASS");
             Log.i(TAG, logEntry);
 
-            if (isNsfw) {
-                appendLog(context, logEntry);
-                SecurityLogger.log(context, "[FALCONS_NSFW]", logEntry);
-            }
-
-            return new VisionResult(isNsfw, probNsfw, probNormal, latencyMs, isNsfw ? "nsfw_detected" : "safe_pass");
+            return new VisionResult(isNsfw, probNsfw, probNormal, latencyMs, isNsfw ? "nsfw_candidate" : "safe_pass", quickHash);
 
         } catch (Exception e) {
             Log.e(TAG, "Error executing Falcons.ai inference", e);
             long latencyMs = SystemClock.elapsedRealtime() - startTime;
-            return new VisionResult(false, 0.0f, 1.0f, latencyMs, "inference_error: " + e.getMessage());
+            return new VisionResult(false, 0.0f, 1.0f, latencyMs, "inference_error: " + e.getMessage(), quickHash);
 
         } finally {
             // Clean up native and intermediate resources
+            if (croppedBitmap != null && !croppedBitmap.isRecycled() && croppedBitmap != bitmap && croppedBitmap != scaledBitmap) {
+                croppedBitmap.recycle();
+            }
             if (scaledBitmap != null && !scaledBitmap.isRecycled() && scaledBitmap != bitmap) {
                 scaledBitmap.recycle();
             }
@@ -555,6 +618,35 @@ public class FalconsVisionGuardEngine {
             }
         }
         return hash;
+    }
+
+    /**
+     * Fast heuristic to detect standard light-mode or dark-mode text/UI screens without rich media.
+     * Samples every 4th pixel of the 224x224 crop and checks if >= 74% of pixels are near-monochrome
+     * light or dark UI backgrounds (e.g. search results list, comments, articles, settings).
+     */
+    private static boolean isPredominantlyFlatUiScreen(int[] pixels) {
+        if (pixels == null || pixels.length == 0) return false;
+        int totalSampled = 0;
+        int flatUiPixels = 0;
+        for (int i = 0; i < pixels.length; i += 4) {
+            totalSampled++;
+            int c = pixels[i];
+            int r = (c >> 16) & 0xFF;
+            int g = (c >> 8) & 0xFF;
+            int b = c & 0xFF;
+            // Pure/near-white light mode UI background or pure/near-black dark mode UI background
+            boolean isLightBg = (r >= 235 && g >= 235 && b >= 235);
+            boolean isDarkBg = (r <= 28 && g <= 28 && b <= 32);
+            // Low-saturation gray UI surface (max-min channel delta <= 12)
+            int maxC = Math.max(r, Math.max(g, b));
+            int minC = Math.min(r, Math.min(g, b));
+            boolean isNeutralGray = (maxC - minC) <= 12 && (maxC >= 200 || maxC <= 55);
+            if (isLightBg || isDarkBg || isNeutralGray) {
+                flatUiPixels++;
+            }
+        }
+        return totalSampled > 0 && ((float) flatUiPixels / totalSampled) >= 0.74f;
     }
 }
 

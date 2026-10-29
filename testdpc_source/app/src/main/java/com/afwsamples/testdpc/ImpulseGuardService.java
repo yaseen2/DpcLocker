@@ -235,6 +235,13 @@ public class ImpulseGuardService extends AccessibilityService {
     ));
 
     /**
+     * Checks if a package belongs to the built-in default browser/video monitoring set.
+     */
+    public static boolean isDefaultBrowser(String packageName) {
+        return packageName != null && DEFAULT_BROWSERS.contains(packageName.trim().toLowerCase(Locale.US));
+    }
+
+    /**
      * Determines whether an application package is currently subjected to live monitoring.
      */
     public static boolean isMonitoredApp(Context context, String packageName) {
@@ -675,6 +682,39 @@ public class ImpulseGuardService extends AccessibilityService {
 
         // Step 4: Register network connectivity callback to defeat the "type offline -> press enter -> turn on internet" bypass
         registerNetworkReconnectCallback();
+
+        // Step 5: Clean up safe non-browser utility/game/banking apps that were falsely persisted in PREF_MONITORED_APPS
+        cleanPollutedProbationMonitoredApps();
+    }
+
+    /**
+     * Removes non-browser safe apps (e.g. games, banking, scanners) that were accidentally left in
+     * PREF_MONITORED_APPS after graduating from Visual Probation in earlier builds.
+     */
+    private void cleanPollutedProbationMonitoredApps() {
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREF_MONITORED_APPS, Context.MODE_PRIVATE);
+            if (prefs.getBoolean("probation_monitored_cleanup_v2", false)) {
+                return;
+            }
+            SharedPreferences.Editor editor = prefs.edit();
+            Map<String, ?> all = prefs.getAll();
+            if (all != null) {
+                for (Map.Entry<String, ?> entry : all.entrySet()) {
+                    String pkg = entry.getKey();
+                    if ("probation_monitored_cleanup_v2".equals(pkg)) continue;
+                    if (entry.getValue() instanceof Boolean && (Boolean) entry.getValue()) {
+                        if (!isDefaultBrowser(pkg) && !isLikelyBrowserOrSearchApp(pkg) && !SecurityConfig.isUnderProbation(this, pkg)) {
+                            editor.putBoolean(pkg, false);
+                            Log.i(TAG, "🧹 Un-monitored non-browser safe app from Falcons/Gemini runtime scan: " + pkg);
+                        }
+                    }
+                }
+            }
+            editor.putBoolean("probation_monitored_cleanup_v2", true).apply();
+        } catch (Exception e) {
+            Log.e(TAG, "Error cleaning polluted monitored apps", e);
+        }
     }
 
     /**
@@ -1359,6 +1399,9 @@ public class ImpulseGuardService extends AccessibilityService {
     /** Concurrency lock to guarantee only one screenshot capture & ViT inference runs at a time */
     private volatile boolean mIsFalconsScanInFlight = false;
 
+    /** Tracks consecutive high-confidence local Falcons hits when Gemini Cloud Vision is offline or out of quota */
+    private volatile int mConsecutiveLocalFalconsHits = 0;
+
     /**
      * Schedules an on-device computer vision audit using Falcons.ai Vision Transformer (ViT).
      * -------------------------------------------------------------------------------------
@@ -1419,9 +1462,14 @@ public class ImpulseGuardService extends AccessibilityService {
                                         bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace);
                                     }
                                     if (bitmap != null) {
-                                        // High-speed downscale directly from GPU hardware buffer to 224x224.
-                                        // This critically eliminates copying a 1080x2400 (10MB+) software bitmap.
-                                        scaledBitmap = Bitmap.createScaledBitmap(bitmap, 224, 224, false);
+                                        // Preserve portrait aspect ratio and use BILINEAR filtering (filter = true)
+                                        // so FalconsVisionGuardEngine can extract an un-distorted 1:1 content square crop
+                                        // and Gemini Vision can accurately verify any candidate frame!
+                                        int bw = Math.max(1, bitmap.getWidth());
+                                        int bh = Math.max(1, bitmap.getHeight());
+                                        int targetW = 320;
+                                        int targetH = Math.max(320, Math.round(320f * bh / bw));
+                                        scaledBitmap = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true);
                                         if (scaledBitmap != bitmap) {
                                             bitmap.recycle(); // Free the native hardware buffer wrapper
                                             bitmap = null;
@@ -1441,40 +1489,113 @@ public class ImpulseGuardService extends AccessibilityService {
                                     }
                                 }
 
+                                Bitmap softwareBitmap = null;
                                 try {
                                     if (scaledBitmap != null) {
-                                        // Convert the 224x224 hardware bitmap into software ARGB_8888 for ONNX Runtime input
-                                        Bitmap softwareBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, false);
+                                        // Convert the hardware bitmap into software ARGB_8888 for ONNX Runtime & JPEG verification
+                                        softwareBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, false);
                                         if (scaledBitmap != softwareBitmap) {
                                             scaledBitmap.recycle();
+                                            scaledBitmap = null;
                                         }
 
                                         if (softwareBitmap != null) {
-                                            // Run on-device ViT inference using the FalconsVisionGuardEngine
+                                            // Stage 1: Run on-device ViT inference using the FalconsVisionGuardEngine
                                             FalconsVisionGuardEngine.VisionResult result =
                                                     FalconsVisionGuardEngine.evaluateBitmap(ImpulseGuardService.this, packageName, softwareBitmap);
-                                            softwareBitmap.recycle(); // Immediately free software pixel memory
 
-                                            // Evaluate AI classification verdict
-                                            if (result.isNsfw) {
-                                                long now = System.currentTimeMillis();
-                                                // 5-second grace cooldown to prevent recording multiple strikes for
-                                                // the exact same screen frame while the user is reacting or exiting
-                                                if (now - sLastStrikeTimestamp < 5000) {
-                                                    Log.i(TAG, "Falcons NSFW detected inside 5s grace cooldown. Skipping duplicate strike.");
+                                            if (!result.isNsfw) {
+                                                mConsecutiveLocalFalconsHits = 0;
+                                            } else {
+                                                boolean confirmedViolation = false;
+
+                                                if ("ram_hash_cache".equals(result.reason)) {
+                                                    // Previously verified NSFW frame hash
+                                                    confirmedViolation = true;
                                                 } else {
-                                                    sLastStrikeTimestamp = now;
-                                                    // Atomically increment the persistent daily strike counter
-                                                    final int strikeCount = incrementDailyStrikes(ImpulseGuardService.this);
-                                                    Log.w(TAG, "🚨 FALCONS.AI VISUAL NSFW VIOLATION in [" + packageName + "] (NSFW=" + String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100) + ") -> STRIKE #" + strikeCount + " TODAY!");
+                                                    // Stage 2: Hybrid Cloud Verification via Gemini Vision to eliminate false positives
+                                                    GeminiGuardEngine.VisionVerifyOutcome verifyOutcome =
+                                                            GeminiGuardEngine.verifyVisualNsfwWithGemini(
+                                                                    ImpulseGuardService.this, packageName, softwareBitmap, result.nsfwProbability);
 
-                                                    // Post enforcement action to the Main UI thread
-                                                    mHandler.post(new Runnable() {
-                                                        @Override
-                                                        public void run() {
-                                                            handleVisualNsfwStrike(packageName, strikeCount);
+                                                    if (verifyOutcome == GeminiGuardEngine.VisionVerifyOutcome.VETOED_FALSE_POSITIVE) {
+                                                        // Gemini Vision confirmed this frame is a SAFE false positive (e.g. face, food, UI)
+                                                        mConsecutiveLocalFalconsHits = 0;
+                                                        FalconsVisionGuardEngine.overrideCacheVerdict(result.quickHash, false);
+                                                        String vetoLog = String.format(Locale.US,
+                                                                "[%s] ViT Candidate (NSFW=%.1f%%) VETOED by Gemini Vision -> 🛡️ FALSE POSITIVE SUPPRESSED",
+                                                                packageName, result.nsfwProbability * 100f);
+                                                        Log.i(TAG, vetoLog);
+                                                        FalconsVisionGuardEngine.appendLog(ImpulseGuardService.this, vetoLog);
+                                                        confirmedViolation = false;
+
+                                                    } else if (verifyOutcome == GeminiGuardEngine.VisionVerifyOutcome.CONFIRMED_NSFW) {
+                                                        // Gemini Vision confirmed real explicit adult/NSFW content
+                                                        mConsecutiveLocalFalconsHits = 0;
+                                                        FalconsVisionGuardEngine.overrideCacheVerdict(result.quickHash, true);
+                                                        String confirmLog = String.format(Locale.US,
+                                                                "[%s] ViT Scan (%dms): NSFW=%.1f%% -> 🚨 ADULT BLOCKED (Gemini Verified)",
+                                                                packageName, result.latencyMs, result.nsfwProbability * 100f);
+                                                        FalconsVisionGuardEngine.appendLog(ImpulseGuardService.this, confirmLog);
+                                                        SecurityLogger.log(ImpulseGuardService.this, "[FALCONS_NSFW]", confirmLog);
+                                                        confirmedViolation = true;
+
+                                                    } else {
+                                                        // UNAVAILABLE_FALLBACK: Device is offline or all Gemini models exhausted quota/limits.
+                                                        // Require Strict Local Dual-Confirmation (probNsfw >= 92% across 2 consecutive scans).
+                                                        if (result.nsfwProbability >= 0.92f) {
+                                                            mConsecutiveLocalFalconsHits++;
+                                                            if (mConsecutiveLocalFalconsHits >= 2) {
+                                                                mConsecutiveLocalFalconsHits = 0;
+                                                                FalconsVisionGuardEngine.overrideCacheVerdict(result.quickHash, true);
+                                                                String localConfirmLog = String.format(Locale.US,
+                                                                        "[%s] ViT Scan (%dms): NSFW=%.1f%% -> 🚨 ADULT BLOCKED (2-Frame Offline/Quota-Fallback Confirmed)",
+                                                                        packageName, result.latencyMs, result.nsfwProbability * 100f);
+                                                                FalconsVisionGuardEngine.appendLog(ImpulseGuardService.this, localConfirmLog);
+                                                                SecurityLogger.log(ImpulseGuardService.this, "[FALCONS_NSFW]", localConfirmLog);
+                                                                confirmedViolation = true;
+                                                            } else {
+                                                                // First high-confidence local hit while offline/out-of-quota: do not cache yet, re-verify in 1.5s
+                                                                FalconsVisionGuardEngine.removeCacheVerdict(result.quickHash);
+                                                                Log.i(TAG, "⏳ Offline/Quota-Fallback: Falcons high-confidence hit (1/2) in [" + packageName + "]. Scheduling confirmation scan in 1500ms...");
+                                                                mHandler.postDelayed(new Runnable() {
+                                                                    @Override
+                                                                    public void run() {
+                                                                        scheduleFalconsVisualDwellAudit(packageName);
+                                                                    }
+                                                                }, 1500);
+                                                            }
+                                                        } else {
+                                                            // Borderline 85%-91% score while offline/out-of-quota: suppress to prevent quantization false positives
+                                                            mConsecutiveLocalFalconsHits = 0;
+                                                            FalconsVisionGuardEngine.overrideCacheVerdict(result.quickHash, false);
+                                                            Log.i(TAG, "🛡️ Offline/Quota-Fallback: Suppressed borderline Falcons score (" +
+                                                                    String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100f) + " < 92%) in [" + packageName + "]");
                                                         }
-                                                    });
+                                                    }
+                                                }
+
+                                                // Enforce strike if confirmed
+                                                if (confirmedViolation) {
+                                                    long now = System.currentTimeMillis();
+                                                    // 5-second grace cooldown to prevent recording multiple strikes for
+                                                    // the exact same screen frame while the user is reacting or exiting
+                                                    if (now - sLastStrikeTimestamp < 5000) {
+                                                        Log.i(TAG, "Falcons NSFW detected inside 5s grace cooldown. Skipping duplicate strike.");
+                                                    } else {
+                                                        sLastStrikeTimestamp = now;
+                                                        // Atomically increment the persistent daily strike counter
+                                                        final int strikeCount = incrementDailyStrikes(ImpulseGuardService.this);
+                                                        Log.w(TAG, "🚨 FALCONS.AI VISUAL NSFW VIOLATION in [" + packageName + "] (NSFW=" + String.format(Locale.US, "%.1f%%", result.nsfwProbability * 100) + ") -> STRIKE #" + strikeCount + " TODAY!");
+
+                                                        // Post enforcement action to the Main UI thread
+                                                        mHandler.post(new Runnable() {
+                                                            @Override
+                                                            public void run() {
+                                                                handleVisualNsfwStrike(packageName, strikeCount);
+                                                            }
+                                                        });
+                                                    }
                                                 }
                                             }
                                         }
@@ -1482,6 +1603,9 @@ public class ImpulseGuardService extends AccessibilityService {
                                 } catch (Exception e) {
                                     Log.e(TAG, "Error processing Falcons visual screenshot", e);
                                 } finally {
+                                    if (softwareBitmap != null && !softwareBitmap.isRecycled()) {
+                                        softwareBitmap.recycle();
+                                    }
                                     // Release in-flight lock so subsequent audits can be scheduled
                                     mIsFalconsScanInFlight = false;
                                 }
@@ -1989,7 +2113,8 @@ public class ImpulseGuardService extends AccessibilityService {
         GeminiGuardEngine.EvaluationResult result = GeminiGuardEngine.evaluateTextDetailed(this, packageName, typedText);
 
         // If device was offline when user typed the query, NEVER mark it as evaluated; queue it for immediate audit on reconnect!
-        if ("network_offline".equals(result.reason) || "gemini_all_models_failed".equals(result.reason)) {
+        // Note: Do NOT enqueue when online with "gemini_quota_or_api_error" to prevent infinite retry loops when quota is exhausted.
+        if ("network_offline".equals(result.reason)) {
             mLastEvaluatedTextMap.remove(packageName);
             enqueueOfflineQuery(packageName, typedText);
             return;
