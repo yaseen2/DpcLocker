@@ -363,22 +363,17 @@ public class SecurityPipelineManager {
                 dpm.setAutoTimeRequired(admin, true);
             }
 
-            // Enforce System-Wide SafeSearch & Adult Filter Private DNS (0% CPU / 0MB RAM overhead):
-            // Maps www.google.com -> forcesafesearch.google.com (216.239.38.120) across ALL apps
-            // including the Google App (com.google.android.googlequicksearchbox), Images, and Videos.
-            // IMPORTANT: In AOSP SettingsProvider, DISALLOW_CONFIG_PRIVATE_DNS blocks Settings.Global writes
-            // if already set, so we apply the DNS host FIRST (and via DPM API), then lock the restriction!
-            final String safeSearchDnsHost = "adult-filter-dns.cleanbrowsing.org";
+            // Ensure Android Private DNS is restored to 'opportunistic' (Automatic) so ISP/router
+            // blocks on TCP port 853 never cause "Private DNS server cannot be accessed" errors.
             try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    dpm.clearUserRestriction(admin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
+                }
                 String currentMode = android.provider.Settings.Global.getString(context.getContentResolver(), "private_dns_mode");
-                String currentHost = android.provider.Settings.Global.getString(context.getContentResolver(), "private_dns_specifier");
-                if (!"hostname".equals(currentMode) || !safeSearchDnsHost.equalsIgnoreCase(currentHost)) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        dpm.clearUserRestriction(admin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
-                    }
-                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_mode", "hostname");
-                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_specifier", safeSearchDnsHost);
-                    Log.i(TAG, "🔒 Enforced system-wide SafeSearch Private DNS via Settings.Global: " + safeSearchDnsHost);
+                if ("hostname".equals(currentMode)) {
+                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_mode", "opportunistic");
+                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_specifier", "");
+                    Log.i(TAG, "🌐 Restored Private DNS to opportunistic (Automatic) to prevent ISP port 853 connectivity errors.");
                 }
             } catch (Throwable ignored) {
             }
@@ -392,19 +387,15 @@ public class SecurityPipelineManager {
                             DevicePolicyManager bgDpm = (DevicePolicyManager) appCtx.getSystemService(Context.DEVICE_POLICY_SERVICE);
                             if (bgDpm != null) {
                                 ComponentName bgAdmin = DeviceAdminReceiver.getComponentName(appCtx);
-                                String mode = android.provider.Settings.Global.getString(appCtx.getContentResolver(), "private_dns_mode");
-                                String host = android.provider.Settings.Global.getString(appCtx.getContentResolver(), "private_dns_specifier");
-                                if (!"hostname".equals(mode) || !safeSearchDnsHost.equalsIgnoreCase(host)) {
-                                    bgDpm.clearUserRestriction(bgAdmin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
-                                    bgDpm.setGlobalPrivateDnsModeSpecifiedHost(bgAdmin, safeSearchDnsHost);
+                                bgDpm.clearUserRestriction(bgAdmin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
+                                if (bgDpm.getGlobalPrivateDnsMode(bgAdmin) == DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME) {
+                                    bgDpm.setGlobalPrivateDnsModeOpportunistic(bgAdmin);
                                 }
-                                bgDpm.addUserRestriction(bgAdmin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
                             }
                         } catch (Throwable ignoredBg) {
                         }
                     }
                 });
-                dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
             }
         } catch (Exception e) {
             Log.w(TAG, "Could not enforce core Device Owner tamper restrictions: " + e.getMessage());

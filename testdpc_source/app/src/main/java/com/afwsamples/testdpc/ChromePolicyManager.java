@@ -91,7 +91,7 @@ public class ChromePolicyManager {
             // --------------------------------------------------------------------------
             chromeBundle.putInt("SafeSitesFilterBehavior", 1);
             chromeBundle.putString("DnsOverHttpsMode", "secure");
-            chromeBundle.putString("DnsOverHttpsTemplates", "https://adult-filter-dns.cleanbrowsing.org/dns-query");
+            chromeBundle.putString("DnsOverHttpsTemplates", "https://family.cloudflare-dns.com/dns-query");
 
             // Enable YouTube Comments (ForceYouTubeRestrict: 0 = unrestricted comments, 1 = moderate, 2 = strict)
             chromeBundle.putInt("ForceYouTubeRestrict", 0);
