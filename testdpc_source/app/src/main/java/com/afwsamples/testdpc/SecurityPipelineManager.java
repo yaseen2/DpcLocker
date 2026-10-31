@@ -357,10 +357,46 @@ public class SecurityPipelineManager {
             dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_DATE_TIME);
             dpm.addUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT);
             dpm.addUserRestriction(admin, UserManager.DISALLOW_ADD_USER);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 dpm.setAutoTimeEnabled(admin, true);
             } else {
                 dpm.setAutoTimeRequired(admin, true);
+            }
+
+            // Enforce System-Wide SafeSearch & Adult Filter Private DNS (0% CPU / 0MB RAM overhead):
+            // Maps www.google.com -> forcesafesearch.google.com (216.239.38.120) across ALL apps
+            // including the Google App (com.google.android.googlequicksearchbox), Images, and Videos.
+            final String safeSearchDnsHost = "adult-filter-dns.cleanbrowsing.org";
+            try {
+                String currentMode = android.provider.Settings.Global.getString(context.getContentResolver(), "private_dns_mode");
+                String currentHost = android.provider.Settings.Global.getString(context.getContentResolver(), "private_dns_specifier");
+                if (!"hostname".equals(currentMode) || !safeSearchDnsHost.equalsIgnoreCase(currentHost)) {
+                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_mode", "hostname");
+                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_specifier", safeSearchDnsHost);
+                    Log.i(TAG, "🔒 Enforced system-wide SafeSearch Private DNS via Settings.Global: " + safeSearchDnsHost);
+                }
+            } catch (Throwable ignored) {
+                // Fallback to DevicePolicyManager background API if WRITE_SECURE_SETTINGS is not yet granted
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    final Context appCtx = context.getApplicationContext();
+                    sBgExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                DevicePolicyManager bgDpm = (DevicePolicyManager) appCtx.getSystemService(Context.DEVICE_POLICY_SERVICE);
+                                if (bgDpm != null) {
+                                    bgDpm.setGlobalPrivateDnsModeSpecifiedHost(
+                                            DeviceAdminReceiver.getComponentName(appCtx),
+                                            safeSearchDnsHost);
+                                }
+                            } catch (Throwable ignoredBg) {
+                            }
+                        }
+                    });
+                }
             }
         } catch (Exception e) {
             Log.w(TAG, "Could not enforce core Device Owner tamper restrictions: " + e.getMessage());

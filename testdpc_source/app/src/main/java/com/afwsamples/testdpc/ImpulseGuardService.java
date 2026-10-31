@@ -181,6 +181,13 @@ public class ImpulseGuardService extends AccessibilityService {
     private final ConcurrentHashMap<String, String> mLastPenalizedQueryMap = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> mPendingOfflineQueries = new ConcurrentHashMap<>();
 
+    // Query-Bound Surveillance Map: maps monitored packageName -> active gray-area/suspicious query.
+    // Never expires by waiting idle on a screen; cleared only when a new explicitly SAFE query is searched or app is suspended.
+    private final ConcurrentHashMap<String, String> mActiveSuspiciousQueryMap = new ConcurrentHashMap<>();
+    private Runnable mPendingSuspiciousVisualAuditRunnable;
+    private long mLastSuspiciousVisualScanTimestamp = 0L;
+    private volatile boolean mIsSuspiciousVisualScanInFlight = false;
+
     // Debounce runnables for typing pauses and screen text aggregation
     private Runnable mPendingAuditRunnable;
     private Runnable mPendingScreenAuditRunnable;
@@ -631,8 +638,9 @@ public class ImpulseGuardService extends AccessibilityService {
         super.onServiceConnected();
         Log.i(TAG, "ImpulseGuardService Accessibility Service CONNECTED & RUNNING!");
 
-        // Step 0: Ensure Google Chrome enterprise policies and URLBlocklist are actively enforced
+        // Step 0: Ensure core Device Owner restrictions (SafeSearch Private DNS) & Chrome policies are actively enforced
         try {
+            SecurityPipelineManager.enforceCoreDeviceOwnerTamperRestrictions(this);
             ChromePolicyManager.enforceDefaultChromePolicies(this);
         } catch (Exception e) {
             Log.e(TAG, "Error enforcing Chrome policies on service connect", e);
@@ -1194,6 +1202,20 @@ public class ImpulseGuardService extends AccessibilityService {
                             AccessibilityNodeInfo root = getRootInActiveWindow();
                             final String screenText = extractFullScreenText(root);
                             if (screenText != null && screenText.length() >= 15) {
+                                // Piggybacked 0-cost SafeSearch Settings Anti-Tamper Check (no extra tree scan!)
+                                if (isSafeSearchTamperScreen(packageName, screenText)) {
+                                    Log.w(TAG, "🔒 SafeSearch settings screen detected in [" + packageName + "]! Enforcing Filter & bouncing back.");
+                                    autoSelectSafeSearchFilter(root);
+                                    performGlobalAction(GLOBAL_ACTION_BACK);
+                                    mHandler.post(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            Toast.makeText(ImpulseGuardService.this, "🔒 SafeSearch Filter is locked by TestDPC.", Toast.LENGTH_SHORT).show();
+                                        }
+                                    });
+                                    return;
+                                }
+
                                 String lastScreen = mLastEvaluatedTextMap.get(packageName + "_screen");
                                 // Deduplicate: only evaluate if on-screen text changed meaningfully
                                 if (lastScreen == null || !lastScreen.equals(screenText)) {
@@ -1217,6 +1239,31 @@ public class ImpulseGuardService extends AccessibilityService {
 
                 // Post with 400ms settling debounce
                 mHandler.postDelayed(mPendingScreenAuditRunnable, 400);
+            }
+        }
+
+        // =================================================================================
+        // PHASE 5.5: QUERY-BOUND GRAY-AREA SURVEILLANCE & MEDIA-TAB THUMBNAIL GUARD
+        // =================================================================================
+        // Cannot be waited out by sitting on one screen: stays bound to mActiveSuspiciousQueryMap
+        // until a new explicitly SAFE query is searched. Triggers a direct multimodal Gemini Vision
+        // thumbnail inspection whenever the user clicks a tab (e.g. Videos/Images) or scrolls.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && (geminiActive || falconsActive)) {
+            if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED || eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+                final String activeSuspiciousQuery = mActiveSuspiciousQueryMap.get(packageName);
+                if (activeSuspiciousQuery != null) {
+                    scheduleSuspiciousVisualAudit(packageName, activeSuspiciousQuery, 1500);
+                } else if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isMediaTabClickEvent(event)) {
+                    String lastQuery = mLastEvaluatedTextMap.get(packageName);
+                    Log.i(TAG, "🎞️ Media tab (Images/Videos) clicked in [" + packageName + "]! Scheduling thumbnail & screen audit...");
+                    scheduleSuspiciousVisualAudit(packageName, lastQuery, 1500);
+                    mHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            triggerPostSearchScreenAudit(packageName);
+                        }
+                    }, 1500);
+                }
             }
         }
 
@@ -1740,8 +1787,12 @@ public class ImpulseGuardService extends AccessibilityService {
             return;
         }
 
+        // Include active suspicious query context if this app is currently under Query-Bound Surveillance
+        String activeSuspiciousQuery = mActiveSuspiciousQueryMap.get(packageName);
+
         // Run full-screen semantic analysis via GeminiGuardEngine
-        GeminiGuardEngine.EvaluationResult result = GeminiGuardEngine.evaluateScreenTextDetailed(this, packageName, screenText);
+        GeminiGuardEngine.EvaluationResult result = GeminiGuardEngine.evaluateScreenTextDetailed(
+                this, packageName, screenText, activeSuspiciousQuery);
 
         // If device was offline or request was in flight, remove from deduplication map so it is re-evaluated once online
         if ("api_key_missing_or_offline".equals(result.reason) || "gemini_all_models_failed".equals(result.reason) || "request_in_flight".equals(result.reason)) {
@@ -1751,6 +1802,7 @@ public class ImpulseGuardService extends AccessibilityService {
 
         // If flagged as risky adult content, schedule package suspension on UI thread
         if (result.isRisky) {
+            mActiveSuspiciousQueryMap.remove(packageName);
             mHandler.post(new Runnable() {
                 @Override
                 public void run() {
@@ -1758,6 +1810,86 @@ public class ImpulseGuardService extends AccessibilityService {
                 }
             });
         }
+    }
+
+    /**
+     * Zero-cost piggybacked check on already-extracted screenText:
+     * Detects if the user opened the SafeSearch configuration page inside the Google App
+     * (com.google.android.googlequicksearchbox) or a monitored browser to turn off SafeSearch.
+     */
+    private boolean isSafeSearchTamperScreen(String packageName, String screenText) {
+        if (screenText == null) return false;
+        String lower = screenText.toLowerCase(Locale.US);
+        if (!lower.contains("safesearch")) {
+            return false;
+        }
+        return lower.contains("manage how safesearch works") ||
+                lower.contains("explicit results") ||
+                (lower.contains("filter explicit") && lower.contains("blur explicit")) ||
+                (lower.contains("helps hide explicit") && (lower.contains("blur") || lower.contains("off")));
+    }
+
+    /**
+     * Best-effort helper to programmatically click the "Filter" radio option on the SafeSearch
+     * settings screen before bouncing the user back out.
+     */
+    private void autoSelectSafeSearchFilter(AccessibilityNodeInfo root) {
+        if (root == null) return;
+        try {
+            java.util.List<AccessibilityNodeInfo> filterNodes = root.findAccessibilityNodeInfosByText("Filter");
+            if (filterNodes != null) {
+                for (AccessibilityNodeInfo node : filterNodes) {
+                    if (node == null) continue;
+                    CharSequence txt = node.getText();
+                    if (txt != null && (txt.toString().equalsIgnoreCase("Filter") || txt.toString().toLowerCase(Locale.US).startsWith("filter explicit"))) {
+                        AccessibilityNodeInfo current = node;
+                        for (int depth = 0; depth < 4 && current != null; depth++) {
+                            if (current.isClickable()) {
+                                current.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                                Log.i(TAG, "✅ Auto-clicked 'Filter' option on SafeSearch screen.");
+                                return;
+                            }
+                            current = current.getParent();
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * Detects in 0ms whether a click event was on the "Images", "Videos", or "Short videos"
+     * tab in Google Search / Chrome.
+     */
+    private boolean isMediaTabClickEvent(AccessibilityEvent event) {
+        try {
+            if (event.getText() != null) {
+                for (CharSequence cs : event.getText()) {
+                    if (cs != null && isMediaTabLabel(cs.toString())) {
+                        return true;
+                    }
+                }
+            }
+            AccessibilityNodeInfo src = event.getSource();
+            if (src != null) {
+                if (src.getText() != null && isMediaTabLabel(src.getText().toString())) {
+                    return true;
+                }
+                if (src.getContentDescription() != null && isMediaTabLabel(src.getContentDescription().toString())) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
+    private boolean isMediaTabLabel(String label) {
+        if (label == null) return false;
+        String t = label.trim().toLowerCase(Locale.US);
+        return t.equals("images") || t.equals("videos") || t.equals("short videos") ||
+                t.startsWith("images,") || t.startsWith("videos,");
     }
 
     /**
@@ -2143,25 +2275,179 @@ public class ImpulseGuardService extends AccessibilityService {
         }
 
         if (result.isRisky) {
-            // Immediate lockout enforcement
+            // Tier 1 (RISKY): Clear any pending surveillance state and enforce immediate 60s lockout
+            mActiveSuspiciousQueryMap.remove(packageName);
             mHandler.post(new Runnable() {
                 @Override
                 public void run() {
                     enforcePackageSuspension(packageName, typedText);
                 }
             });
-        } else {
-            // Sequential Phase 2: If Search Query was ALLOWED, schedule Post-Search Screen Audit after 400ms
-            // to verify that the resulting search engine results page does not display explicit media
+        } else if (result.isSuspicious) {
+            // Tier 2 (SUSPICIOUS / GRAY AREA):
+            // Attach Query-Bound Surveillance to this monitored package (cannot be waited out!).
+            // Immediately schedule post-render context-aware text & multimodal thumbnail verification.
+            mActiveSuspiciousQueryMap.put(packageName, typedText);
+            Log.w(TAG, "⚠️ Query-Bound Surveillance activated for [" + packageName + "] on query: \"" + typedText + "\"");
+
             if (GeminiGuardEngine.isScreenGuardEnabled(this)) {
                 mHandler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
                         triggerPostSearchScreenAudit(packageName);
                     }
-                }, 400);
+                }, 1500);
+                mHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (mActiveSuspiciousQueryMap.containsKey(packageName)) {
+                            triggerPostSearchScreenAudit(packageName);
+                        }
+                    }
+                }, 3200);
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                scheduleSuspiciousVisualAudit(packageName, typedText, 1800);
+            }
+        } else {
+            // Tier 3 (SAFE):
+            // If Gemini explicitly verified this new query as safe, clear any previous suspicious query state for this app
+            if ("gemini_explicit_safe".equals(result.reason) || "0ms_local_cache".equals(result.reason)) {
+                mActiveSuspiciousQueryMap.remove(packageName);
+            }
+            // Sequential Phase 2: Schedule Post-Search Screen Audit after 1200ms (allowing search results to render)
+            if (GeminiGuardEngine.isScreenGuardEnabled(this)) {
+                mHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        triggerPostSearchScreenAudit(packageName);
+                    }
+                }, 1200);
             }
         }
+    }
+
+    /**
+     * Schedules a 1-shot multimodal Gemini Vision screenshot inspection when a monitored app
+     * is under Query-Bound Surveillance (SUSPICIOUS query) or when the user switches to the
+     * Images/Videos tab. Captures a crisp 480px-wide screenshot so small thumbnails and titles
+     * are clearly legible to Gemini Vision.
+     */
+    private void scheduleSuspiciousVisualAudit(final String packageName, final String suspiciousQuery, long delayMs) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return;
+        }
+        if (!isMonitoredApp(this, packageName)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - mLastSuspiciousVisualScanTimestamp < 2200L || mIsSuspiciousVisualScanInFlight) {
+            return;
+        }
+
+        if (mPendingSuspiciousVisualAuditRunnable != null) {
+            mHandler.removeCallbacks(mPendingSuspiciousVisualAuditRunnable);
+        }
+
+        mPendingSuspiciousVisualAuditRunnable = new Runnable() {
+            @Override
+            public void run() {
+                mPendingSuspiciousVisualAuditRunnable = null;
+                if (mIsSuspiciousVisualScanInFlight) return;
+                if (!isMonitoredApp(ImpulseGuardService.this, packageName)) return;
+
+                mIsSuspiciousVisualScanInFlight = true;
+                Log.i(TAG, "📸 Triggering Gray-Area / Media-Tab Vision Screenshot Audit for [" + packageName + "] (query=\"" + suspiciousQuery + "\")...");
+
+                try {
+                    takeScreenshot(Display.DEFAULT_DISPLAY, mVisionExecutor, new TakeScreenshotCallback() {
+                        @Override
+                        public void onSuccess(ScreenshotResult screenshotResult) {
+                            HardwareBuffer hardwareBuffer = null;
+                            Bitmap bitmap = null;
+                            Bitmap scaledBitmap = null;
+                            Bitmap softwareBitmap = null;
+                            try {
+                                mLastSuspiciousVisualScanTimestamp = System.currentTimeMillis();
+                                hardwareBuffer = screenshotResult.getHardwareBuffer();
+                                ColorSpace colorSpace = screenshotResult.getColorSpace();
+                                if (hardwareBuffer != null) {
+                                    bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace);
+                                }
+                                if (bitmap != null) {
+                                    int bw = Math.max(1, bitmap.getWidth());
+                                    int bh = Math.max(1, bitmap.getHeight());
+                                    int targetW = 480;
+                                    int targetH = Math.max(480, Math.round(480f * bh / bw));
+                                    scaledBitmap = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true);
+                                    if (scaledBitmap != bitmap) {
+                                        bitmap.recycle();
+                                        bitmap = null;
+                                    }
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error wrapping hardware buffer for suspicious visual audit", e);
+                            } finally {
+                                if (bitmap != null && !bitmap.isRecycled() && bitmap != scaledBitmap) {
+                                    bitmap.recycle();
+                                }
+                                if (hardwareBuffer != null) {
+                                    try {
+                                        hardwareBuffer.close();
+                                    } catch (Exception ignored) {
+                                    }
+                                }
+                            }
+
+                            try {
+                                if (scaledBitmap != null) {
+                                    softwareBitmap = scaledBitmap.copy(Bitmap.Config.ARGB_8888, false);
+                                    if (scaledBitmap != softwareBitmap) {
+                                        scaledBitmap.recycle();
+                                        scaledBitmap = null;
+                                    }
+                                    if (softwareBitmap != null) {
+                                        boolean isNsfwThumbnails = GeminiGuardEngine.auditSuspiciousScreenWithGeminiVision(
+                                                ImpulseGuardService.this, packageName, suspiciousQuery, softwareBitmap);
+                                        if (isNsfwThumbnails) {
+                                            mActiveSuspiciousQueryMap.remove(packageName);
+                                            final String reasonLabel = (suspiciousQuery != null && !suspiciousQuery.isEmpty())
+                                                    ? suspiciousQuery + " (Visual Thumbnail Verification)"
+                                                    : "ADULT_MEDIA_THUMBNAIL";
+                                            mHandler.post(new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    enforcePackageSuspension(packageName, reasonLabel);
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error in suspicious visual audit execution", e);
+                            } finally {
+                                if (softwareBitmap != null && !softwareBitmap.isRecycled()) {
+                                    softwareBitmap.recycle();
+                                }
+                                mIsSuspiciousVisualScanInFlight = false;
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(int errorCode) {
+                            mIsSuspiciousVisualScanInFlight = false;
+                            Log.w(TAG, "Suspicious visual takeScreenshot failed with errorCode=" + errorCode);
+                        }
+                    });
+                } catch (Exception e) {
+                    mIsSuspiciousVisualScanInFlight = false;
+                    Log.e(TAG, "Error requesting suspicious visual screenshot", e);
+                }
+            }
+        };
+
+        mHandler.postDelayed(mPendingSuspiciousVisualAuditRunnable, delayMs);
     }
 
     /**

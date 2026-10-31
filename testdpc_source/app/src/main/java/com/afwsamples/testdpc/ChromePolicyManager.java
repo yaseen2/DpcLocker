@@ -91,7 +91,7 @@ public class ChromePolicyManager {
             // --------------------------------------------------------------------------
             chromeBundle.putInt("SafeSitesFilterBehavior", 1);
             chromeBundle.putString("DnsOverHttpsMode", "secure");
-            chromeBundle.putString("DnsOverHttpsTemplates", "https://family.cloudflare-dns.com/dns-query");
+            chromeBundle.putString("DnsOverHttpsTemplates", "https://adult-filter-dns.cleanbrowsing.org/dns-query");
 
             // Enable YouTube Comments (ForceYouTubeRestrict: 0 = unrestricted comments, 1 = moderate, 2 = strict)
             chromeBundle.putInt("ForceYouTubeRestrict", 0);
@@ -266,6 +266,12 @@ public class ChromePolicyManager {
                 "12ft.io", "[*.]12ft.io",
                 "anonymouse.org", "[*.]anonymouse.org",
                 "hidester.com", "[*.]hidester.com",
+
+                // Block SafeSearch & Search Preferences pages so SafeSearch cannot be toggled off via web UI
+                "google.com/safesearch", "[*.]google.com/safesearch",
+                "www.google.com/safesearch", "https://www.google.com/safesearch*",
+                "google.com/preferences", "[*.]google.com/preferences",
+                "www.google.com/preferences", "https://www.google.com/preferences*",
 
                 // Addictive short-form infinite scroll video feeds
                 "youtube.com/shorts",
