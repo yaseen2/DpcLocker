@@ -117,7 +117,22 @@ public class SecurityConfig {
             "com.ss.android.ugc.aweme",     // Douyin
             "com.chrome.beta",              // Chrome Beta (Unmanaged browser channel)
             "com.chrome.dev",               // Chrome Dev (Unmanaged browser channel)
-            "com.chrome.canary"             // Chrome Canary (Unmanaged browser channel)
+            "com.chrome.canary",            // Chrome Canary (Unmanaged browser channel)
+
+            // App Cloners & Virtual Space Conduits (Bypass prevention)
+            "com.matrix.clone",             // Clone App
+            "com.clone.android.dual.space", // Dual Space
+            "com.lbe.parallel.intl",        // Parallel Space
+            "com.lbe.parallel.intl.arm64",  // Parallel Space 64-Bit Support
+            "com.polestar.super.clone",     // Super Clone
+            "com.excelliance.multiaccount", // Multiple Accounts
+            "com.dualspace.multispace.android", // Dual Space
+            "com.oasisfeng.island",         // Island Sandbox
+            "net.typeblog.shelter",         // Shelter Sandbox
+            "com.applisto.appcloner",       // App Cloner
+            "io.va.exposed",                // VirtualXposed
+            "com.twoaccounts.parallelsapce",// 2Accounts
+            "com.opera.mini.native"         // Opera Mini Native (Direct & Cloned)
     };
 
     /**

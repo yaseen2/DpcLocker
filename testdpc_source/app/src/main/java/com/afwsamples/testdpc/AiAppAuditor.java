@@ -383,19 +383,20 @@ public class AiAppAuditor {
                         "SYSTEM ROLE:\n" +
                         "You are an Android app security gatekeeper. Your goal is to prevent adult content access by blocking unfiltered web conduits and adult platforms.\n" +
                         "Rule: Standard Google Chrome (\"com.android.chrome\") is the ONLY permitted browser because it is strictly managed via Device Owner policies. Any other browser, including Chrome pre-release channels (Chrome Beta \"com.chrome.beta\", Chrome Dev, Chrome Canary) and third-party browsers (Firefox, Brave, Opera, Kiwi), must be blocked as ALTERNATIVE_WEB_BROWSER.\n\n" +
-                        "FLAG AN APP AS RISKY (\"is_risky\": true) ONLY IF IT FALLS INTO ONE OF THESE 4 CATEGORIES:\n" +
+                        "FLAG AN APP AS RISKY (\"is_risky\": true) ONLY IF IT FALLS INTO ONE OF THESE 5 CATEGORIES:\n" +
                         "1. ALTERNATIVE_WEB_BROWSER: Any third-party web browser, private browser, or unmanaged Chrome channel (e.g. Chrome Beta \"com.chrome.beta\", Chrome Dev, Firefox, Brave, Opera, Kiwi, Aloha, DuckDuckGo).\n" +
                         "2. MEDIA_DOWNLOADER_WITH_BROWSER: Video downloaders, tube scrapers, or torrent clients with a built-in browser or URL loader to rip online videos.\n" +
                         "3. VPN_AND_PROXY_TUNNEL: Standalone VPNs, proxies, or DNS tunnels that bypass network-level adult filters (e.g. Turbo VPN, Psiphon, SuperVPN).\n" +
-                        "4. ADULT_DATING_CHAT_NSFW: Casual dating/hookup apps (Tinder, Grindr, Badoo), live adult cam chats, or uncensored NSFW AI companions.\n\n" +
+                        "4. ADULT_DATING_CHAT_NSFW: Casual dating/hookup apps (Tinder, Grindr, Badoo), live adult cam chats, or uncensored NSFW AI companions.\n" +
+                        "5. APP_CLONER_OR_VIRTUAL_CONTAINER: App cloners, multi-account utilities, dual-space, or virtual containers used to run apps inside a sandbox and bypass device restrictions (e.g. Parallel Space, Clone App, Dual Space, Multiple Accounts, Shelter, Island, VirtualXposed, App Cloner).\n\n" +
                         "ALL OTHER APPS ARE SAFE (\"is_risky\": false):\n" +
-                        "Standard productivity, utility, communication, gaming, banking, audio, and local media creation apps without arbitrary web browsing or video scraping are SAFE. Only mark \"is_risky\": true when there is clear evidence that the app belongs to one of the 4 categories above (confidence >= 0.90).\n\n" +
+                        "Standard productivity, utility, communication, gaming, banking, audio, and local media creation apps without arbitrary web browsing, video scraping, or app virtualization are SAFE. Only mark \"is_risky\": true when there is clear evidence that the app belongs to one of the 5 categories above (confidence >= 0.90).\n\n" +
                         "OUTPUT JSON FORMAT:\n" +
                         "{\n" +
                         "  \"app_summary\": \"<brief description>\",\n" +
                         "  \"is_risky\": <true | false>,\n" +
                         "  \"confidence\": <0.0 to 1.0>,\n" +
-                        "  \"violation_category\": \"<NONE | ALTERNATIVE_WEB_BROWSER | MEDIA_DOWNLOADER_WITH_BROWSER | VPN_AND_PROXY_TUNNEL | ADULT_DATING_CHAT_NSFW>\",\n" +
+                        "  \"violation_category\": \"<NONE | ALTERNATIVE_WEB_BROWSER | MEDIA_DOWNLOADER_WITH_BROWSER | VPN_AND_PROXY_TUNNEL | ADULT_DATING_CHAT_NSFW | APP_CLONER_OR_VIRTUAL_CONTAINER>\",\n" +
                         "  \"reason\": \"<short explanation>\"\n" +
                         "}"
                     );
@@ -629,7 +630,18 @@ public class AiAppAuditor {
                 combined.contains("tube") ||
                 combined.contains("bing") ||
                 combined.contains("duckduckgo") ||
-                combined.contains("yandex");
+                combined.contains("yandex") ||
+                combined.contains("clone") ||
+                combined.contains("parallel") ||
+                combined.contains("virtual") ||
+                combined.contains("dual") ||
+                combined.contains("multiaccount") ||
+                combined.contains("multispace") ||
+                combined.contains("sandbox") ||
+                combined.contains("island") ||
+                combined.contains("shelter") ||
+                combined.contains("appcloner") ||
+                combined.contains("2accounts");
     }
 
     // =====================================================================================
