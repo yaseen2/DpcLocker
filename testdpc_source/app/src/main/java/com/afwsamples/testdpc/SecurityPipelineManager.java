@@ -574,26 +574,28 @@ public class SecurityPipelineManager {
                 dpm.setAutoTimeRequired(admin, true);
             }
 
-            // Enforce & Permanently Lock System-Wide CleanBrowsing SafeSearch Private DNS:
-            // Maps www.google.com -> forcesafesearch.google.com across ALL apps (including Google App)
-            // and blocks adult domains at the OS resolver level.
-            // If the user already configured a custom Private DNS hostname (e.g. adult-filter-dns.cleanbrowsing.org
-            // or family-filter-dns.cleanbrowsing.org), preserve it; if it reverted to 'opportunistic' (Automatic)
-            // or 'off', force it to 'adult-filter-dns.cleanbrowsing.org' and lock DISALLOW_CONFIG_PRIVATE_DNS!
-            final String defaultSafeDnsHost = "adult-filter-dns.cleanbrowsing.org";
+            // Enforce & Permanently Lock System-Wide SafeSearch Private DNS:
+            // Note: ISP blocks TCP/TLS port 853 to cleanbrowsing.org ("Private DNS server cannot be accessed"),
+            // whereas family.cloudflare-dns.com (1.1.1.3) and family.adguard-dns.com (94.140.14.15) pass TLS 853
+            // on this ISP while strictly mapping www.google.com -> forcesafesearch.google.com (216.239.38.120)
+            // and sinkholing adult domains across ALL apps (including Google App)!
+            final String defaultSafeDnsHost = "family.cloudflare-dns.com";
             try {
                 String currentMode = android.provider.Settings.Global.getString(context.getContentResolver(), "private_dns_mode");
                 String currentHost = android.provider.Settings.Global.getString(context.getContentResolver(), "private_dns_specifier");
-                final String targetHost = (currentHost != null && !currentHost.trim().isEmpty() && currentHost.contains("."))
+                boolean isBlockedCleanBrowsing = currentHost != null && currentHost.toLowerCase().contains("cleanbrowsing");
+                final String targetHost = (currentHost != null && !currentHost.trim().isEmpty() && currentHost.contains(".") && !isBlockedCleanBrowsing)
                         ? currentHost.trim()
                         : defaultSafeDnsHost;
 
-                if (!"hostname".equals(currentMode) || currentHost == null || currentHost.trim().isEmpty()) {
+                if (!"hostname".equals(currentMode) || currentHost == null || currentHost.trim().isEmpty() || isBlockedCleanBrowsing) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         dpm.clearUserRestriction(admin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
                     }
-                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_mode", "hostname");
+                    dpm.setGlobalSetting(admin, "private_dns_specifier", targetHost);
+                    dpm.setGlobalSetting(admin, "private_dns_mode", "hostname");
                     android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_specifier", targetHost);
+                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_mode", "hostname");
                     Log.i(TAG, "🔒 Enforced system-wide SafeSearch Private DNS via Settings.Global: " + targetHost);
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -613,10 +615,11 @@ public class SecurityPipelineManager {
                                 ComponentName bgAdmin = DeviceAdminReceiver.getComponentName(appCtx);
                                 String mode = android.provider.Settings.Global.getString(appCtx.getContentResolver(), "private_dns_mode");
                                 String host = android.provider.Settings.Global.getString(appCtx.getContentResolver(), "private_dns_specifier");
-                                String target = (host != null && !host.trim().isEmpty() && host.contains("."))
+                                boolean isCleanBrowsing = host != null && host.toLowerCase().contains("cleanbrowsing");
+                                String target = (host != null && !host.trim().isEmpty() && host.contains(".") && !isCleanBrowsing)
                                         ? host.trim()
                                         : defaultSafeDnsHost;
-                                if (!"hostname".equals(mode) || host == null || host.trim().isEmpty()) {
+                                if (!"hostname".equals(mode) || host == null || host.trim().isEmpty() || isCleanBrowsing) {
                                     bgDpm.clearUserRestriction(bgAdmin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
                                     bgDpm.setGlobalPrivateDnsModeSpecifiedHost(bgAdmin, target);
                                 }
