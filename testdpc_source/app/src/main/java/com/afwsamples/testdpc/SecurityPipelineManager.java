@@ -1,5 +1,7 @@
 package com.afwsamples.testdpc;
 
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -7,8 +9,12 @@ import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.UserManager;
 import android.util.Log;
+import android.widget.Toast;
+import androidx.core.app.NotificationCompat;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -16,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -229,8 +236,22 @@ public class SecurityPipelineManager {
     }
 
     // =====================================================================================
-    // SECTION 2: 3-Tier Security Pipeline Execution
+    // SECTION 2: 3-Tier Security Pipeline Execution & Play Store Abuse Lockout
     // =====================================================================================
+
+    // Deduplication map preventing multiple broadcast receivers (PACKAGE_ADDED, SessionCallback, LauncherApps)
+    // from firing 3-5 redundant Gemini API audits for a single package installation
+    private static final ConcurrentHashMap<String, Long> sRecentPipelineTriggerMap = new ConcurrentHashMap<>();
+
+    // Deduplication map ensuring a single blocked app install increments the Play Store strike counter once
+    private static final ConcurrentHashMap<String, Long> sRecentPlayStoreStrikeMap = new ConcurrentHashMap<>();
+
+    private static final String KEY_PLAYSTORE_STRIKES = "playstore_blocked_install_strikes";
+    private static final String KEY_PLAYSTORE_LAST_STRIKE_TS = "playstore_last_strike_timestamp";
+    private static final long PLAYSTORE_STRIKE_WINDOW_MS = 2 * 60 * 60 * 1000L; // 2-hour rolling strike window
+    private static final String PLAYSTORE_PACKAGE = "com.android.vending";
+    private static final String PLAYSTORE_NOTIF_CHANNEL = "playstore_guard_channel";
+    private static final int PLAYSTORE_NOTIF_ID = 9450;
 
     /**
      * Public entry point called whenever a package is added, updated, or re-installed.
@@ -241,16 +262,25 @@ public class SecurityPipelineManager {
      */
     public static void onPackageAddedOrUpdated(final Context context, final String packageName) {
         if (packageName == null || packageName.isEmpty()) return;
-        final String lowerPkg = packageName.trim().toLowerCase();
+        final String lowerPkg = packageName.trim().toLowerCase(Locale.US);
 
-        // Fresh installation or update: always purge from safe cache to force re-evaluation!
+        // Deduplicate rapid back-to-back broadcasts for the exact same package within 8 seconds
+        long now = System.currentTimeMillis();
+        Long lastTrigger = sRecentPipelineTriggerMap.get(lowerPkg);
+        if (lastTrigger != null && (now - lastTrigger) < 8000L) {
+            Log.d(TAG, "Skipping duplicate package install broadcast within 8s window for: " + lowerPkg);
+            return;
+        }
+        sRecentPipelineTriggerMap.put(lowerPkg, now);
+
+        // Fresh installation or update: purge from safe cache (never purge from blocked cache!)
         evictFromSafeCache(context, lowerPkg);
 
         sBgExecutor.execute(new Runnable() {
             @Override
             public void run() {
                 try {
-                    processPackagePipeline(context, lowerPkg);
+                    processPackagePipeline(context, lowerPkg, true);
                 } catch (Exception e) {
                     Log.e(TAG, "Error in security pipeline for " + lowerPkg, e);
                     SecurityLogger.log(context, "[PIPELINE_ERROR]", lowerPkg + ": " + e.getMessage());
@@ -262,11 +292,32 @@ public class SecurityPipelineManager {
     /**
      * Executes the 3-Tier short-circuit evaluation logic for a single package.
      */
-    private static void processPackagePipeline(Context context, String packageName) {
+    private static void processPackagePipeline(Context context, String packageName, boolean isLiveInstallEvent) {
         // ---------------------------------------------------------------------------------
-        // TIER 0: Verified Safe Package Cache (0ms Instant Return)
+        // TIER 0: Verified Safe & Confirmed Blocked Package Caches (0ms Instant Return)
         // ---------------------------------------------------------------------------------
-        String lowerPkg = (packageName != null) ? packageName.toLowerCase() : "";
+        String lowerPkg = (packageName != null) ? packageName.toLowerCase(Locale.US) : "";
+
+        //Retrieve DevicePolicyManager system service
+        DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+        ComponentName admin = DeviceAdminReceiver.getComponentName(context);
+        boolean isDeviceOwner = (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName()));
+
+        // Tier 0A: If already confirmed blocked in cache (e.g. user uninstalled & re-installed a 2.4MB browser
+        // trying to drain Gemini API quota), block in 0ms with ZERO API calls and record a Play Store strike!
+        if (getCachedBlockedPackages(context).contains(lowerPkg) &&
+                !SecurityConfig.isWhitelisted(context, lowerPkg) &&
+                !SecurityConfig.isUnderProbation(context, lowerPkg)) {
+            if (isDeviceOwner) {
+                dpm.setPackagesSuspended(admin, new String[]{lowerPkg}, true);
+            }
+            SecurityLogger.log(context, "[TIER0_BLOCKED_CACHE]", lowerPkg + " -> Previously Blocked Package Re-installed -> Instant 0ms Suspend (0 API Quota Used)");
+            if (isLiveInstallEvent) {
+                recordBlockedAppInstallStrike(context, lowerPkg, "Repeated install of blocked package");
+            }
+            return;
+        }
+
         if (getCachedSafePackages(context).contains(lowerPkg)) {
             // Ensure an explicit blocklist entry or unmanaged browser invalidates stale safe cache
             if (!SecurityConfig.isBlocklisted(context, lowerPkg) &&
@@ -294,18 +345,13 @@ public class SecurityPipelineManager {
             return;
         }
 
-        // Retrieve DevicePolicyManager system service
-        DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
-        ComponentName admin = DeviceAdminReceiver.getComponentName(context);
-        boolean isDeviceOwner = (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName()));
-
         // ---------------------------------------------------------------------------------
         // TIER 2: Precision Deterministic Fast-Path Checks (<2ms)
         // ---------------------------------------------------------------------------------
         boolean isBlocklisted = SecurityConfig.isBlocklisted(context, packageName);
         boolean isBrowser = BrowserBlocker.isAutoBlockEnabled(context) && BrowserBlocker.isNonChromeBrowser(context, packageName);
 
-        // Branch 2A: Explicit Hard Blocklist Match (e.g. TikTok, Twitter, Reddit)
+        // Branch 2A: Explicit Hard Blocklist Match (e.g. TikTok, Twitter, Reddit, Streamflix, Cloners)
         if (isBlocklisted) {
             // Hard definitive block: user explicitly blocked this app -> DO NOT send to AI for rescue!
             markPackageBlocked(context, packageName);
@@ -314,6 +360,9 @@ public class SecurityPipelineManager {
                 dpm.setPackagesSuspended(admin, new String[]{packageName}, true);
             }
             SecurityLogger.log(context, "[TIER2_HARD_BLOCK]", packageName + " -> Explicit Blocklist Match -> Permanently Suspended");
+            if (isLiveInstallEvent) {
+                recordBlockedAppInstallStrike(context, packageName, "Explicit Blocklist Match");
+            }
             return;
         }
 
@@ -337,6 +386,167 @@ public class SecurityPipelineManager {
         AiAppAuditor.checkAndAuditPackage(context, packageName);
     }
 
+    /**
+     * Play Store Abuse & Circumvention Strike Counter:
+     * Called whenever a newly installed application is blocked/suspended by any security tier.
+     *
+     * Rules:
+     *   - Strike 1: Issues a high-priority warning Toast & Notification (1/2).
+     *   - Strike 2 (within 2 hours): Suspends Google Play Store ("com.android.vending") for 30 minutes!
+     *   - Strike 3+ (within 2 hours): Suspends Google Play Store ("com.android.vending") for 60 minutes!
+     */
+    public static synchronized void recordBlockedAppInstallStrike(final Context context, final String blockedPackage, final String reason) {
+        if (context == null || blockedPackage == null || blockedPackage.isEmpty()) return;
+        final String lowerPkg = blockedPackage.trim().toLowerCase(Locale.US);
+
+        // Never count core Android/Google system components or self
+        if (lowerPkg.startsWith("com.afwsamples.testdpc") ||
+                PLAYSTORE_PACKAGE.equals(lowerPkg) ||
+                lowerPkg.startsWith("com.android.") ||
+                (lowerPkg.startsWith("com.google.android.") && !lowerPkg.contains("chrome") && !lowerPkg.contains("youtube"))) {
+            return;
+        }
+
+        // Verify the package was recently installed/updated (within last 15 minutes) so boot scans never trigger Play Store strikes
+        try {
+            android.content.pm.PackageInfo pi = context.getPackageManager().getPackageInfo(lowerPkg, 0);
+            long recentInstallOrUpdate = Math.max(pi.firstInstallTime, pi.lastUpdateTime);
+            if (System.currentTimeMillis() - recentInstallOrUpdate > 15 * 60 * 1000L) {
+                return;
+            }
+        } catch (Exception ignored) {
+        }
+
+        // Deduplicate multiple callbacks for the exact same package install within 6 seconds
+        long now = System.currentTimeMillis();
+        Long lastStrikeForPkg = sRecentPlayStoreStrikeMap.get(lowerPkg);
+        if (lastStrikeForPkg != null && (now - lastStrikeForPkg) < 6000L) {
+            return;
+        }
+        sRecentPlayStoreStrikeMap.put(lowerPkg, now);
+
+        SharedPreferences prefs = getCachePrefs(context);
+        long lastStrikeTs = prefs.getLong(KEY_PLAYSTORE_LAST_STRIKE_TS, 0L);
+        int strikes = prefs.getInt(KEY_PLAYSTORE_STRIKES, 0);
+
+        if (lastStrikeTs <= 0L || (now - lastStrikeTs) > PLAYSTORE_STRIKE_WINDOW_MS) {
+            strikes = 0;
+        }
+        strikes++;
+
+        prefs.edit()
+                .putInt(KEY_PLAYSTORE_STRIKES, strikes)
+                .putLong(KEY_PLAYSTORE_LAST_STRIKE_TS, now)
+                .apply();
+
+        // Resolve human-readable app label if possible
+        String label = lowerPkg;
+        try {
+            PackageManager pm = context.getPackageManager();
+            ApplicationInfo ai = pm.getApplicationInfo(lowerPkg, 0);
+            CharSequence cs = pm.getApplicationLabel(ai);
+            if (cs != null) label = cs.toString();
+        } catch (Exception ignored) {
+        }
+        final String appDisplayLabel = label;
+        final int currentStrikeCount = strikes;
+
+        if (currentStrikeCount == 1) {
+            final String warnMsg = "⚠️ Play Store Warning (1/2): Blocked app \"" + appDisplayLabel + "\". Installing 1 more restricted app will lock Play Store for 30 mins!";
+            SecurityLogger.log(context, "[PLAYSTORE_STRIKE_1]", "Blocked install of " + lowerPkg + " (" + reason + ") -> Warning 1/2 issued");
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                @Override
+                public void run() {
+                    Toast.makeText(context.getApplicationContext(), warnMsg, Toast.LENGTH_LONG).show();
+                    showPlayStoreSecurityNotification(context.getApplicationContext(), "Play Store Security Warning (1/2) ⚠️", warnMsg);
+                }
+            });
+        } else {
+            // Strike 2 -> 30 minutes lockout; Strike 3+ -> 60 minutes lockout
+            final int lockoutMinutes = (currentStrikeCount == 2) ? 30 : 60;
+            enforcePlayStoreCooldownLock(context.getApplicationContext(), lockoutMinutes, appDisplayLabel + " (" + lowerPkg + ")", currentStrikeCount);
+        }
+    }
+
+    /**
+     * Suspends Google Play Store ("com.android.vending") for the specified cooldown duration
+     * via DevicePolicyManager and schedules automatic un-suspension upon expiration.
+     */
+    public static void enforcePlayStoreCooldownLock(final Context context, final int durationMinutes, final String triggerSource, final int strikeCount) {
+        try {
+            final DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            if (dpm == null || !dpm.isDeviceOwnerApp(context.getPackageName())) {
+                return;
+            }
+            final ComponentName admin = DeviceAdminReceiver.getComponentName(context);
+            final long durationMs = durationMinutes * 60 * 1000L;
+            final long expiryTimestamp = System.currentTimeMillis() + durationMs;
+
+            // 1. Persist suspension expiry in ImpulseGuardService's shared suspension store
+            // so both checkAndCleanExpiredSuspensions() and BootOptimizer respect and clean it up
+            SharedPreferences suspPrefs = context.getSharedPreferences("impulse_guard_active_suspensions", Context.MODE_PRIVATE);
+            long existingExpiry = suspPrefs.getLong(PLAYSTORE_PACKAGE, 0L);
+            final long finalExpiry = Math.max(existingExpiry, expiryTimestamp);
+            suspPrefs.edit().putLong(PLAYSTORE_PACKAGE, finalExpiry).apply();
+
+            // 2. Suspend Google Play Store at the OS level via DevicePolicyManager
+            dpm.setPackagesSuspended(admin, new String[]{PLAYSTORE_PACKAGE}, true);
+
+            final String lockMsg = "🔒 Google Play Store Locked for " + durationMinutes + " Minutes! (Strike #" + strikeCount + " triggered by blocked app: " + triggerSource + ")";
+            Log.w(TAG, lockMsg);
+            SecurityLogger.log(context, "[PLAYSTORE_LOCKED]", lockMsg);
+
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                @Override
+                public void run() {
+                    Toast.makeText(context, lockMsg, Toast.LENGTH_LONG).show();
+                    showPlayStoreSecurityNotification(context, "Google Play Store Locked (" + durationMinutes + " Mins) 🔒", lockMsg);
+                }
+            });
+
+            // 3. Schedule automatic un-suspension on main Handler when cooldown finishes
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        SharedPreferences sp = context.getSharedPreferences("impulse_guard_active_suspensions", Context.MODE_PRIVATE);
+                        long exp = sp.getLong(PLAYSTORE_PACKAGE, 0L);
+                        if (System.currentTimeMillis() >= exp) {
+                            dpm.setPackagesSuspended(admin, new String[]{PLAYSTORE_PACKAGE}, false);
+                            sp.edit().remove(PLAYSTORE_PACKAGE).apply();
+                            SecurityLogger.log(context, "[PLAYSTORE_UNLOCKED]", "Google Play Store cooldown expired; unsuspended automatically.");
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error auto-unsuspending Play Store", e);
+                    }
+                }
+            }, durationMs + 1500L);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to enforce Play Store cooldown lock", e);
+        }
+    }
+
+    private static void showPlayStoreSecurityNotification(Context context, String title, String message) {
+        try {
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel ch = new NotificationChannel(PLAYSTORE_NOTIF_CHANNEL, "Play Store Security Guard", NotificationManager.IMPORTANCE_HIGH);
+                nm.createNotificationChannel(ch);
+            }
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, PLAYSTORE_NOTIF_CHANNEL)
+                    .setSmallIcon(android.R.drawable.ic_lock_lock)
+                    .setContentTitle(title)
+                    .setContentText(message)
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true);
+            nm.notify(PLAYSTORE_NOTIF_ID, builder.build());
+        } catch (Exception ignored) {
+        }
+    }
+
     // =====================================================================================
     // SECTION 3: Boot Optimizer & False-Positive Auto-Rescue
     // =====================================================================================
@@ -346,6 +556,7 @@ public class SecurityPipelineManager {
      * 1. DISALLOW_CONFIG_DATE_TIME + AutoTime: Prevents rolling the clock forward to bypass 10:00 PM timers or penalty lockouts.
      * 2. DISALLOW_SAFE_BOOT: Prevents rebooting into Android Safe Mode where Accessibility Services are disabled.
      * 3. DISALLOW_ADD_USER: Prevents switching to a Guest user or secondary user profile to bypass restrictions.
+     * 4. DISALLOW_CONFIG_PRIVATE_DNS + CleanBrowsing Adult Filter Private DNS: Enforces system-wide SafeSearch & adult domain filtering and locks the setting in Android Settings so it never reverts to "Automatic".
      */
     public static void enforceCoreDeviceOwnerTamperRestrictions(Context context) {
         try {
@@ -363,17 +574,30 @@ public class SecurityPipelineManager {
                 dpm.setAutoTimeRequired(admin, true);
             }
 
-            // Ensure Android Private DNS is restored to 'opportunistic' (Automatic) so ISP/router
-            // blocks on TCP port 853 never cause "Private DNS server cannot be accessed" errors.
+            // Enforce & Permanently Lock System-Wide CleanBrowsing SafeSearch Private DNS:
+            // Maps www.google.com -> forcesafesearch.google.com across ALL apps (including Google App)
+            // and blocks adult domains at the OS resolver level.
+            // If the user already configured a custom Private DNS hostname (e.g. adult-filter-dns.cleanbrowsing.org
+            // or family-filter-dns.cleanbrowsing.org), preserve it; if it reverted to 'opportunistic' (Automatic)
+            // or 'off', force it to 'adult-filter-dns.cleanbrowsing.org' and lock DISALLOW_CONFIG_PRIVATE_DNS!
+            final String defaultSafeDnsHost = "adult-filter-dns.cleanbrowsing.org";
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    dpm.clearUserRestriction(admin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
-                }
                 String currentMode = android.provider.Settings.Global.getString(context.getContentResolver(), "private_dns_mode");
-                if ("hostname".equals(currentMode)) {
-                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_mode", "opportunistic");
-                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_specifier", "");
-                    Log.i(TAG, "🌐 Restored Private DNS to opportunistic (Automatic) to prevent ISP port 853 connectivity errors.");
+                String currentHost = android.provider.Settings.Global.getString(context.getContentResolver(), "private_dns_specifier");
+                final String targetHost = (currentHost != null && !currentHost.trim().isEmpty() && currentHost.contains("."))
+                        ? currentHost.trim()
+                        : defaultSafeDnsHost;
+
+                if (!"hostname".equals(currentMode) || currentHost == null || currentHost.trim().isEmpty()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        dpm.clearUserRestriction(admin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
+                    }
+                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_mode", "hostname");
+                    android.provider.Settings.Global.putString(context.getContentResolver(), "private_dns_specifier", targetHost);
+                    Log.i(TAG, "🔒 Enforced system-wide SafeSearch Private DNS via Settings.Global: " + targetHost);
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
                 }
             } catch (Throwable ignored) {
             }
@@ -387,10 +611,16 @@ public class SecurityPipelineManager {
                             DevicePolicyManager bgDpm = (DevicePolicyManager) appCtx.getSystemService(Context.DEVICE_POLICY_SERVICE);
                             if (bgDpm != null) {
                                 ComponentName bgAdmin = DeviceAdminReceiver.getComponentName(appCtx);
-                                bgDpm.clearUserRestriction(bgAdmin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
-                                if (bgDpm.getGlobalPrivateDnsMode(bgAdmin) == DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME) {
-                                    bgDpm.setGlobalPrivateDnsModeOpportunistic(bgAdmin);
+                                String mode = android.provider.Settings.Global.getString(appCtx.getContentResolver(), "private_dns_mode");
+                                String host = android.provider.Settings.Global.getString(appCtx.getContentResolver(), "private_dns_specifier");
+                                String target = (host != null && !host.trim().isEmpty() && host.contains("."))
+                                        ? host.trim()
+                                        : defaultSafeDnsHost;
+                                if (!"hostname".equals(mode) || host == null || host.trim().isEmpty()) {
+                                    bgDpm.clearUserRestriction(bgAdmin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
+                                    bgDpm.setGlobalPrivateDnsModeSpecifiedHost(bgAdmin, target);
                                 }
+                                bgDpm.addUserRestriction(bgAdmin, UserManager.DISALLOW_CONFIG_PRIVATE_DNS);
                             }
                         } catch (Throwable ignoredBg) {
                         }
@@ -484,7 +714,12 @@ public class SecurityPipelineManager {
 
                         // 6. Brand new unclassified app -> run through the full security pipeline
                         newAppCount++;
-                        processPackagePipeline(context, pkg);
+                        processPackagePipeline(context, pkg, false);
+                    }
+
+                    // If Play Store is currently under an active 30-min lockout, ensure it stays suspended across reboot
+                    if (ImpulseGuardService.isTemporarilySuspended(context, PLAYSTORE_PACKAGE)) {
+                        packagesToSuspend.add(PLAYSTORE_PACKAGE);
                     }
 
                     // Batch re-assert hardware suspensions on confirmed prohibited apps

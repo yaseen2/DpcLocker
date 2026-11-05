@@ -132,7 +132,64 @@ public class SecurityConfig {
             "com.applisto.appcloner",       // App Cloner
             "io.va.exposed",                // VirtualXposed
             "com.twoaccounts.parallelsapce",// 2Accounts
-            "com.opera.mini.native"         // Opera Mini Native (Direct & Cloned)
+            "com.opera.mini.native",        // Opera Mini Native (Direct & Cloned)
+
+            // Movie / TV Streaming, Free Cinema, Short-Drama & Video Downloader Players
+            "com.ajpro.streamflix2",        // Streamflix Movie Streaming App
+            "com.utilityhub.mobile",        // Video Downloader Hub
+            "videodownloader.videoplayer.video.downloader.downloadvideo", // Video Player & Downloader
+            "xyz.toybrick.hapyand",         // ProxHub (Disguised WebView / Proxy Social App)
+            "net.onecook.browser",          // OneCook Light Browser
+            "com.arcane.incognito",         // Incognito Private Browser
+            "com.power.browser.fast.web.power", // Power Browser
+            "com.qwant.liberty",            // Qwant Browser
+            "company.thebrowser.arc",       // Arc Search Browser
+            "com.sand.safebrowser",         // Safe Browser
+            "com.netflix.mediaclient",      // Netflix
+            "com.amazon.avod.thirdpartyclient", // Prime Video
+            "com.disney.disneyplus",        // Disney+
+            "com.hbo.hbonow",               // HBO
+            "com.wbd.stream",               // Max
+            "com.hulu.plus",                // Hulu
+            "com.tubitv",                   // Tubi Free Movies & TV
+            "com.plexapp.android",          // Plex Free Movies & TV
+            "tv.pluto.android",             // Pluto TV
+            "com.peacocktv.peacockandroid", // Peacock TV
+            "com.stremio.one",              // Stremio
+            "org.xbmc.kodi",                // Kodi
+            "com.dailymotion.dailymotion",  // Dailymotion
+            "com.vimeo.android.videoapp",   // Vimeo
+            "tv.twitch.android.app",        // Twitch
+            "com.kick.mobile",              // Kick
+            "com.rumble.battles",           // Rumble
+            "com.bilibili.app.in",          // Bilibili
+            "tv.danmaku.bili",              // Bilibili CN
+            "com.storymatrix.drama",        // DramaBox Short Dramas
+            "com.newleaf.app.android.victor", // ReelShort
+            "com.shortmax.app",             // ShortMax
+            "com.netshort.abroad",          // NetShort
+            "com.flextv.livestream",        // FlexTV
+            "com.goodshort.app",            // GoodShort
+            "com.loklok.android",           // Loklok Movie Streaming
+            "com.farsun.loklok",            // Loklok Cinema
+            "com.mxtech.videoplayer.ad",    // MX Player (OTT & Web Video Streaming)
+            "com.mxtech.videoplayer.pro",   // MX Player Pro
+            "com.playit.videoplayer",       // PLAYit Video Player & Downloader
+            "video.player.videoplayer",     // XPlayer Video Player & Private Vault
+            "com.rocks.music.videoplayer",  // Rocks Video Player & Downloader
+            "video.downloader.videodownloader", // All Video Downloader
+            "free.video.downloader.pro",    // Free Video Downloader
+            "com.dv.adm",                   // ADM Download Manager
+            "com.dv.adm.pay",               // ADM Pro
+            "idm.internet.download.manager",// 1DM Browser & Video Downloader
+            "idm.internet.download.manager.plus", // 1DM+
+            "idm.internet.download.manager.adm.lite", // 1DM Lite
+            "com.utorrent.client",          // uTorrent
+            "com.utorrent.client.pro",      // uTorrent Pro
+            "com.bittorrent.client",        // BitTorrent
+            "com.delphicoder.flud",         // Flud Torrent Downloader
+            "org.proninyaroslav.libretorrent", // LibreTorrent
+            "intelligems.torrdroid"         // TorrDroid Torrent Downloader
     };
 
     /**
@@ -693,8 +750,8 @@ public class SecurityConfig {
             prefs.edit().putStringSet(KEY_PROBATION_ACTIVE_SET, activeSet).apply();
         }
         sCachedProbationSet = Collections.unmodifiableSet(new HashSet<>(activeSet));
-        // Un-enroll graduated safe tool from permanent runtime monitoring unless it is a default browser
-        if (!ImpulseGuardService.isDefaultBrowser(lower)) {
+        // Un-enroll graduated safe tool from permanent runtime monitoring ONLY if it is not a browser, video player, or media app
+        if (!ImpulseGuardService.isDefaultBrowser(lower) && !ImpulseGuardService.isVideoOrMediaOrBrowserApp(context, lower)) {
             ImpulseGuardService.setMonitoredApp(context, lower, false);
         }
         // Mark package as verified safe in cache
@@ -710,7 +767,7 @@ public class SecurityConfig {
         sCachedProbationSet = Collections.emptySet();
         for (String pkg : activeSet) {
             SecurityPipelineManager.markPackageSafe(context, pkg);
-            if (!ImpulseGuardService.isDefaultBrowser(pkg)) {
+            if (!ImpulseGuardService.isDefaultBrowser(pkg) && !ImpulseGuardService.isVideoOrMediaOrBrowserApp(context, pkg)) {
                 ImpulseGuardService.setMonitoredApp(context, pkg, false);
             }
         }
@@ -728,6 +785,7 @@ public class SecurityConfig {
         sCachedProbationSet = Collections.unmodifiableSet(new HashSet<>(activeSet));
         // Permanently add to blocklist, update pipeline cache, and suspend via DPM
         addToUserBlocklist(context, lower);
+        SecurityPipelineManager.recordBlockedAppInstallStrike(context, lower, "Visual Probation Revoked: " + reason);
 
         Log.w(TAG, "REVOKED PROBATION FOR: " + lower + " | Reason: " + reason);
         SecurityLogger.log(context, "[PROBATION_REVOKED]", lower + " -> Confirmed Web Browser: " + reason + " -> Permanently Suspended.");

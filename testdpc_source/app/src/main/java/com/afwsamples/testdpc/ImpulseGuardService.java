@@ -233,6 +233,8 @@ public class ImpulseGuardService extends AccessibilityService {
             "com.google.android.googlequicksearchbox",
             "com.google.android.youtube",
             "app.revanced.android.youtube",
+            "com.instagram.android",
+            "com.facebook.katana",
             "org.mozilla.firefox",
             "com.microsoft.emmx",
             "com.opera.browser",
@@ -241,11 +243,71 @@ public class ImpulseGuardService extends AccessibilityService {
             "com.sec.android.app.sbrowser"
     ));
 
+    // In-memory cache of evaluated video/media/browser classification to ensure 0ms checks on hot Accessibility path
+    private static final ConcurrentHashMap<String, Boolean> sVideoOrMediaAppCache = new ConcurrentHashMap<>();
+
     /**
      * Checks if a package belongs to the built-in default browser/video monitoring set.
      */
     public static boolean isDefaultBrowser(String packageName) {
         return packageName != null && DEFAULT_BROWSERS.contains(packageName.trim().toLowerCase(Locale.US));
+    }
+
+    /**
+     * Checks if an app is a browser, search engine, video player, movie/streaming app, or social media app
+     * that must be permanently monitored by ImpulseGuard (Search + Screen Text + Falcons.ai Vision).
+     */
+    public static boolean isVideoOrMediaOrBrowserApp(Context context, String packageName) {
+        if (packageName == null || packageName.isEmpty()) return false;
+        String lower = packageName.trim().toLowerCase(Locale.US);
+        if (SYSTEM_WHITELIST.contains(lower) || lower.startsWith("com.afwsamples.testdpc")) {
+            return false;
+        }
+        if (DEFAULT_BROWSERS.contains(lower)) {
+            return true;
+        }
+        Boolean cached = sVideoOrMediaAppCache.get(lower);
+        if (cached != null) {
+            return cached;
+        }
+
+        boolean match = lower.contains("browser") || lower.contains("chrome") || lower.contains("firefox") ||
+                lower.contains("opera") || lower.contains("search") || lower.contains("duckduckgo") ||
+                lower.contains("video") || lower.contains("movie") || lower.contains("player") ||
+                lower.contains("cinema") || lower.contains("stream") || lower.contains("flix") ||
+                lower.contains("drama") || lower.contains("reel") || lower.contains("short") ||
+                lower.contains("iptv") || lower.contains("watch") || lower.contains("media") ||
+                lower.contains("tube") || lower.contains("vlc") || lower.contains("mxtech") ||
+                lower.contains("playit") || lower.contains("xplayer") || lower.contains("kodi") ||
+                lower.contains("plex") || lower.contains("tubi");
+
+        if (!match && context != null) {
+            try {
+                PackageManager pm = context.getPackageManager();
+                ApplicationInfo ai = pm.getApplicationInfo(lower, 0);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (ai.category == ApplicationInfo.CATEGORY_VIDEO ||
+                            ai.category == ApplicationInfo.CATEGORY_SOCIAL ||
+                            ai.category == ApplicationInfo.CATEGORY_IMAGE) {
+                        match = true;
+                    }
+                }
+                if (!match) {
+                    CharSequence labelCs = pm.getApplicationLabel(ai);
+                    if (labelCs != null) {
+                        String label = labelCs.toString().toLowerCase(Locale.US);
+                        if (label.contains("video") || label.contains("movie") || label.contains("player") ||
+                                label.contains("cinema") || label.contains("stream") || label.contains("drama") ||
+                                label.contains("tv") || label.contains("browser")) {
+                            match = true;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        sVideoOrMediaAppCache.put(lower, match);
+        return match;
     }
 
     /**
@@ -256,8 +318,8 @@ public class ImpulseGuardService extends AccessibilityService {
         if (packageName == null || SYSTEM_WHITELIST.contains(packageName) || packageName.startsWith("com.afwsamples.testdpc")) {
             return false;
         }
-        // Known browsers are monitored by default
-        if (DEFAULT_BROWSERS.contains(packageName)) {
+        // Known browsers and video/media apps are monitored by default
+        if (DEFAULT_BROWSERS.contains(packageName) || isVideoOrMediaOrBrowserApp(context, packageName)) {
             return true;
         }
         // Packages undergoing Targeted Visual Probation are actively monitored
@@ -971,8 +1033,15 @@ public class ImpulseGuardService extends AccessibilityService {
         // Identify the exact user interaction type (window change, text typed, clicked, scrolled, etc.)
         int eventType = event.getEventType();
 
+        // Housekeeping (throttled to every 5s): purge any suspensions that have finished their lockout penalty duration
+        long nowMs = System.currentTimeMillis();
+        if (nowMs - mLastSuspensionCleanupTime >= 5000L) {
+            mLastSuspensionCleanupTime = nowMs;
+            checkAndCleanExpiredSuspensions();
+        }
+
         // =================================================================================
-        // PHASE 0: REAL-TIME APP DAILY USAGE TIMERS ENFORCEMENT
+        // PHASE 0: REAL-TIME APP DAILY USAGE TIMERS & PLAY STORE LOCKOUT ENFORCEMENT
         // =================================================================================
         // Whenever the user switches apps or opens a new window, track active session duration
         // and evaluate if the daily time allowance has been exhausted.
@@ -980,8 +1049,27 @@ public class ImpulseGuardService extends AccessibilityService {
             handleAppTimerWindowStateChange(packageName);
 
             // =================================================================================
-            // PHASE 0.1: PROACTIVE BLOCKLIST HARD-ENFORCEMENT
+            // PHASE 0.1: PROACTIVE BLOCKLIST & PLAY STORE COOLDOWN HARD-ENFORCEMENT
             // =================================================================================
+            if ("com.android.vending".equals(packageName) && isTemporarilySuspended(this, "com.android.vending")) {
+                SharedPreferences suspPrefs = getSharedPreferences(PREF_SUSPENSIONS, Context.MODE_PRIVATE);
+                long expiry = suspPrefs.getLong("com.android.vending", 0L);
+                final long remMins = Math.max(1L, (expiry - System.currentTimeMillis() + 59999L) / 60000L);
+                Log.w(TAG, "🚨 Play Store opened during active security cooldown! Kicking to home (" + remMins + "m remaining).");
+                performGlobalAction(GLOBAL_ACTION_HOME);
+                try {
+                    DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
+                    if (dpm != null && dpm.isDeviceOwnerApp(getPackageName())) {
+                        dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(this), new String[]{"com.android.vending"}, true);
+                    }
+                } catch (Exception ignored) {
+                }
+                mHandler.post(() -> Toast.makeText(ImpulseGuardService.this,
+                        "🔒 Google Play Store is locked for " + remMins + " more min(s) due to repeated restricted app downloads.",
+                        Toast.LENGTH_LONG).show());
+                return;
+            }
+
             if (SecurityConfig.isBlocklisted(this, packageName)) {
                 Log.w(TAG, "🚨 Proactive blocklist violation: [" + packageName + "] opened! Kicking to home.");
                 performGlobalAction(GLOBAL_ACTION_HOME);
@@ -1035,18 +1123,35 @@ public class ImpulseGuardService extends AccessibilityService {
         }
 
         // =================================================================================
+        // PHASE 1.5: PLAY STORE SEARCH BAR ADULT / BYPASS QUERY GUARD
+        // =================================================================================
+        // If user types an explicit adult/bypass query inside Google Play Store ("com.android.vending"),
+        // immediately lock Google Play Store for 30 minutes!
+        if ("com.android.vending".equals(packageName) && GeminiGuardEngine.isEnabled(this)) {
+            if (eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED ||
+                    (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isSearchOrInputNode(event.getSource()))) {
+                String playStoreQuery = extractActiveText(event);
+                if (playStoreQuery != null && playStoreQuery.trim().length() >= 3) {
+                    final String cleanPsQuery = playStoreQuery.trim();
+                    if (!cleanPsQuery.equalsIgnoreCase("Search apps & games") &&
+                            !cleanPsQuery.equalsIgnoreCase("Search Google Play")) {
+                        if (GeminiGuardEngine.isNotoriousTorrentOrProxyQuery(cleanPsQuery) ||
+                                Boolean.TRUE.equals(GeminiGuardEngine.getCachedVerdict(this, cleanPsQuery))) {
+                            performGlobalAction(GLOBAL_ACTION_HOME);
+                            SecurityPipelineManager.enforcePlayStoreCooldownLock(this, 30, "Play Store Adult Search (\"" + cleanPsQuery + "\")", 2);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        // =================================================================================
         // PHASE 2: SYSTEM WHITELIST PROTECTION (Fast-Exit Before IPC & Disk Reads)
         // =================================================================================
         // Exempt critical OS components (launchers, system UI), keyboards/IMEs, and TestDPC
         if (SYSTEM_WHITELIST.contains(packageName) || packageName.startsWith("com.afwsamples.testdpc") || packageName.contains("inputmethod") || packageName.contains("keyboard")) {
             return;
-        }
-
-        // Housekeeping (throttled to every 5s): purge any suspensions that have finished their lockout penalty duration
-        long nowMs = System.currentTimeMillis();
-        if (nowMs - mLastSuspensionCleanupTime >= 5000L) {
-            mLastSuspensionCleanupTime = nowMs;
-            checkAndCleanExpiredSuspensions();
         }
 
         // Check if either inspection engine is active in SharedPreferences
@@ -1073,15 +1178,13 @@ public class ImpulseGuardService extends AccessibilityService {
         }
 
         // =================================================================================
-        // PHASE 3: MONITORED APPS REGISTRY & DYNAMIC DISCOVERY
+        // PHASE 3: MONITORED APPS REGISTRY & AUTOMATIC VIDEO/MEDIA/BROWSER ENROLLMENT
         // =================================================================================
-        // Only inspect apps that the user/admin has registered for monitoring
+        // Only inspect apps that are registered or match browser/video/movie/player heuristics
         if (!isMonitoredApp(this, packageName)) {
-            // Mandatory Browser Auto-Enrollment: If this app looks like a web browser or search engine,
-            // enroll it into live monitoring automatically so users cannot bypass via "Keep Whitelisted".
-            if (isLikelyBrowserOrSearchApp(packageName)) {
+            if (isLikelyBrowserOrSearchApp(packageName) || isVideoOrMediaOrBrowserApp(this, packageName)) {
                 setMonitoredApp(this, packageName, true);
-                Log.i(TAG, "Auto-enrolled detected browser/search app into Impulse Guard monitoring: " + packageName);
+                Log.i(TAG, "Auto-enrolled detected browser/video/media app into Impulse Guard monitoring: " + packageName);
             } else {
                 return; // Not monitored; bypass inspection
             }
@@ -1252,17 +1355,17 @@ public class ImpulseGuardService extends AccessibilityService {
             if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED || eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
                 final String activeSuspiciousQuery = mActiveSuspiciousQueryMap.get(packageName);
                 if (activeSuspiciousQuery != null) {
-                    scheduleSuspiciousVisualAudit(packageName, activeSuspiciousQuery, 1500);
+                    scheduleSuspiciousVisualAudit(packageName, activeSuspiciousQuery, 800);
                 } else if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isMediaTabClickEvent(event)) {
                     String lastQuery = mLastEvaluatedTextMap.get(packageName);
                     Log.i(TAG, "🎞️ Media tab (Images/Videos) clicked in [" + packageName + "]! Scheduling thumbnail & screen audit...");
-                    scheduleSuspiciousVisualAudit(packageName, lastQuery, 1500);
+                    scheduleSuspiciousVisualAudit(packageName, lastQuery, 800);
                     mHandler.postDelayed(new Runnable() {
                         @Override
                         public void run() {
                             triggerPostSearchScreenAudit(packageName);
                         }
-                    }, 1500);
+                    }, 650);
                 }
             }
         }
@@ -2296,7 +2399,7 @@ public class ImpulseGuardService extends AccessibilityService {
                     public void run() {
                         triggerPostSearchScreenAudit(packageName);
                     }
-                }, 1500);
+                }, 650);
                 mHandler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
@@ -2304,11 +2407,11 @@ public class ImpulseGuardService extends AccessibilityService {
                             triggerPostSearchScreenAudit(packageName);
                         }
                     }
-                }, 3200);
+                }, 2000);
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                scheduleSuspiciousVisualAudit(packageName, typedText, 1800);
+                scheduleSuspiciousVisualAudit(packageName, typedText, 850);
             }
         } else {
             // Tier 3 (SAFE):
@@ -2316,14 +2419,25 @@ public class ImpulseGuardService extends AccessibilityService {
             if ("gemini_explicit_safe".equals(result.reason) || "0ms_local_cache".equals(result.reason)) {
                 mActiveSuspiciousQueryMap.remove(packageName);
             }
-            // Sequential Phase 2: Schedule Post-Search Screen Audit after 1200ms (allowing search results to render)
+            // Sequential Phase 2: Schedule rapid Post-Search Screen Audit at 650ms and 1800ms
+            // AND trigger Falcons.ai on-device thumbnail visual scan so disguised queries in Google App
+            // can never expose adult video thumbnails!
             if (GeminiGuardEngine.isScreenGuardEnabled(this)) {
                 mHandler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
                         triggerPostSearchScreenAudit(packageName);
                     }
-                }, 1200);
+                }, 650);
+                mHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        triggerPostSearchScreenAudit(packageName);
+                    }
+                }, 1800);
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && FalconsVisionGuardEngine.isEnabled(this)) {
+                scheduleFalconsVisualDwellAudit(packageName);
             }
         }
     }
