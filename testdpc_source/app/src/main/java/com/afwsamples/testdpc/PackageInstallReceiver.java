@@ -60,10 +60,12 @@ public class PackageInstallReceiver extends BroadcastReceiver {
 
                 // Step 4: Validate package name and avoid processing TestDPC itself (self-loop prevention)
                 if (packageName != null && !packageName.isEmpty() && !packageName.startsWith("com.afwsamples.testdpc")) {
-                    Log.i(TAG, "PackageInstallReceiver routing package event to pipeline: " + packageName);
+                    boolean isUpdate = Intent.ACTION_PACKAGE_REPLACED.equals(action) ||
+                            intent.getBooleanExtra(Intent.EXTRA_REPLACING, false);
+                    Log.i(TAG, "PackageInstallReceiver routing package event to pipeline: " + packageName + " (isUpdate=" + isUpdate + ")");
 
                     // Step 5: Route to unified security pipeline to audit permissions, category, and enforce restrictions
-                    SecurityPipelineManager.onPackageAddedOrUpdated(context, packageName);
+                    SecurityPipelineManager.onPackageAddedOrUpdated(context, packageName, isUpdate);
                 }
             }
         } else if (Intent.ACTION_PACKAGE_REMOVED.equals(action)) {

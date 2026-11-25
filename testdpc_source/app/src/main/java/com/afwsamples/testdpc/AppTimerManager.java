@@ -62,6 +62,7 @@ public class AppTimerManager {
     private static final String KEY_TIMER_PREFIX = "timer_min_";       // Stores configured limit in minutes
     public static final String KEY_EXCEEDED_PREFIX = "exceeded_today_"; // Stores date string (yyyyMMdd) when limit was hit
     public static final String KEY_USAGE_MILLIS_PREFIX = "usage_today_";// Stores local accumulated milliseconds
+    private static final String KEY_LAST_RESET_CYCLE = "last_reset_cycle_key"; // Tracks most recent completed 10:00 PM cycle rollover
 
     // Daily Cycle Reset Schedule: 10:00 PM (22:00:00)
     public static final int RESET_HOUR_OF_DAY = 22; // 10:00 PM
@@ -158,15 +159,20 @@ public class AppTimerManager {
     }
 
     /**
-     * Resets all daily usage counters and lockout flags when rolling over to a new day.
-     * Called at midnight (00:00:02) by AppTimerReceiver via AlarmManager.
+     * Resets all daily usage counters and lockout flags when rolling over to a new 10:00 PM cycle.
+     * Always evaluates ALL configured timed apps (not just those with leftover exceeded flags)
+     * and self-heals stale blocked-cache poisoning for non-blocklisted timed apps (e.g., Instagram, Facebook).
      */
     public static void clearDailyExceededFlags(Context context) {
         SharedPreferences prefs = getPrefs(context);
         SharedPreferences.Editor editor = prefs.edit();
-        java.util.List<String> packagesToUnsuspend = new java.util.ArrayList<>();
+        java.util.Set<String> packagesToUnsuspend = new java.util.HashSet<>();
 
-        // Iterate through all preference keys to find exceeded flags and usage counters
+        // Always include every currently configured timed app so 10:00 PM unlocks even if
+        // the exceeded_today_ flag was cleared on an earlier night while stale cache blocked unlock
+        packagesToUnsuspend.addAll(getAllConfiguredLimits(context).keySet());
+
+        // Iterate through all preference keys to clear stale exceeded flags and previous-cycle usage counters
         String activeCycleKey = getTodayKey();
         for (String key : prefs.getAll().keySet()) {
             if (key.startsWith(KEY_EXCEEDED_PREFIX)) {
@@ -181,25 +187,63 @@ public class AppTimerManager {
                 editor.remove(key); // Reset recorded usage milliseconds from previous cycle
             }
         }
+        editor.putString(KEY_LAST_RESET_CYCLE, activeCycleKey);
         editor.apply();
-        Log.i(TAG, "Cleared daily exceeded flags and usage counters for midnight rollover.");
+        Log.i(TAG, "Cleared daily exceeded flags and usage counters for 10:00 PM cycle rollover (" + activeCycleKey + ").");
 
-        // Unsuspend the apps via DevicePolicyManager for the fresh new day
+        // Unsuspend eligible timed apps via DevicePolicyManager for the fresh new cycle
         try {
             DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
             if (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName())) {
                 for (String pkg : packagesToUnsuspend) {
-                    // Safety check: do NOT unsuspend if app is permanently prohibited (e.g. adult app)
-                    // or currently serving a temporary penalty cooldown from ImpulseGuardService
-                    if (!SecurityPipelineManager.isPermanentlyProhibited(context, pkg) &&
-                            !ImpulseGuardService.isTemporarilySuspended(context, pkg)) {
+                    int limitMins = getAppLimitMinutes(context, pkg);
+                    boolean isExplicitlyBlocklisted = SecurityConfig.isBlocklisted(context, pkg);
+                    boolean isTempSuspended = ImpulseGuardService.isTemporarilySuspended(context, pkg);
+
+                    if (isExplicitlyBlocklisted || isTempSuspended) {
+                        continue;
+                    }
+
+                    if (limitMins > 0) {
+                        // Self-heal stale blocked-cache poisoning for user-approved timed apps
+                        if (SecurityPipelineManager.getCachedBlockedPackages(context).contains(pkg.toLowerCase(Locale.US))) {
+                            SecurityPipelineManager.markPackageSafe(context, pkg);
+                            Log.i(TAG, "Self-healed stale blocked cache for timed app during 10:00 PM rollover: " + pkg);
+                        }
+                        long usedMillis = getTodayUsageMillis(context, pkg);
+                        if (usedMillis < (limitMins * 60 * 1000L)) {
+                            dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{pkg}, false);
+                            Log.i(TAG, "10:00 PM rollover: Unsuspended timed app " + pkg + " with fresh " + limitMins + "m quota.");
+                        }
+                    } else if (!SecurityPipelineManager.isPermanentlyProhibited(context, pkg)) {
                         dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{pkg}, false);
-                        Log.i(TAG, "Midnight rollover: Unsuspended " + pkg + " with fresh daily timer.");
+                        Log.i(TAG, "10:00 PM rollover: Unsuspended " + pkg + ".");
                     }
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error unsuspending packages on midnight rollover", e);
+            Log.e(TAG, "Error unsuspending packages on 10:00 PM rollover", e);
+        }
+    }
+
+    /**
+     * Watchdog safeguard: ensures the 10:00 PM cycle rollover has executed for the current cycle.
+     * Recovers automatically if the phone was powered off, rebooted, or in deep Doze at 22:00:02.
+     */
+    public static void ensureDailyCycleRolledOver(Context context) {
+        if (context == null) return;
+        try {
+            SharedPreferences prefs = getPrefs(context);
+            String currentCycle = getCycleKey();
+            String lastResetCycle = prefs.getString(KEY_LAST_RESET_CYCLE, "");
+            if (!currentCycle.equals(lastResetCycle)) {
+                Log.i(TAG, "Watchdog detected missed/new 10:00 PM cycle (" + lastResetCycle + " -> " + currentCycle + "). Executing rollover now!");
+                clearDailyExceededFlags(context);
+                registerAllObservers(context);
+                SecurityLogger.log(context, "[DAILY_RESET_WATCHDOG]", "Recovered 10:00 PM cycle rollover (" + currentCycle + ") and unlocked timed apps.");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in ensureDailyCycleRolledOver", e);
         }
     }
 
@@ -222,9 +266,23 @@ public class AppTimerManager {
             setDailyLimitExceeded(context, packageName, false);
             // Allow user to uninstall app again since timer is removed
             setUninstallBlocked(context, packageName, false);
+            // If app was suspended solely because of its timer, unsuspend it immediately
+            try {
+                DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+                if (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName()) &&
+                        !SecurityPipelineManager.isPermanentlyProhibited(context, packageName) &&
+                        !ImpulseGuardService.isTemporarilySuspended(context, packageName)) {
+                    dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{packageName}, false);
+                }
+            } catch (Exception ignored) {
+            }
         } else {
             // Save timer limit
             prefs.edit().putInt(KEY_TIMER_PREFIX + packageName, limitMinutes).apply();
+            // Heal stale blocked cache if app is user-approved for a timer and not explicitly blocklisted
+            if (!SecurityConfig.isBlocklisted(context, packageName)) {
+                SecurityPipelineManager.markPackageSafe(context, packageName);
+            }
             // CRITICAL SECURITY: Block uninstall to prevent uninstalling & reinstalling to reset timer!
             setUninstallBlocked(context, packageName, true);
         }
@@ -409,8 +467,15 @@ public class AppTimerManager {
                     dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{pkg}, true);
                     Log.i(TAG, "EXCEEDED LIMIT: Suspended package " + pkg + " for the remainder of today.");
                 } else {
-                    // Only unsuspend if NOT prohibited by security policy and NOT serving a temporary penalty
-                    if (!SecurityPipelineManager.isPermanentlyProhibited(context, pkg) &&
+                    // Self-heal stale blocked-cache poisoning for non-blocklisted timed apps
+                    if (!SecurityConfig.isBlocklisted(context, pkg) &&
+                            SecurityPipelineManager.getCachedBlockedPackages(context).contains(pkg.toLowerCase(Locale.US))) {
+                        SecurityPipelineManager.markPackageSafe(context, pkg);
+                        Log.i(TAG, "Self-healed stale blocked cache for active timed app: " + pkg);
+                    }
+                    // Only unsuspend if NOT explicitly blocklisted / permanently prohibited and NOT serving a temporary penalty
+                    if (!SecurityConfig.isBlocklisted(context, pkg) &&
+                            !SecurityPipelineManager.isPermanentlyProhibited(context, pkg) &&
                             !ImpulseGuardService.isTemporarilySuspended(context, pkg)) {
                         dpm.setPackagesSuspended(DeviceAdminReceiver.getComponentName(context), new String[]{pkg}, false);
                         Log.i(TAG, "Limit not exceeded: App " + pkg + " active.");

@@ -93,6 +93,30 @@ public class SecurityConfig {
             "com.google.android.gm",                  // Gmail
             "com.google.android.apps.maps",           // Google Maps
             "com.google.android.apps.photos",         // Google Photos
+            "com.google.android.apps.messaging",      // Google Messages (SMS/RCS)
+            "com.google.android.dialer",              // Google Phone / Dialer
+            "com.google.android.contacts",            // Google Contacts
+            "com.google.android.calendar",            // Google Calendar
+            "com.google.android.keep",                // Google Keep Notes
+            "com.google.android.calculator",          // Google Calculator
+            "com.google.android.deskclock",           // Google Clock
+            "com.google.android.apps.docs",           // Google Drive
+            "com.google.android.apps.docs.editors.docs",   // Google Docs
+            "com.google.android.apps.docs.editors.sheets", // Google Sheets
+            "com.google.android.apps.docs.editors.slides", // Google Slides
+            "com.google.android.apps.nbu.files",      // Files by Google
+            "com.google.android.apps.recorder",       // Pixel Recorder
+            "com.google.android.apps.weather",        // Pixel Weather
+            "com.google.android.apps.walletnfcrel",   // Google Wallet
+            "com.google.android.apps.translate",      // Google Translate
+            "com.google.android.apps.tachyon",        // Google Meet
+            "com.google.android.apps.wellbeing",      // Digital Wellbeing
+            "com.google.android.apps.pixel.support",  // Pixel Troubleshooting
+            "com.google.android.apps.dreamliner",     // Pixel Stand
+            "com.google.android.apps.carrier.carrierwifi", // Google Wi-Fi Provisioner
+            "com.google.android.apps.bard",           // Google Gemini
+            "com.google.android.apps.labs.language.tailwind", // NotebookLM
+            "com.google.audio.hearing.visualization.accessibility.scribe", // Live Transcribe
             "com.android.calculator2",                // Basic Calculator
             "com.android.deskclock",                  // System Alarm Clock & Timer
             "com.whatsapp"                            // Essential messaging utility
@@ -672,18 +696,64 @@ public class SecurityConfig {
     public static final String KEY_PROBATION_ACTIVE_SET = "probation_active_set";
     public static final String KEY_PROBATION_SHOTS_PREFIX = "probation_shots_";
     public static final String KEY_PROBATION_START_PREFIX = "probation_start_";
-    public static final int MAX_PROBATION_SHOTS = 10;
+    public static final int MAX_PROBATION_SHOTS = 5;
     public static final long PROBATION_DURATION_MS = 5 * 60 * 1000L; // 5 minutes active window
+
+    /**
+     * Checks whether a package is a genuine Chrome-installed WebAPK (PWA).
+     * Chrome WebAPKs execute inside managed Google Chrome (inheriting ForceGoogleSafeSearch,
+     * URLBlocklist, and disabled Incognito) with no unconstrained omnibox/URL bar.
+     */
+    public static boolean isManagedChromeWebApk(Context context, String packageName) {
+        if (context == null || packageName == null) return false;
+        String lower = packageName.trim().toLowerCase(java.util.Locale.US);
+        if (!lower.startsWith("org.chromium.webapk.")) {
+            return false;
+        }
+        try {
+            String installer = context.getPackageManager().getInstallerPackageName(packageName);
+            return "com.android.chrome".equals(installer) || "com.android.vending".equals(installer);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Checks whether a package is a pre-installed Android system application (excluding explicit
+     * unmanaged browser/video conduits like YouTube, YouTube Music, Google Go, or AOSP Browser).
+     */
+    public static boolean isProtectedSystemApp(Context context, String packageName) {
+        if (context == null || packageName == null) return false;
+        String lower = packageName.trim().toLowerCase(java.util.Locale.US);
+        if ("com.google.android.youtube".equals(lower) ||
+                "com.google.android.apps.youtube.music".equals(lower) ||
+                "com.google.android.apps.youtube.kids".equals(lower) ||
+                "com.google.android.apps.searchlite".equals(lower) ||
+                "com.android.browser".equals(lower) ||
+                lower.startsWith("com.chrome.")) {
+            return false;
+        }
+        try {
+            android.content.pm.ApplicationInfo ai = context.getPackageManager().getApplicationInfo(packageName, 0);
+            int flags = ai.flags;
+            return (flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                    (flags & android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
 
     public static boolean isUnderProbation(Context context, String packageName) {
         if (packageName == null || packageName.isEmpty()) return false;
-        String lower = packageName.trim().toLowerCase();
+        String lower = packageName.trim().toLowerCase(java.util.Locale.US);
         Set<String> cachedProbation = sCachedProbationSet;
         if (cachedProbation != null && !cachedProbation.contains(lower)) {
             return false;
         }
         synchronized (SecurityConfig.class) {
-            if (isWhitelisted(context, lower) || isBlocklisted(context, lower)) {
+            if (isWhitelisted(context, lower) || isBlocklisted(context, lower) ||
+                    isManagedChromeWebApk(context, lower) ||
+                    AppTimerManager.getAppLimitMinutes(context, lower) > 0) {
                 return false;
             }
             SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);
@@ -691,8 +761,10 @@ public class SecurityConfig {
             sCachedProbationSet = Collections.unmodifiableSet(new HashSet<>(activeSet));
             if (activeSet.contains(lower)) {
                 int shots = prefs.getInt(KEY_PROBATION_SHOTS_PREFIX + lower, 0);
-                if (shots >= MAX_PROBATION_SHOTS) {
-                    // Auto graduate only after completing all MAX_PROBATION_SHOTS (5) clean visual scans
+                long startTs = prefs.getLong(KEY_PROBATION_START_PREFIX + lower, 0L);
+                boolean expiredByTime = (startTs > 0L) && ((System.currentTimeMillis() - startTs) >= PROBATION_DURATION_MS);
+                if (shots >= MAX_PROBATION_SHOTS || expiredByTime) {
+                    // Auto graduate once MAX_PROBATION_SHOTS (5) clean shots OR 5-minute probation TTL elapses
                     graduateProbation(context, lower);
                     return false;
                 }
@@ -704,8 +776,11 @@ public class SecurityConfig {
 
     public static synchronized void startProbation(Context context, String packageName) {
         if (packageName == null || packageName.isEmpty()) return;
-        String lower = packageName.trim().toLowerCase();
-        if (isWhitelisted(context, lower) || isBlocklisted(context, lower)) {
+        String lower = packageName.trim().toLowerCase(java.util.Locale.US);
+        if (isWhitelisted(context, lower) || isBlocklisted(context, lower) ||
+                isManagedChromeWebApk(context, lower) ||
+                isProtectedSystemApp(context, lower) ||
+                AppTimerManager.getAppLimitMinutes(context, lower) > 0) {
             return;
         }
         SharedPreferences prefs = context.getSharedPreferences(PREFS_PROBATION, Context.MODE_PRIVATE);

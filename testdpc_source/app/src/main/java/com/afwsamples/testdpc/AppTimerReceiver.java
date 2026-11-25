@@ -124,6 +124,8 @@ public class AppTimerReceiver extends BroadcastReceiver {
         else if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
             Log.i(TAG, "Executing Boot Check: Registering observers and checking timer limits...");
 
+            // Ensure any missed 10:00 PM rollover while powered off executes before enforcing quotas
+            AppTimerManager.ensureDailyCycleRolledOver(context);
             // System observers are wiped from RAM on reboot; re-register all app quotas immediately
             AppTimerManager.registerAllObservers(context);
             // Re-enforce Chrome enterprise policies on boot
@@ -136,6 +138,7 @@ public class AppTimerReceiver extends BroadcastReceiver {
                 "com.afwsamples.testdpc.ACTION_SYNC_POLICIES".equals(action)) {
             Log.i(TAG, "Executing Direct Policy Enforcement Broadcast...");
             ChromePolicyManager.enforceDefaultChromePolicies(context);
+            AppTimerManager.ensureDailyCycleRolledOver(context);
             AppTimerManager.registerAllObservers(context);
             String auditPkg = intent.getStringExtra("extra_audit_package");
             if (auditPkg != null && !auditPkg.trim().isEmpty()) {

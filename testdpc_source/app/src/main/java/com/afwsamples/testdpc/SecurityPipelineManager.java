@@ -209,16 +209,27 @@ public class SecurityPipelineManager {
      */
     public static boolean isPermanentlyProhibited(Context context, String packageName) {
         if (packageName == null) return false;
-        String lower = packageName.trim().toLowerCase();
+        String lower = packageName.trim().toLowerCase(Locale.US);
 
         // 1. Whitelist takes highest precedence
         if (SecurityConfig.isWhitelisted(context, lower)) {
             return false;
         }
 
-        // 2. User proactive blocklist check
+        // 2. Explicit user / default notorious blocklist check
         if (SecurityConfig.isBlocklisted(context, lower)) {
             return true;
+        }
+
+        // 2.5 User-configured timed apps (e.g. Instagram / Facebook 30m daily quota) are governed
+        // strictly by AppTimerManager and must NEVER be permanently locked by stale blocked-cache entries
+        if (AppTimerManager.getAppLimitMinutes(context, lower) > 0) {
+            return false;
+        }
+
+        // 2.6 Verified Chrome-installed WebAPKs run inside managed Chrome (inheriting SafeSearch & URLBlocklist)
+        if (SecurityConfig.isManagedChromeWebApk(context, lower)) {
+            return false;
         }
 
         // 3. Alternative browser check: if it is under active probation, it is not permanently prohibited
@@ -253,14 +264,32 @@ public class SecurityPipelineManager {
     private static final String PLAYSTORE_NOTIF_CHANNEL = "playstore_guard_channel";
     private static final int PLAYSTORE_NOTIF_ID = 9450;
 
+    private static final String KEY_STATE_HEAL_V1 = "state_healing_migration_v1_done";
+
     /**
      * Public entry point called whenever a package is added, updated, or re-installed.
-     * Dispatches processing to a single background worker thread to prevent UI stutter.
-     *
-     * @param context     Application context
-     * @param packageName Installed or updated package identifier
+     * Auto-detects whether the event is a routine Play Store update vs. a brand-new installation.
      */
     public static void onPackageAddedOrUpdated(final Context context, final String packageName) {
+        boolean detectedUpdate = false;
+        try {
+            android.content.pm.PackageInfo pi = context.getPackageManager().getPackageInfo(packageName, 0);
+            long now = System.currentTimeMillis();
+            if (pi.firstInstallTime > 0L && (now - pi.firstInstallTime) > 120_000L &&
+                    (pi.lastUpdateTime - pi.firstInstallTime) > 120_000L) {
+                detectedUpdate = true;
+            }
+        } catch (Exception ignored) {
+        }
+        onPackageAddedOrUpdated(context, packageName, detectedUpdate);
+    }
+
+    /**
+     * Differentiated entry point: distinguishes fresh installs from routine Play Store auto-updates.
+     * Routine updates of already-verified safe packages are NOT evicted from the safe cache,
+     * preventing quota drain, false offline quarantines, and false Play Store strikes.
+     */
+    public static void onPackageAddedOrUpdated(final Context context, final String packageName, final boolean isUpdate) {
         if (packageName == null || packageName.isEmpty()) return;
         final String lowerPkg = packageName.trim().toLowerCase(Locale.US);
 
@@ -273,14 +302,16 @@ public class SecurityPipelineManager {
         }
         sRecentPipelineTriggerMap.put(lowerPkg, now);
 
-        // Fresh installation or update: purge from safe cache (never purge from blocked cache!)
-        evictFromSafeCache(context, lowerPkg);
+        // Only evict from safe cache on a BRAND-NEW install (not routine Play Store app updates!)
+        if (!isUpdate) {
+            evictFromSafeCache(context, lowerPkg);
+        }
 
         sBgExecutor.execute(new Runnable() {
             @Override
             public void run() {
                 try {
-                    processPackagePipeline(context, lowerPkg, true);
+                    processPackagePipeline(context, lowerPkg, !isUpdate, isUpdate);
                 } catch (Exception e) {
                     Log.e(TAG, "Error in security pipeline for " + lowerPkg, e);
                     SecurityLogger.log(context, "[PIPELINE_ERROR]", lowerPkg + ": " + e.getMessage());
@@ -292,27 +323,44 @@ public class SecurityPipelineManager {
     /**
      * Executes the 3-Tier short-circuit evaluation logic for a single package.
      */
-    private static void processPackagePipeline(Context context, String packageName, boolean isLiveInstallEvent) {
+    private static void processPackagePipeline(Context context, String packageName, boolean isLiveFreshInstall, boolean isUpdate) {
         // ---------------------------------------------------------------------------------
         // TIER 0: Verified Safe & Confirmed Blocked Package Caches (0ms Instant Return)
         // ---------------------------------------------------------------------------------
         String lowerPkg = (packageName != null) ? packageName.toLowerCase(Locale.US) : "";
 
-        //Retrieve DevicePolicyManager system service
+        // Retrieve DevicePolicyManager system service
         DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
         ComponentName admin = DeviceAdminReceiver.getComponentName(context);
         boolean isDeviceOwner = (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName()));
 
+        // Tier 0-Pre: User-Configured Timed Apps (e.g. Instagram / Facebook) & Managed Chrome WebAPKs
+        // Never allow routine updates or stale blocked-cache entries to permanently suspend them!
+        if (!SecurityConfig.isBlocklisted(context, lowerPkg)) {
+            if (AppTimerManager.getAppLimitMinutes(context, lowerPkg) > 0) {
+                markPackageSafe(context, lowerPkg);
+                AppTimerManager.checkAndEnforceLimits(context);
+                SecurityLogger.log(context, "[TIER0_TIMED_APP]", lowerPkg + " -> Managed by AppTimerManager (0ms)");
+                return;
+            }
+            if (SecurityConfig.isManagedChromeWebApk(context, lowerPkg)) {
+                markPackageSafe(context, lowerPkg);
+                SecurityLogger.log(context, "[TIER0_CHROME_WEBAPK]", lowerPkg + " -> Verified Managed Chrome PWA (0ms)");
+                return;
+            }
+        }
+
         // Tier 0A: If already confirmed blocked in cache (e.g. user uninstalled & re-installed a 2.4MB browser
-        // trying to drain Gemini API quota), block in 0ms with ZERO API calls and record a Play Store strike!
+        // trying to drain Gemini API quota), block in 0ms with ZERO API calls.
+        // Only record a Play Store strike on a FRESH install (never on background Play Store auto-updates!).
         if (getCachedBlockedPackages(context).contains(lowerPkg) &&
                 !SecurityConfig.isWhitelisted(context, lowerPkg) &&
                 !SecurityConfig.isUnderProbation(context, lowerPkg)) {
             if (isDeviceOwner) {
                 dpm.setPackagesSuspended(admin, new String[]{lowerPkg}, true);
             }
-            SecurityLogger.log(context, "[TIER0_BLOCKED_CACHE]", lowerPkg + " -> Previously Blocked Package Re-installed -> Instant 0ms Suspend (0 API Quota Used)");
-            if (isLiveInstallEvent) {
+            SecurityLogger.log(context, "[TIER0_BLOCKED_CACHE]", lowerPkg + (isUpdate ? " -> Blocked Package Updated" : " -> Previously Blocked Package Re-installed") + " -> Instant 0ms Suspend (0 API Quota Used)");
+            if (isLiveFreshInstall && !isUpdate) {
                 recordBlockedAppInstallStrike(context, lowerPkg, "Repeated install of blocked package");
             }
             return;
@@ -360,7 +408,7 @@ public class SecurityPipelineManager {
                 dpm.setPackagesSuspended(admin, new String[]{packageName}, true);
             }
             SecurityLogger.log(context, "[TIER2_HARD_BLOCK]", packageName + " -> Explicit Blocklist Match -> Permanently Suspended");
-            if (isLiveInstallEvent) {
+            if (isLiveFreshInstall && !isUpdate) {
                 recordBlockedAppInstallStrike(context, packageName, "Explicit Blocklist Match");
             }
             return;
@@ -375,7 +423,7 @@ public class SecurityPipelineManager {
             }
             SecurityLogger.log(context, "[TIER2_BROWSER_SUSPEND]", packageName + " -> Heuristic Browser Intent Match -> Provisionally Suspended");
             // Dispatch background AI audit to verify if app is an innocent web-view tool (e.g. documentation viewer)
-            AiAppAuditor.verifyAndRescuePackageAsync(context, packageName, "Browser Intent Match");
+            AiAppAuditor.verifyAndRescuePackageAsync(context, packageName, "Browser Intent Match", isUpdate);
             return;
         }
 
@@ -383,7 +431,7 @@ public class SecurityPipelineManager {
         // TIER 3: AI Gray-Area Manifest & Adult App Scanner
         // ---------------------------------------------------------------------------------
         // Package is unclassified; perform static manifest inspection and Gemini cloud audit
-        AiAppAuditor.checkAndAuditPackage(context, packageName);
+        AiAppAuditor.checkAndAuditPackage(context, packageName, isUpdate);
     }
 
     /**
@@ -399,19 +447,22 @@ public class SecurityPipelineManager {
         if (context == null || blockedPackage == null || blockedPackage.isEmpty()) return;
         final String lowerPkg = blockedPackage.trim().toLowerCase(Locale.US);
 
-        // Never count core Android/Google system components or self
+        // Never count core Android/Google system components, pre-installed system apps, or self
         if (lowerPkg.startsWith("com.afwsamples.testdpc") ||
                 PLAYSTORE_PACKAGE.equals(lowerPkg) ||
                 lowerPkg.startsWith("com.android.") ||
+                SecurityConfig.isProtectedSystemApp(context, lowerPkg) ||
                 (lowerPkg.startsWith("com.google.android.") && !lowerPkg.contains("chrome") && !lowerPkg.contains("youtube"))) {
             return;
         }
 
-        // Verify the package was recently installed/updated (within last 15 minutes) so boot scans never trigger Play Store strikes
+        // Verify the package was FRESHLY INSTALLED within the last 15 minutes (strictly checking
+        // firstInstallTime — NEVER lastUpdateTime!) so routine background Play Store auto-updates
+        // of already-installed apps NEVER trigger false Play Store strikes or 30-min lockouts!
         try {
             android.content.pm.PackageInfo pi = context.getPackageManager().getPackageInfo(lowerPkg, 0);
-            long recentInstallOrUpdate = Math.max(pi.firstInstallTime, pi.lastUpdateTime);
-            if (System.currentTimeMillis() - recentInstallOrUpdate > 15 * 60 * 1000L) {
+            if (pi.firstInstallTime <= 0L || (System.currentTimeMillis() - pi.firstInstallTime) > 15 * 60 * 1000L) {
+                Log.i(TAG, "Skipping Play Store strike for existing/auto-updated package: " + lowerPkg);
                 return;
             }
         } catch (Exception ignored) {
@@ -636,22 +687,114 @@ public class SecurityPipelineManager {
     }
 
     /**
+     * One-time self-healing migration (v1):
+     * Repairs state poisoned by earlier Visual Probation false positives, stale blocked-cache entries
+     * on timed apps (Instagram / Facebook), and false Play Store strikes from background auto-updates.
+     * Preserves intentional blocks (YouTube, YouTube Music, ProxHub xyz.toybrick.hapyand, etc.).
+     */
+    public static synchronized void runStateHealingMigrationV1(Context context) {
+        if (context == null) return;
+        try {
+            SharedPreferences cachePrefs = getCachePrefs(context);
+            if (cachePrefs.getBoolean(KEY_STATE_HEAL_V1, false)) {
+                return;
+            }
+
+            DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            ComponentName admin = DeviceAdminReceiver.getComponentName(context);
+            boolean isDeviceOwner = (dpm != null && dpm.isDeviceOwnerApp(context.getPackageName()));
+
+            // 1. Remove the 1-minute Fiverr timer as confirmed by user
+            if (AppTimerManager.getAppLimitMinutes(context, "com.fiverr.fiverr") > 0) {
+                AppTimerManager.setAppLimitMinutes(context, "com.fiverr.fiverr", 0);
+            }
+
+            // 2. Unblock & heal confirmed false positives (keeping YouTube & YouTube Music intentionally blocked!)
+            String[] falsePositivesToHeal = new String[]{
+                    "com.google.android.apps.messaging",       // Google Messages (SMS)
+                    "com.yandex.yango",                        // Yango Ride-Hailing
+                    "com.oakever.arrows",                      // Amaze GO! Puzzle Game
+                    "org.chromium.webapk.a3710c498ca4dd8ff_v2" // TryPiko Managed Chrome WebAPK
+            };
+
+            SharedPreferences probPrefs = context.getSharedPreferences(SecurityConfig.PREFS_PROBATION, Context.MODE_PRIVATE);
+            Set<String> activeProbSet = new HashSet<>(probPrefs.getStringSet(SecurityConfig.KEY_PROBATION_ACTIVE_SET, Collections.<String>emptySet()));
+            SharedPreferences.Editor probEditor = probPrefs.edit();
+
+            for (String pkg : falsePositivesToHeal) {
+                SecurityConfig.removeFromUserBlocklist(context, pkg);
+                markPackageSafe(context, pkg);
+                activeProbSet.remove(pkg);
+                probEditor.remove(SecurityConfig.KEY_PROBATION_SHOTS_PREFIX + pkg);
+                probEditor.remove(SecurityConfig.KEY_PROBATION_START_PREFIX + pkg);
+                ImpulseGuardService.setMonitoredApp(context, pkg, false);
+                if (isDeviceOwner) {
+                    try {
+                        dpm.setPackagesSuspended(admin, new String[]{pkg}, false);
+                        dpm.setUninstallBlocked(admin, pkg, false);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            // 3. Clean falsely-probated innocent apps (preserve xyz.toybrick.hapyand ProxHub as blocked!)
+            String[] innocentProbationApps = new String[]{
+                    "com.linkedin.android",
+                    "com.estmob.android.sendanywhere",
+                    "com.google.audio.hearing.visualization.accessibility.scribe",
+                    "com.hejaz.wahda",
+                    "com.blocking.sites"
+            };
+            for (String pkg : innocentProbationApps) {
+                activeProbSet.remove(pkg);
+                probEditor.remove(SecurityConfig.KEY_PROBATION_SHOTS_PREFIX + pkg);
+                probEditor.remove(SecurityConfig.KEY_PROBATION_START_PREFIX + pkg);
+                markPackageSafe(context, pkg);
+                ImpulseGuardService.setMonitoredApp(context, pkg, false);
+            }
+            // Ensure ProxHub (xyz.toybrick.hapyand) is removed from probation and remains permanently blocked
+            activeProbSet.remove("xyz.toybrick.hapyand");
+            probEditor.putStringSet(SecurityConfig.KEY_PROBATION_ACTIVE_SET, activeProbSet).apply();
+            markPackageBlocked(context, "xyz.toybrick.hapyand");
+
+            // 4. Heal ALL non-blocklisted timed apps (Instagram, Facebook) poisoned in cache_confirmed_blocked_packages
+            java.util.Map<String, Integer> configuredTimers = AppTimerManager.getAllConfiguredLimits(context);
+            for (String timedPkg : configuredTimers.keySet()) {
+                if (!SecurityConfig.isBlocklisted(context, timedPkg)) {
+                    markPackageSafe(context, timedPkg);
+                }
+            }
+
+            // 5. Reset false Play Store strikes caused by Yango / Amaze GO! Play Store auto-updates
+            cachePrefs.edit()
+                    .putInt(KEY_PLAYSTORE_STRIKES, 0)
+                    .putLong(KEY_PLAYSTORE_LAST_STRIKE_TS, 0L)
+                    .putBoolean(KEY_STATE_HEAL_V1, true)
+                    .apply();
+
+            // 6. Execute 10:00 PM cycle rollover & enforce limits so Instagram/Facebook unlock cleanly immediately
+            AppTimerManager.clearDailyExceededFlags(context);
+            AppTimerManager.registerAllObservers(context);
+
+            SecurityLogger.log(context, "[STATE_HEAL_V1]", "Self-healed false-positive blocks (Messages, Yango, Amaze GO!, TryPiko), unlocked timed apps (Instagram/Facebook), removed Fiverr 1m timer, and reset false Play Store strikes.");
+            Log.i(TAG, "✅ Completed one-time State Healing Migration v1.");
+        } catch (Exception e) {
+            Log.e(TAG, "Error in runStateHealingMigrationV1", e);
+        }
+    }
+
+    /**
      * High-Performance Boot Optimizer:
      * Executes upon device reboot (ACTION_BOOT_COMPLETED).
-     *
-     * Operations:
-     *   1. Scans all installed packages on device.
-     *   2. Skips pre-verified safe applications instantly (0ms per package).
-     *   3. Re-asserts DPM hardware suspensions in bulk (<5ms total).
-     *   4. Rescues innocent packages that were previously blocked by broad filters but are now clean.
-     *   5. Submits newly installed uncached apps into the evaluation pipeline.
      */
     public static void onBootCompleted(final Context context) {
         sBgExecutor.execute(new Runnable() {
             @Override
             public void run() {
                 try {
+                    runStateHealingMigrationV1(context);
                     enforceCoreDeviceOwnerTamperRestrictions(context);
+                    AppTimerManager.ensureDailyCycleRolledOver(context);
 
                     DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
                     ComponentName admin = DeviceAdminReceiver.getComponentName(context);
@@ -686,6 +829,14 @@ public class SecurityPipelineManager {
                             continue;
                         }
 
+                        // 2.5 User-configured timed apps & verified Chrome WebAPKs -> never treat as blocked cache!
+                        if (AppTimerManager.getAppLimitMinutes(context, pkg) > 0 ||
+                                SecurityConfig.isManagedChromeWebApk(context, pkg)) {
+                            markPackageSafe(context, pkg);
+                            packagesToUnsuspend.add(pkg);
+                            continue;
+                        }
+
                         // 3. Active Probation app -> ensure unsuspended for visual monitoring (checked BEFORE browser heuristic!)
                         if (SecurityConfig.isUnderProbation(context, pkg)) {
                             packagesToUnsuspend.add(pkg);
@@ -698,7 +849,7 @@ public class SecurityPipelineManager {
                             packagesToSuspend.add(pkg);
                             markPackageBlocked(context, pkg);
                             if (!alreadyBlocked) {
-                                AiAppAuditor.verifyAndRescuePackageAsync(context, pkg, "Boot Browser Check");
+                                AiAppAuditor.verifyAndRescuePackageAsync(context, pkg, "Boot Browser Check", true);
                             }
                             continue;
                         }
@@ -717,7 +868,7 @@ public class SecurityPipelineManager {
 
                         // 6. Brand new unclassified app -> run through the full security pipeline
                         newAppCount++;
-                        processPackagePipeline(context, pkg, false);
+                        processPackagePipeline(context, pkg, false, true);
                     }
 
                     // If Play Store is currently under an active 30-min lockout, ensure it stays suspended across reboot

@@ -456,6 +456,9 @@ public class ImpulseGuardService extends AccessibilityService {
      */
     public void checkAndCleanExpiredSuspensions() {
         try {
+            // 10:00 PM Daily Cycle Watchdog: guarantees Instagram/Facebook unlock cleanly even if AlarmManager was delayed by Doze
+            AppTimerManager.ensureDailyCycleRolledOver(this);
+
             DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
             if (dpm == null || !dpm.isDeviceOwnerApp(getPackageName())) {
                 return;
@@ -700,10 +703,13 @@ public class ImpulseGuardService extends AccessibilityService {
         super.onServiceConnected();
         Log.i(TAG, "ImpulseGuardService Accessibility Service CONNECTED & RUNNING!");
 
-        // Step 0: Ensure core Device Owner restrictions (SafeSearch Private DNS) & Chrome policies are actively enforced
+        // Step 0: Run one-time state healing migration, ensure core Device Owner restrictions & 10:00 PM timer rollover
         try {
+            SecurityPipelineManager.runStateHealingMigrationV1(this);
             SecurityPipelineManager.enforceCoreDeviceOwnerTamperRestrictions(this);
             ChromePolicyManager.enforceDefaultChromePolicies(this);
+            AppTimerManager.ensureDailyCycleRolledOver(this);
+            AppTimerManager.registerAllObservers(this);
         } catch (Exception e) {
             Log.e(TAG, "Error enforcing Chrome policies on service connect", e);
         }
@@ -1046,6 +1052,11 @@ public class ImpulseGuardService extends AccessibilityService {
         // Whenever the user switches apps or opens a new window, track active session duration
         // and evaluate if the daily time allowance has been exhausted.
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (!"com.android.systemui".equals(packageName) &&
+                    !packageName.contains("inputmethod") &&
+                    !packageName.contains("keyboard")) {
+                mCurrentForegroundPackage = packageName;
+            }
             handleAppTimerWindowStateChange(packageName);
 
             // =================================================================================
@@ -1397,16 +1408,20 @@ public class ImpulseGuardService extends AccessibilityService {
     /** System timestamp of the most recent completed probation visual scan */
     private long mLastProbationScanTimestamp = 0;
 
+    /** Tracks the actual active foreground package so delayed screenshots can never misattribute Chrome to a previous app */
+    private volatile String mCurrentForegroundPackage = "";
+
+    /** Tracks consecutive confirmed browser-UI hits per probated package (requires 2 hits >= 0.85 before permanent revoke) */
+    private final ConcurrentHashMap<String, Integer> mProbationBrowserHitCountMap = new ConcurrentHashMap<>();
+
     /** Concurrency lock to guarantee only one probation screenshot capture & AI vision audit runs at a time */
     private volatile boolean mIsProbationScanInFlight = false;
 
     /**
      * Schedules a targeted visual screenshot audit for an application currently under probation.
      * Takes up to MAX_PROBATION_SHOTS (5 shots) over the 5-minute probation window.
-     * If browser UI (URL bar, omnibox, web tabs) is detected, revokes probation and suspends the app.
-     *
-     * @param packageName The package name of the active foreground app being audited.
-     * @param delayMs     Debounce/settling delay in milliseconds before taking screenshot.
+     * Verifies foreground package identity before & after capture, and requires 2 confirmed hits
+     * at confidence >= 0.85 before permanently revoking probation.
      */
     private void scheduleProbationVisualAudit(final String packageName, long delayMs) {
         if (!SecurityConfig.isUnderProbation(this, packageName)) {
@@ -1436,6 +1451,12 @@ public class ImpulseGuardService extends AccessibilityService {
                 if (mIsProbationScanInFlight) return;
                 if (!SecurityConfig.isUnderProbation(ImpulseGuardService.this, packageName)) return;
 
+                // Race-condition shield: if user already navigated away to Chrome/Home, DO NOT capture!
+                if (!packageName.equals(mCurrentForegroundPackage)) {
+                    Log.d(TAG, "Skipping probation screenshot for [" + packageName + "] — active foreground is now [" + mCurrentForegroundPackage + "]");
+                    return;
+                }
+
                 int currentShots = SecurityConfig.getProbationShotCount(ImpulseGuardService.this, packageName);
                 if (currentShots >= SecurityConfig.MAX_PROBATION_SHOTS) {
                     SecurityConfig.graduateProbation(ImpulseGuardService.this, packageName);
@@ -1454,6 +1475,12 @@ public class ImpulseGuardService extends AccessibilityService {
                                 Bitmap bitmap = null;
                                 Bitmap scaledBitmap = null;
                                 try {
+                                    // Re-verify foreground window AFTER capture completed so mid-transition frames are discarded
+                                    if (!packageName.equals(mCurrentForegroundPackage)) {
+                                        Log.d(TAG, "Discarding probation screenshot for [" + packageName + "] — foreground changed to [" + mCurrentForegroundPackage + "] during capture.");
+                                        mIsProbationScanInFlight = false;
+                                        return;
+                                    }
                                     mLastProbationScanTimestamp = System.currentTimeMillis();
                                     hardwareBuffer = screenshotResult.getHardwareBuffer();
                                     ColorSpace colorSpace = screenshotResult.getColorSpace();
@@ -1493,17 +1520,26 @@ public class ImpulseGuardService extends AccessibilityService {
                                                 @Override
                                                 public void onResult(boolean isBrowserUi, double confidence, String reason) {
                                                     mIsProbationScanInFlight = false;
-                                                    if (isBrowserUi && confidence >= 0.70) {
-                                                        Log.w(TAG, "🚨 VISUAL PROBATION REVOCATION for [" + packageName + "]: " + reason + " (confidence=" + confidence + ")");
-                                                        performGlobalAction(GLOBAL_ACTION_HOME);
-                                                        SecurityConfig.revokeProbation(ImpulseGuardService.this, packageName, reason);
-                                                        mHandler.post(new Runnable() {
-                                                            @Override
-                                                            public void run() {
-                                                                Toast.makeText(ImpulseGuardService.this, "🔒 Unmanaged Web Browser Blocked: " + packageName, Toast.LENGTH_LONG).show();
-                                                            }
-                                                        });
+                                                    if (isBrowserUi && confidence >= 0.85) {
+                                                        int prevHits = mProbationBrowserHitCountMap.containsKey(packageName) ? mProbationBrowserHitCountMap.get(packageName) : 0;
+                                                        int hits = prevHits + 1;
+                                                        mProbationBrowserHitCountMap.put(packageName, hits);
+                                                        if (hits >= 2) {
+                                                            mProbationBrowserHitCountMap.remove(packageName);
+                                                            Log.w(TAG, "🚨 VISUAL PROBATION REVOCATION (2/2 confirmed) for [" + packageName + "]: " + reason + " (confidence=" + confidence + ")");
+                                                            performGlobalAction(GLOBAL_ACTION_HOME);
+                                                            SecurityConfig.revokeProbation(ImpulseGuardService.this, packageName, reason);
+                                                            mHandler.post(new Runnable() {
+                                                                @Override
+                                                                public void run() {
+                                                                    Toast.makeText(ImpulseGuardService.this, "🔒 Unmanaged Web Browser Blocked: " + packageName, Toast.LENGTH_LONG).show();
+                                                                }
+                                                            });
+                                                        } else {
+                                                            Log.w(TAG, "⚠️ Visual Probation browser-UI candidate (1/2) for [" + packageName + "] (conf=" + confidence + "): " + reason + ". Awaiting confirmation frame.");
+                                                        }
                                                     } else {
+                                                        mProbationBrowserHitCountMap.remove(packageName);
                                                         int shots = SecurityConfig.incrementProbationShotCount(ImpulseGuardService.this, packageName);
                                                         Log.i(TAG, "Visual probation clean shot #" + shots + " recorded for [" + packageName + "]");
                                                         if (shots >= SecurityConfig.MAX_PROBATION_SHOTS) {

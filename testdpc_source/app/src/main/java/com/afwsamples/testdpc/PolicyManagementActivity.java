@@ -39,9 +39,11 @@ public class PolicyManagementActivity extends Activity implements
         super.onCreate(savedInstanceState);
 
         // Always enforce core security watchdogs when activity is launched, even if UI lock is active
+        SecurityPipelineManager.runStateHealingMigrationV1(this);
         SecurityPipelineManager.enforceCoreDeviceOwnerTamperRestrictions(this);
         BrowserBlocker.initLauncherAppsCallback(this);
         BrowserBlocker.scanAndSuspendAllBrowsers(this);
+        AppTimerManager.ensureDailyCycleRolledOver(this);
         AppTimerManager.registerAllObservers(this);
         ChromePolicyManager.enforceDefaultChromePolicies(this);
         NotoriousAppBlocker.scanAndSuspendAllNotoriousApps(this);

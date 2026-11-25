@@ -103,7 +103,7 @@ public class BrowserBlocker {
                         public void onPackageAdded(String packageName, UserHandle user) {
                             Log.i(TAG, "LauncherApps onPackageAdded: " + packageName);
                             // Send package into the unified pipeline for static audit and browser verification
-                            SecurityPipelineManager.onPackageAddedOrUpdated(appContext, packageName);
+                            SecurityPipelineManager.onPackageAddedOrUpdated(appContext, packageName, false);
                             // Re-evaluate app timer restrictions
                             AppTimerManager.checkAndEnforceLimits(appContext);
                         }
@@ -114,7 +114,7 @@ public class BrowserBlocker {
                         @Override
                         public void onPackageChanged(String packageName, UserHandle user) {
                             Log.i(TAG, "LauncherApps onPackageChanged: " + packageName);
-                            SecurityPipelineManager.onPackageAddedOrUpdated(appContext, packageName);
+                            SecurityPipelineManager.onPackageAddedOrUpdated(appContext, packageName, true);
                         }
 
                         /**
@@ -134,7 +134,7 @@ public class BrowserBlocker {
                         public void onPackagesAvailable(String[] packageNames, UserHandle user, boolean replacing) {
                             if (packageNames != null) {
                                 for (String pkg : packageNames) {
-                                    SecurityPipelineManager.onPackageAddedOrUpdated(appContext, pkg);
+                                    SecurityPipelineManager.onPackageAddedOrUpdated(appContext, pkg, replacing);
                                 }
                             }
                         }
@@ -177,8 +177,11 @@ public class BrowserBlocker {
             return false;
         }
 
-        // Step 1: Whitelist check (Core system apps, Chrome, or User Whitelisted apps are immune)
-        if (SecurityConfig.isWhitelisted(context, packageName)) {
+        // Step 1: Whitelist, managed Chrome WebAPK, protected system app, or user-timed app exemptions
+        if (SecurityConfig.isWhitelisted(context, packageName) ||
+                SecurityConfig.isManagedChromeWebApk(context, packageName) ||
+                SecurityConfig.isProtectedSystemApp(context, packageName) ||
+                (AppTimerManager.getAppLimitMinutes(context, packageName) > 0 && !SecurityConfig.isBlocklisted(context, packageName))) {
             return false;
         }
 

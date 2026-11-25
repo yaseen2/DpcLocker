@@ -137,6 +137,7 @@ public class AiAppAuditor {
     // =====================================================================================
 
     private static boolean sNetworkCallbackRegistered = false;
+    private static volatile long sLastPendingDrainTimestamp = 0L;
 
     /**
      * Registers a ConnectivityManager.NetworkCallback to automatically drain the pending
@@ -204,6 +205,11 @@ public class AiAppAuditor {
      * Triggered by network connectivity broadcast receivers.
      */
     public static void processPendingAudits(final Context context) {
+        long now = System.currentTimeMillis();
+        if (now - sLastPendingDrainTimestamp < 60_000L) {
+            return;
+        }
+        sLastPendingDrainTimestamp = now;
         executor.execute(new Runnable() {
             @Override
             public void run() {
@@ -213,7 +219,13 @@ public class AiAppAuditor {
                 Log.i(TAG, "Processing " + queue.size() + " pending deferred AI audits...");
                 for (String pkg : queue) {
                     try {
-                        auditPackageInternal(context, pkg, false, "");
+                        if (SecurityConfig.isWhitelisted(context, pkg) ||
+                                SecurityConfig.isManagedChromeWebApk(context, pkg) ||
+                                SecurityPipelineManager.getCachedSafePackages(context).contains(pkg.toLowerCase(Locale.US))) {
+                            removePendingAudit(context, pkg);
+                            continue;
+                        }
+                        auditPackageInternal(context, pkg, false, "", true);
                     } catch (Exception e) {
                         Log.e(TAG, "Error processing pending audit for " + pkg, e);
                     }
@@ -230,17 +242,17 @@ public class AiAppAuditor {
      * Tier 2 Verification & Rescue Audit:
      * Asynchronously double-checks whether a Tier 2 provisional browser suspension was a false positive.
      * If Gemini confirms the app is NOT an open web browser or adult platform, it is instantly unsuspended.
-     *
-     * @param context        Application context
-     * @param packageName    Target package
-     * @param triggerReason  Diagnostic trigger reason
      */
     public static void verifyAndRescuePackageAsync(final Context context, final String packageName, final String triggerReason) {
+        verifyAndRescuePackageAsync(context, packageName, triggerReason, false);
+    }
+
+    public static void verifyAndRescuePackageAsync(final Context context, final String packageName, final String triggerReason, final boolean isUpdate) {
         executor.execute(new Runnable() {
             @Override
             public void run() {
                 try {
-                    auditPackageInternal(context, packageName, true, triggerReason);
+                    auditPackageInternal(context, packageName, true, triggerReason, isUpdate);
                 } catch (Exception e) {
                     Log.e(TAG, "Error in AI verification audit for " + packageName, e);
                 }
@@ -253,6 +265,10 @@ public class AiAppAuditor {
      * Evaluates package manifest, permissions, and app category to identify adult applications.
      */
     public static void checkAndAuditPackage(final Context context, final String packageName) {
+        checkAndAuditPackage(context, packageName, false);
+    }
+
+    public static void checkAndAuditPackage(final Context context, final String packageName, final boolean isUpdate) {
         if (packageName == null || packageName.isEmpty()) return;
 
         if (!isEnabled(context)) {
@@ -260,10 +276,12 @@ public class AiAppAuditor {
             return;
         }
 
-        // Fast-path whitelist bypass (0ms)
-        if (SecurityConfig.isWhitelisted(context, packageName)) {
+        // Fast-path whitelist / managed Chrome WebAPK / user-timed app bypass (0ms)
+        if (SecurityConfig.isWhitelisted(context, packageName) ||
+                SecurityConfig.isManagedChromeWebApk(context, packageName) ||
+                (!SecurityConfig.isBlocklisted(context, packageName) && AppTimerManager.getAppLimitMinutes(context, packageName) > 0)) {
             SecurityPipelineManager.markPackageSafe(context, packageName);
-            SecurityLogger.log(context, "[TIER1_PASS]", packageName + " -> Whitelisted / System (0ms)");
+            SecurityLogger.log(context, "[TIER1_PASS]", packageName + " -> Whitelisted / System / Managed (0ms)");
             return;
         }
 
@@ -271,7 +289,7 @@ public class AiAppAuditor {
             @Override
             public void run() {
                 try {
-                    auditPackageInternal(context, packageName, false, "");
+                    auditPackageInternal(context, packageName, false, "", isUpdate);
                 } catch (Exception e) {
                     Log.e(TAG, "Error performing AI audit for package " + packageName, e);
                 }
@@ -296,12 +314,21 @@ public class AiAppAuditor {
      *      - If Scan Mode & Risky -> Suspends app via DPM and marks blocked.
      *      - If Offline -> Enqueues into pending queue and allows temporarily.
      */
-    private static void auditPackageInternal(Context context, String packageName, boolean isRescueMode, String triggerReason) {
+    private static void auditPackageInternal(Context context, String packageName, boolean isRescueMode, String triggerReason, boolean isUpdate) {
         // Deterministic guard: Unmanaged Chrome channels (Beta, Dev, Canary) cannot be managed via DPM policies
         if (packageName.startsWith("com.chrome.") && !"com.android.chrome".equalsIgnoreCase(packageName)) {
             Log.w(TAG, "Unmanaged Chrome channel detected: " + packageName + " -> HARD BLOCK (No AI rescue)");
             suspendPackage(context, packageName, "Unmanaged Chrome Channel (" + packageName + ")");
             SecurityPipelineManager.markPackageBlocked(context, packageName);
+            removePendingAudit(context, packageName);
+            return;
+        }
+
+        // Exempt verified managed Chrome WebAPKs & user-timed non-blocklisted apps
+        if (!SecurityConfig.isBlocklisted(context, packageName) &&
+                (SecurityConfig.isManagedChromeWebApk(context, packageName) ||
+                        AppTimerManager.getAppLimitMinutes(context, packageName) > 0)) {
+            SecurityPipelineManager.markPackageSafe(context, packageName);
             removePendingAudit(context, packageName);
             return;
         }
@@ -366,12 +393,15 @@ public class AiAppAuditor {
             SecurityPipelineManager.markPackageBlocked(context, packageName);
             removePendingAudit(context, packageName);
             SecurityLogger.log(context, "[DETERMINISTIC_CONDUIT_BLOCK]", packageName + " (" + appLabel + ") -> " + deterministicBlockReason);
-            SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, deterministicBlockReason);
+            if (!isUpdate) {
+                SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, deterministicBlockReason);
+            }
             return;
         }
 
-        // Provisionally suspend suspicious candidates immediately BEFORE network call so user cannot open app during 1-2s API audit
-        if (!isRescueMode && isBrowserOrDownloaderCandidate(packageName, appLabel, appCategory)) {
+        // Provisionally suspend suspicious fresh-install candidates BEFORE network call so user cannot open app during 1-2s API audit
+        if (!isRescueMode && !isUpdate && !SecurityConfig.isProtectedSystemApp(context, packageName) &&
+                isBrowserOrDownloaderCandidate(context, packageName, appLabel, appCategory)) {
             suspendPackage(context, packageName, "Provisional suspension during Gemini AI security audit");
         }
 
@@ -408,7 +438,7 @@ public class AiAppAuditor {
                         "5. APP_CLONER_OR_VIRTUAL_CONTAINER: App cloners, multi-account utilities, dual-space, or virtual containers used to run apps inside a sandbox and bypass device restrictions (e.g. Parallel Space, Clone App, Dual Space, Multiple Accounts, Shelter, Island, VirtualXposed, App Cloner).\n" +
                         "6. MOVIE_STREAMING_OR_VIDEO_DOWNLOADER: Any movie/TV streaming app, free cinema/OTT platform, full movies app, short-drama/reel app, IPTV player, or video player with built-in video/social-media downloading, network streaming, or web/cloud media access (e.g. Streamflix, Tubi, Plex, Netflix, Prime Video, Stremio, DramaBox, ReelShort, ShortMax, Loklok, MX Player, PLAYit, XPlayer).\n\n" +
                         "ALL OTHER APPS ARE SAFE (\"is_risky\": false):\n" +
-                        "Standard productivity, utility, messaging (WhatsApp), gaming, banking, audio/music (Spotify), and offline education apps without arbitrary web browsing, video downloading, movie streaming, or app virtualization are SAFE. Mark \"is_risky\": true when the app belongs to one of the 6 categories above (confidence >= 0.80).\n\n" +
+                        "Standard productivity, utility, messaging (WhatsApp, Google Messages), ride-hailing/maps (Yango, Uber), file transfer (Send Anywhere), gaming, banking, audio/music (Spotify), and offline education apps without arbitrary web browsing, video downloading, movie streaming, or app virtualization are SAFE. Mark \"is_risky\": true ONLY when the app clearly belongs to one of the 6 categories above (confidence >= 0.85). Set \"confidence\" to your certainty (0.0 to 1.0) in your is_risky verdict (e.g. 0.95 for clearly safe apps too).\n\n" +
                         "OUTPUT JSON FORMAT:\n" +
                         "{\n" +
                         "  \"app_summary\": \"<brief description>\",\n" +
@@ -479,8 +509,8 @@ public class AiAppAuditor {
                                     String reason = aiResult.optString("reason", "No reason provided");
                                     String summary = aiResult.optString("app_summary", "");
 
-                                    // Suspend if confidence >= 0.80 and violation category is explicit
-                                    boolean isRisky = rawRisky && (confidence >= 0.80) && !"NONE".equalsIgnoreCase(category);
+                                    // Suspend if confidence >= 0.85 and violation category is explicit
+                                    boolean isRisky = rawRisky && (confidence >= 0.85) && !"NONE".equalsIgnoreCase(category);
 
                                     Log.i(TAG, "Gemini Model [" + modelName + "] Result for [" + packageName + "]: is_risky=" + isRisky +
                                             " (raw=" + rawRisky + ", conf=" + confidence + ", cat=" + category + "), summary: " + summary + ", reason: " + reason);
@@ -492,20 +522,32 @@ public class AiAppAuditor {
                                         if (SecurityConfig.isBlocklisted(context, packageName)) {
                                             SecurityPipelineManager.markPackageBlocked(context, packageName);
                                             SecurityLogger.log(context, "[AI_BLOCKLIST_PRESERVED]", packageName + " -> Explicit Blocklist Match -> Maintained Suspended");
-                                            SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Explicit Blocklist Match");
+                                            if (!isUpdate) {
+                                                SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Explicit Blocklist Match");
+                                            }
                                         } else if (!isRisky) {
                                             // Contested app: OS flagged as browser, but static AI rescued.
-                                            // Enroll in Targeted Visual Probation (5 shots / 5 mins) AND live ImpulseGuard monitoring
-                                            SecurityConfig.startProbation(context, packageName);
-                                            ImpulseGuardService.setMonitoredApp(context, packageName, true);
-                                            unsuspendPackage(context, packageName);
-                                            SecurityLogger.log(context, "[AI_PROBATION_START]", packageName + " -> Tier 2 rescue entered Visual Probation & Live Guard: " + reason);
+                                            // Enroll in Targeted Visual Probation (5 shots / 5 mins) ONLY for non-system third-party apps
+                                            if (!SecurityConfig.isProtectedSystemApp(context, packageName) &&
+                                                    !SecurityConfig.isManagedChromeWebApk(context, packageName) &&
+                                                    AppTimerManager.getAppLimitMinutes(context, packageName) <= 0) {
+                                                SecurityConfig.startProbation(context, packageName);
+                                                ImpulseGuardService.setMonitoredApp(context, packageName, true);
+                                                unsuspendPackage(context, packageName);
+                                                SecurityLogger.log(context, "[AI_PROBATION_START]", packageName + " -> Tier 2 rescue entered Visual Probation & Live Guard: " + reason);
+                                            } else {
+                                                SecurityPipelineManager.markPackageSafe(context, packageName);
+                                                unsuspendPackage(context, packageName);
+                                                SecurityLogger.log(context, "[AI_PASSED_SAFE]", packageName + " -> Tier 2 rescue passed safe: " + reason);
+                                            }
                                         } else {
-                                            // Confirmed risky: maintain suspension & record Play Store strike
+                                            // Confirmed risky: maintain suspension & record Play Store strike (fresh install only)
                                             SecurityPipelineManager.markPackageBlocked(context, packageName);
                                             SecurityConfig.addToUserBlocklist(context, packageName);
                                             SecurityLogger.log(context, "[AI_VERIFIED]", packageName + " -> Confirmed Prohibited by Gemini AI (" + modelName + "): " + reason);
-                                            SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Gemini AI [" + category + "]: " + reason);
+                                            if (!isUpdate) {
+                                                SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Gemini AI [" + category + "]: " + reason);
+                                            }
                                         }
                                     } 
                                     // Step 5B: Route decision in Gray-Area Scan Mode
@@ -515,18 +557,26 @@ public class AiAppAuditor {
                                             SecurityPipelineManager.markPackageBlocked(context, packageName);
                                             SecurityConfig.addToUserBlocklist(context, packageName);
                                             SecurityLogger.log(context, "[AI_RISKY_SUSPEND]", packageName + " -> Suspended by Gemini AI (" + modelName + "): [" + category + "] " + reason);
-                                            SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Gemini AI [" + category + "]: " + reason);
+                                            if (!isUpdate) {
+                                                SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Gemini AI [" + category + "]: " + reason);
+                                            }
                                         } else {
                                             // Ensure any provisional quarantine is lifted once verified safe
                                             unsuspendPackage(context, packageName);
-                                            // Enroll in probation & live monitoring if package/label indicates media/video/browser/social or AI confidence is low (< 0.85)
-                                            boolean isCandidate = isBrowserOrDownloaderCandidate(packageName, appLabel, appCategory);
-                                            if (isCandidate || "VIDEO".equalsIgnoreCase(appCategory) || "SOCIAL".equalsIgnoreCase(appCategory) || confidence < 0.85) {
+                                            // NEVER enroll clearly safe apps into Visual Probation solely due to low confidence
+                                            // (models frequently output confidence=0.05 to mean 5% risk probability for safe apps!).
+                                            boolean isCandidate = isBrowserOrDownloaderCandidate(context, packageName, appLabel, appCategory);
+                                            if (isCandidate && !SecurityConfig.isProtectedSystemApp(context, packageName) &&
+                                                    !SecurityConfig.isManagedChromeWebApk(context, packageName) &&
+                                                    AppTimerManager.getAppLimitMinutes(context, packageName) <= 0) {
                                                 SecurityConfig.startProbation(context, packageName);
                                                 ImpulseGuardService.setMonitoredApp(context, packageName, true);
-                                                SecurityLogger.log(context, "[AI_PROBATION_START]", packageName + " -> Gray-area/Media candidate entered Visual Probation & Live Falcons Guard: " + summary);
+                                                SecurityLogger.log(context, "[AI_PROBATION_START]", packageName + " -> Suspicious browser/downloader candidate entered Visual Probation: " + summary);
                                             } else {
                                                 SecurityPipelineManager.markPackageSafe(context, packageName);
+                                                if ("VIDEO".equalsIgnoreCase(appCategory) || "SOCIAL".equalsIgnoreCase(appCategory)) {
+                                                    ImpulseGuardService.setMonitoredApp(context, packageName, true);
+                                                }
                                                 SecurityLogger.log(context, "[AI_PASSED_SAFE]", packageName + " -> Passed Safe by Gemini AI (" + modelName + "): " + summary);
                                             }
                                         }
@@ -559,31 +609,37 @@ public class AiAppAuditor {
             if (SecurityConfig.isBlocklisted(context, packageName)) {
                 SecurityPipelineManager.markPackageBlocked(context, packageName);
                 SecurityLogger.log(context, "[AI_OFFLINE]", packageName + " -> Explicit Blocklist Match maintained");
-                SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Explicit Blocklist Match (Offline)");
+                if (!isUpdate) {
+                    SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Explicit Blocklist Match (Offline)");
+                }
             } else if (!isRescueMode) {
                 boolean isOffline = !GeminiGuardEngine.isNetworkConnected(context);
-                boolean suspiciousCandidate = isBrowserOrDownloaderCandidate(packageName, appLabel, appCategory);
-                if (isOffline) {
-                    // Device is intentionally offline during app install: quarantine provisionally until network reconnects
+                boolean isSystemOrUpdate = isUpdate || SecurityConfig.isProtectedSystemApp(context, packageName) ||
+                        SecurityConfig.isManagedChromeWebApk(context, packageName);
+                boolean suspiciousCandidate = isBrowserOrDownloaderCandidate(context, packageName, appLabel, appCategory);
+                if (isOffline && !isSystemOrUpdate) {
+                    // Device is intentionally offline during a brand-new third-party app install: quarantine provisionally
                     suspendPackage(context, packageName, "Offline quarantine pending AI verification upon network reconnect");
                     SecurityLogger.log(context, "[OFFLINE_QUARANTINE]", packageName + " -> Provisionally suspended pending Gemini AI audit upon network connection.");
                     if (suspiciousCandidate) {
                         SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Offline install of suspicious package");
                     }
-                } else if (suspiciousCandidate) {
-                    // Online, but Gemini API quota/billing exhausted AND package matches browser/downloader/movie/VPN heuristics
+                } else if (suspiciousCandidate && !isSystemOrUpdate) {
+                    // Online, but Gemini API quota/billing exhausted AND fresh install matches strict browser/downloader/movie/VPN heuristics
                     suspendPackage(context, packageName, "Quota-fallback quarantine for suspicious browser/downloader/movie/VPN package");
                     SecurityLogger.log(context, "[QUOTA_FALLBACK_QUARANTINE]", packageName + " -> Suspended by local heuristic while Gemini API is unavailable.");
                     SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Quota-fallback quarantine for restricted candidate");
                 } else {
-                    // Online, Gemini API quota/billing exhausted, and package looks like a normal utility/game/banking app:
-                    // Do NOT lock user out of legitimate apps due to cloud API quota limits!
+                    // Routine update, system app, or benign utility/game/banking app while Gemini is offline/rate-limited:
+                    // NEVER lock the user out of legitimate apps!
                     unsuspendPackage(context, packageName);
-                    SecurityLogger.log(context, "[QUOTA_FALLBACK_ALLOW]", packageName + " -> Allowed by local heuristic while Gemini API quota is exhausted (queued for later audit).");
+                    SecurityLogger.log(context, "[QUOTA_FALLBACK_ALLOW]", packageName + " -> Allowed by local heuristic while Gemini API is unavailable (queued for later audit).");
                 }
             } else {
                 SecurityLogger.log(context, "[AI_OFFLINE]", packageName + " -> Tier 2 provisional block maintained (Enqueued for AI rescue check)");
-                SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Tier 2 Browser Suspension");
+                if (!isUpdate) {
+                    SecurityPipelineManager.recordBlockedAppInstallStrike(context, packageName, "Tier 2 Browser Suspension");
+                }
             }
         }
     }
@@ -727,63 +783,79 @@ public class AiAppAuditor {
     }
 
     /**
-     * Checks if an app's package name, label, or category hints at browser, video scraper,
-     * movie streaming, video player, VPN/proxy, app cloner, or web downloader capabilities.
+     * Precision check for whether an app's package name, label, or category specifically indicates
+     * an unmanaged browser, video scraper/downloader, movie streamer, VPN/proxy, or app cloner.
+     * Avoids overly broad substrings like "yandex" (which broke Yango Taxi), "webapk" (Chrome PWAs),
+     * "short", "stream", "dual", "island", "player", "download", etc.
      */
-    private static boolean isBrowserOrDownloaderCandidate(String packageName, String appLabel, String appCategory) {
-        String combined = ((packageName != null ? packageName : "") + " " +
-                (appLabel != null ? appLabel : "")).toLowerCase(Locale.US);
-        if (combined.startsWith("com.google.android.") && !combined.contains("chrome") && !combined.contains("search")) {
+    private static boolean isBrowserOrDownloaderCandidate(Context context, String packageName, String appLabel, String appCategory) {
+        if (SecurityConfig.isProtectedSystemApp(context, packageName) ||
+                SecurityConfig.isManagedChromeWebApk(context, packageName)) {
+            return false;
+        }
+        String pkg = (packageName != null ? packageName : "").toLowerCase(Locale.US);
+        String label = (appLabel != null ? appLabel : "").toLowerCase(Locale.US);
+        String combined = pkg + " " + label;
+        if (pkg.startsWith("com.google.android.") && !pkg.contains("chrome") && !pkg.contains("search")) {
             return false;
         }
         if ("VIDEO".equalsIgnoreCase(appCategory)) {
             return true;
         }
         return combined.contains("browser") ||
+                combined.contains("videodownloader") ||
+                combined.contains("video downloader") ||
+                combined.contains("all downloader") ||
                 combined.contains("downloader") ||
-                combined.contains("download") ||
                 combined.contains("vidmate") ||
                 combined.contains("snaptube") ||
                 combined.contains("newpipe") ||
+                combined.contains("playtube") ||
                 combined.contains("fastsave") ||
-                combined.contains("orbit") ||
+                combined.contains("orbit browser") ||
                 combined.contains("smartbrowse") ||
-                combined.contains("webapk") ||
                 combined.contains("proxy") ||
                 combined.contains("vpn") ||
                 combined.contains("torrent") ||
-                combined.contains("tube") ||
-                combined.contains("bing") ||
                 combined.contains("duckduckgo") ||
-                combined.contains("yandex") ||
-                combined.contains("clone") ||
-                combined.contains("parallel") ||
-                combined.contains("virtual") ||
-                combined.contains("dual") ||
+                pkg.contains("yandex.browser") ||
+                pkg.contains("yandex.search") ||
+                label.contains("yandex browser") ||
+                pkg.contains("microsoft.bing") ||
+                combined.contains("appcloner") ||
+                combined.contains("parallel space") ||
+                combined.contains("lbe.parallel") ||
+                combined.contains("dualspace") ||
+                combined.contains("dual.space") ||
+                combined.contains("dual space") ||
                 combined.contains("multiaccount") ||
                 combined.contains("multispace") ||
-                combined.contains("sandbox") ||
-                combined.contains("island") ||
-                combined.contains("shelter") ||
-                combined.contains("appcloner") ||
+                combined.contains("clonespace") ||
+                combined.contains("clone app") ||
                 combined.contains("2accounts") ||
-                combined.contains("movie") ||
-                combined.contains("cinema") ||
-                combined.contains("stream") ||
-                combined.contains("flix") ||
-                combined.contains("drama") ||
-                combined.contains("reel") ||
-                combined.contains("short") ||
+                combined.contains("virtualxposed") ||
+                pkg.contains("oasisfeng.island") ||
+                pkg.contains("typeblog.shelter") ||
+                combined.contains("moviebox") ||
+                combined.contains("streamflix") ||
+                combined.contains("cloudstream") ||
+                combined.contains("onstream") ||
+                combined.contains("dramabox") ||
+                combined.contains("reelshort") ||
+                combined.contains("shortmax") ||
+                combined.contains("shortdrama") ||
+                combined.contains("netshort") ||
+                combined.contains("goodshort") ||
+                combined.contains("flextv") ||
                 combined.contains("iptv") ||
-                combined.contains("player") ||
+                combined.contains("video player") ||
                 combined.contains("xplayer") ||
                 combined.contains("playit") ||
                 combined.contains("mxtech") ||
-                combined.contains("vlc") ||
                 combined.contains("kodi") ||
                 combined.contains("stremio") ||
-                combined.contains("plex") ||
-                combined.contains("tubi");
+                combined.contains("plexapp") ||
+                combined.contains("tubitv");
     }
 
     // =====================================================================================
@@ -831,15 +903,14 @@ public class AiAppAuditor {
 
                     String prompt = "Analyze this mobile screen screenshot for an app currently under security audit:\n" +
                             "Target Package: " + packageName + "\n\n" +
-                            "Determine if this screen displays any of the following WEB BROWSER or UNMANAGED WEB NAVIGATION UI indicators:\n" +
-                            "1. URL Omnibox / Address Bar (e.g., \"Search or type web address\", \"https://\", domain name, or search bar designed to load arbitrary websites).\n" +
-                            "2. Web Navigation Controls (Back/Forward arrows, refresh button, tab count button, web bookmarks menu).\n" +
-                            "3. Web Page Rendering Canvas displaying unconstrained public web navigation or search engine homepages.\n" +
-                            "4. Video Downloader browser mode (URL search bar used to paste web links or scrape media from websites).\n\n" +
-                            "INSTRUCTIONS:\n" +
-                            "- If this screen contains ANY web browser address bar, URL omnibox, tab switcher, or web proxy/browser UI, answer is_browser_ui: true.\n" +
-                            "- Dedicated native apps with built-in in-app web views strictly for OAuth login or help articles without a user-editable URL omnibox should be marked is_browser_ui: false.\n" +
-                            "- When in doubt, mark is_browser_ui: true.\n\n" +
+                            "Determine if this screen CLEARLY displays an UNMANAGED OPEN WEB BROWSER UI:\n" +
+                            "1. User-editable URL Omnibox / Address Bar explicitly built for arbitrary web navigation (e.g., \"Search or type web address\", \"https://\", arbitrary domain bar + browser tab counter).\n" +
+                            "2. Full Browser Navigation Chrome (Back/Forward arrows, refresh button, open-tab switcher, bookmarks bar) for unconstrained public web browsing.\n" +
+                            "3. Video Downloader browser mode (URL search bar used to paste arbitrary web links or scrape media from websites).\n\n" +
+                            "STRICT ANTI-FALSE-POSITIVE INSTRUCTIONS:\n" +
+                            "- Mark is_browser_ui: true ONLY when there is unmistakable positive visual evidence of an open web browser URL bar / tab switcher.\n" +
+                            "- Standard native app search bars (SMS/messaging search, ride-hailing/map destination search, file transfer search, social feed search, settings, games, OAuth login screens, help articles, or single-site Chrome PWAs without a URL bar) MUST be marked is_browser_ui: false.\n" +
+                            "- When in doubt, mark is_browser_ui: false (presumption of innocence).\n\n" +
                             "Respond ONLY with valid JSON:\n" +
                             "{\n" +
                             "  \"is_browser_ui\": true/false,\n" +
