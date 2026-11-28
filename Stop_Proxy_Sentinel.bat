@@ -1,9 +1,9 @@
 @echo off
 setlocal
-title DPCLOCKER :: STOP PROXY SENTINEL & SYSTEM ENFORCER
+title DPCLOCKER :: STOP PROXY SENTINEL + SYSTEM ENFORCER
 
 echo ===============================================================================
-echo  [#] DPCLOCKER :: STOPPING WINDOWS SENTINEL TRIAD & SYSTEM ENFORCER
+echo  [#] DPCLOCKER :: STOPPING WINDOWS SENTINEL TRIAD ^& SYSTEM ENFORCER
 echo ===============================================================================
 echo.
 

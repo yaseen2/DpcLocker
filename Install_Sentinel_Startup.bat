@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableDelayedExpansion
-title DPCLOCKER :: INSTALL PERMANENT MULTI-USER SENTINEL & SYSTEM ENFORCER v2
+title DPCLOCKER :: INSTALL PERMANENT MULTI-USER SENTINEL + SYSTEM ENFORCER v2
 
 net session >nul 2>&1
 if %errorlevel% neq 0 (
@@ -65,7 +65,7 @@ reg add "HKLM\SOFTWARE\Python\PythonCore\3.11\InstallPath" /v "WindowedExecutabl
 echo       [+] PythonCore HKLM registered.
 
 :: 4. Apply Full Windows Lockdown v2 (CleanBrowsing Adult IPv4/IPv6 DNS, IFEO, Chrome/Edge DoH + ExtensionSettings, Hosts, Cleanup)
-echo  [4/6] Applying Full Windows Browser, DNS & IFEO Lockdown v2...
+echo  [4/6] Applying Full Windows Browser, DNS ^& IFEO Lockdown v2...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%enable_windows_protection.ps1"
 
 :: 5. Register Elevated Session-0 SYSTEM Scheduled Task (DpcLockerSystemEnforcer)
@@ -82,7 +82,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "Write-Host '      [+] DpcLockerSystemEnforcer installed and STARTED as NT AUTHORITY\SYSTEM!'"
 
 :: 6. Register HKLM Silent Run Key for Session-1 Interactive Browser Tab Sentinel & Launch Now
-echo  [6/6] Registering & Starting Session-1 Interactive Browser Sentinel Triad...
+echo  [6/6] Registering ^& Starting Session-1 Interactive Browser Sentinel Triad...
 reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "DpcLockerSentinel" /t REG_SZ /d "wscript.exe //nologo \"%LAUNCH_VBS%\"" /f >nul 2>&1
 wscript.exe //nologo "%LAUNCH_VBS%"
 echo       [+] Session-1 Interactive Browser Sentinel Triad started cleanly!
@@ -91,9 +91,9 @@ echo.
 echo ===============================================================================
 echo  [+] PERMANENT 2-TIER WINDOWS PROTECTION DEPLOYED SUCCESSFULLY!
 echo ===============================================================================
-echo  - Chrome & Edge managed: CleanBrowsing Adult DoH + Google SafeSearch + No VPN Extensions
-echo  - Study sites restored: cssprep.com.pk & cssprepforum.com unblocked
+echo  - Chrome ^& Edge managed: CleanBrowsing Adult DoH + Google SafeSearch + No VPN Extensions
+echo  - Study sites restored: cssprep.com.pk ^& cssprepforum.com unblocked
 echo  - Brave / Opera / Firefox / Tor / Comet blocked at Kernel IFEO + SYSTEM PE Enforcer
-echo  - Zero false positives on Antigravity IDE, VS Code, WPS Office & good apps
+echo  - Zero false positives on Antigravity IDE, VS Code, WPS Office ^& good apps
 echo.
 if /i not "%~1"=="--nopause" pause

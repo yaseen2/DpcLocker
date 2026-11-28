@@ -44,15 +44,33 @@ foreach ($hostTest in @("cssprep.com.pk","cssprepforum.com","www.google.com","br
 }
 
 Write-Host "`n $C_SEC[4. SYSTEM ENFORCER & INTERACTIVE SENTINEL STATUS]$R"
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $task = Get-ScheduledTask -TaskName "DpcLockerSystemEnforcer" -ErrorAction SilentlyContinue
 if ($task) {
     Write-Host "   Scheduled Task DpcLockerSystemEnforcer : State=$($task.State) | User=$($task.Principal.UserId)"
 } else {
-    Write-Host "   Scheduled Task DpcLockerSystemEnforcer : $C_ERR[NOT INSTALLED]$R"
+    Write-Host "   Scheduled Task DpcLockerSystemEnforcer : $C_WARN[Hidden from non-elevated query - checking Session 0 PID]$R"
 }
-$pyProcs = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq "pythonw.exe" -and $_.CommandLine -match "windows_(proxy_sentinel|sentinel_watchdog|sentinel_guard|system_enforcer)" }
-Write-Host "   Active Protection Python Processes     : $($pyProcs.Count)"
-foreach ($pp in $pyProcs) {
-    Write-Host "     PID $($pp.ProcessId): $($pp.CommandLine)"
+$pidChecks = @(
+    @{ Label="Session-0 SYSTEM Enforcer"; Pattern=".system_enforcer.pid" },
+    @{ Label="Session-1 Sentinel";        Pattern=".sentinel_*.pid" },
+    @{ Label="Session-1 Watchdog Alpha";  Pattern=".watchdog_*.pid" },
+    @{ Label="Session-1 Guard Beta";      Pattern=".guard_*.pid" }
+)
+foreach ($pc in $pidChecks) {
+    $files = Get-ChildItem -Path $repoRoot -Filter $pc.Pattern -Force -ErrorAction SilentlyContinue
+    if (-not $files) {
+        Write-Host "   $($pc.Label.PadRight(26)) : $C_ERR[NOT RUNNING - no PID file]$R"
+        continue
+    }
+    foreach ($f in $files) {
+        $pidVal = (Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue).Trim()
+        $pr = if ($pidVal -match '^\d+$') { Get-Process -Id ([int]$pidVal) -ErrorAction SilentlyContinue } else { $null }
+        if ($pr) {
+            Write-Host "   $($pc.Label.PadRight(26)) : $C_OK[ALIVE]$R PID=$pidVal Session=$($pr.SessionId) ($($pr.ProcessName))"
+        } else {
+            Write-Host "   $($pc.Label.PadRight(26)) : $C_ERR[STALE PID $pidVal]$R"
+        }
+    }
 }
 Write-Host "`n$C_HDR===============================================================================$R"
