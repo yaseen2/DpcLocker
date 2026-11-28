@@ -1,40 +1,75 @@
+﻿# ==============================================================================
+# DPCLOCKER :: WINDOWS ENTERPRISE CONTENT, BROWSER & NETWORK LOCKDOWN ENGINE
 # ==============================================================================
-# DPCLOCKER :: WINDOWS ENTERPRISE CONTENT & MASTER PROXY LOCKDOWN ENGINE
+# 1. CleanBrowsing Adult Filter IPv4 + IPv6 DNS (Allows study sites like
+#    cssprep.com.pk & cssprepforum.com, blocks adult domains, forces Google
+#    SafeSearch, preserves standard YouTube lectures/comments).
+# 2. Hosts File SafeSearch, Proxy, Music & Unauthorized Browser Download Blocks.
+# 3. Chrome & Edge Enterprise Policies: Secure DoH (CleanBrowsing Adult),
+#    Locked Google SafeSearch, Disabled Incognito/InPrivate/Guest Mode,
+#    ExtensionSettings blocking 'proxy'/'vpnProvider' permissions (keeping all
+#    good extensions usable), and Brave Belt-and-Suspenders (TorDisabled=1,
+#    BraveVPNDisabled=1).
+# 4. Kernel-Level IFEO Execution Blocks (Windows 10 Home compatible) for exact
+#    unauthorized browser & VPN client executable names (zero good-app impact).
+# 5. Windows Network, VPN & Tor Firewall Lockdown + Leftover Browser Cleanup.
 # ==============================================================================
+
+param(
+    [switch]$RestartBrowsers
+)
 
 $esc = [char]27
-$C_HDR = "$esc[1;38;5;39m"
-$C_SEC = "$esc[1;38;5;75m"
-$C_TXT = "$esc[38;5;253m"
-$C_OK  = "$esc[1;38;5;82m"
+$C_HDR  = "$esc[1;38;5;39m"
+$C_SEC  = "$esc[1;38;5;75m"
+$C_TXT  = "$esc[38;5;253m"
+$C_OK   = "$esc[1;38;5;82m"
 $C_WARN = "$esc[1;38;5;214m"
-$C_ERR = "$esc[1;38;5;203m"
-$C_SUB = "$esc[38;5;244m"
-$R     = "$esc[0m"
+$C_ERR  = "$esc[1;38;5;203m"
+$C_SUB  = "$esc[38;5;244m"
+$R      = "$esc[0m"
 
-Clear-Host
 Write-Host "$C_HDR===============================================================================$R"
-Write-Host " $C_HDR[#] DPCLOCKER :: ENTERPRISE PROXY & CONTENT LOCKDOWN ENGINE$R"
+Write-Host " $C_HDR[#] DPCLOCKER :: ENTERPRISE BROWSER, DNS & CONTENT LOCKDOWN ENGINE v2$R"
 Write-Host "$C_HDR===============================================================================$R`n"
 
 # ------------------------------------------------------------------------------
-# 1. APPLY CLEANBROWSING FAMILY & CLOUDFLARE FAMILY-FILTER DNS
+# 1. APPLY CLEANBROWSING ADULT FILTER DNS (IPv4 + IPv6) ON ACTIVE ADAPTERS
 # ------------------------------------------------------------------------------
-Write-Host "$C_SEC[1/6] Configuring Protective Family-Filtered DNS on Network Adapters...$R"
+# CleanBrowsing Adult Filter:
+#   IPv4: 185.228.168.10, 185.228.169.11
+#   IPv6: 2a0d:2a00:1::1, 2a0d:2a00:2::1
+#   - Forces Google SafeSearch (216.239.38.120)
+#   - Blocks adult domains (pornhub/xvideos/xhamster -> NXDOMAIN)
+#   - Preserves standard YouTube (no forced Restricted Mode)
+#   - Fixes Cloudflare 1.1.1.3 false blocks on study sites (cssprep.com.pk, cssprepforum.com)
+Write-Host "$C_SEC[1/7] Configuring CleanBrowsing Adult Filter DNS (IPv4 + IPv6)...$R"
 try {
-    $adapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
+    $adapters = Get-NetAdapter | Where-Object {
+        $_.Status -eq "Up" -or $_.Name -match '^(Wi-Fi|Ethernet)$'
+    }
     foreach ($adapter in $adapters) {
-        Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses ("185.228.168.168", "1.1.1.3") -ErrorAction SilentlyContinue
-        Write-Host "  $C_OK[+] Set CleanBrowsing / Cloudflare Family DNS on: $($adapter.Name) (185.228.168.168 / 1.1.1.3)$R"
+        try {
+            Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses ("185.228.168.10", "185.228.169.11") -ErrorAction SilentlyContinue
+            Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses ("2a0d:2a00:1::1", "2a0d:2a00:2::1") -ErrorAction SilentlyContinue
+            # Apply both families cleanly using netsh fallback for reliable IPv4 + IPv6 persistence
+            netsh interface ipv4 set dns name="$($adapter.Name)" static 185.228.168.10 primary validate=no | Out-Null
+            netsh interface ipv4 add dns name="$($adapter.Name)" 185.228.169.11 index=2 validate=no | Out-Null
+            netsh interface ipv6 set dns name="$($adapter.Name)" static 2a0d:2a00:1::1 primary validate=no | Out-Null
+            netsh interface ipv6 add dns name="$($adapter.Name)" 2a0d:2a00:2::1 index=2 validate=no | Out-Null
+            Write-Host "  $C_OK[+] Locked IPv4 (185.228.168.10 / 185.228.169.11) & IPv6 (2a0d:2a00:1::1) on: $($adapter.Name)$R"
+        } catch {
+            Write-Host "  $C_WARN[!] Adapter $($adapter.Name) notice: $($_.Exception.Message)$R"
+        }
     }
 } catch {
     Write-Host "  $C_WARN[!] DNS configuration notice: $($_.Exception.Message)$R"
 }
 
 # ------------------------------------------------------------------------------
-# 2. UPDATE HOSTS FILE FOR SAFESEARCH & KNOWN PROXY NETWORKS
+# 2. UPDATE HOSTS FILE (SAFESEARCH, PROXIES, MUSIC & UNAUTHORIZED BROWSERS)
 # ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[2/6] Updating Windows Hosts File (SafeSearch & Web Proxy Blacklist)...$R"
+Write-Host "`n$C_SEC[2/7] Updating Windows Hosts File (SafeSearch, Proxies & Browser Downloads)...$R"
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 
 $hostsEntries = @(
@@ -48,8 +83,56 @@ $hostsEntries = @(
     "216.239.38.120 google.com.pk",
     "216.239.38.120 www.google.co.uk",
     "216.239.38.120 google.co.uk",
-    "216.239.38.120 www.bing.com",
-    "216.239.38.120 strict.bing.com",
+    "204.79.197.220 www.bing.com",
+    "204.79.197.220 strict.bing.com",
+
+    # Unauthorized Alternative Browser Download & Update Domains
+    "0.0.0.0 brave.com",
+    "0.0.0.0 www.brave.com",
+    "0.0.0.0 search.brave.com",
+    "0.0.0.0 bravesoftware.com",
+    "0.0.0.0 laptop-updates.brave.com",
+    "0.0.0.0 updates-cdn.bravesoftware.com",
+    "0.0.0.0 opera.com",
+    "0.0.0.0 www.opera.com",
+    "0.0.0.0 get.geo.opera.com",
+    "0.0.0.0 download.cdn-opera.com",
+    "0.0.0.0 mozilla.org",
+    "0.0.0.0 www.mozilla.org",
+    "0.0.0.0 download.mozilla.org",
+    "0.0.0.0 firefox.com",
+    "0.0.0.0 www.firefox.com",
+    "0.0.0.0 vivaldi.com",
+    "0.0.0.0 www.vivaldi.com",
+    "0.0.0.0 downloads.vivaldi.com",
+    "0.0.0.0 torproject.org",
+    "0.0.0.0 www.torproject.org",
+    "0.0.0.0 dist.torproject.org",
+    "0.0.0.0 waterfox.net",
+    "0.0.0.0 www.waterfox.net",
+    "0.0.0.0 librewolf.net",
+    "0.0.0.0 www.librewolf.net",
+    "0.0.0.0 arc.net",
+    "0.0.0.0 www.arc.net",
+    "0.0.0.0 thorium.rocks",
+    "0.0.0.0 zen-browser.app",
+    "0.0.0.0 floorp.app",
+    "0.0.0.0 mullvad.net",
+    "0.0.0.0 www.mullvad.net",
+
+    # Unfiltered Alternative Search Engines (Chrome/Edge locked to Google SafeSearch)
+    "0.0.0.0 duckduckgo.com",
+    "0.0.0.0 www.duckduckgo.com",
+    "0.0.0.0 startpage.com",
+    "0.0.0.0 www.startpage.com",
+    "0.0.0.0 qwant.com",
+    "0.0.0.0 www.qwant.com",
+    "0.0.0.0 yandex.com",
+    "0.0.0.0 www.yandex.com",
+    "0.0.0.0 yandex.ru",
+    "0.0.0.0 presearch.com",
+    "0.0.0.0 mojeek.com",
+    "0.0.0.0 swisscows.com",
 
     # Notorious Streaming & Social Media
     "0.0.0.0 www.fboxtv.org",
@@ -171,6 +254,8 @@ $hostsEntries = @(
     "0.0.0.0 proxypal.net",
     "0.0.0.0 www.proxypal.net",
     "0.0.0.0 proxypal.org",
+    "0.0.0.0 proxyorb.com",
+    "0.0.0.0 www.proxyorb.com",
     "0.0.0.0 hide.me",
     "0.0.0.0 www.hide.me",
     "0.0.0.0 blockaway.net",
@@ -197,6 +282,11 @@ $hostsEntries = @(
     "0.0.0.0 hyperproxy.network",
     "0.0.0.0 shuttleproxy.com",
     "0.0.0.0 alohabrowser.com",
+    "0.0.0.0 browser.lol",
+    "0.0.0.0 browserling.com",
+    "0.0.0.0 neverinstall.com",
+    "0.0.0.0 hyperbeam.com",
+    "0.0.0.0 kasmweb.com",
     "0.0.0.0 vtransmit.com",
     "0.0.0.0 www.vtransmit.com",
     "0.0.0.0 p23hxejm1.com",
@@ -271,8 +361,6 @@ $hostsEntries = @(
     "0.0.0.0 webproxy.org",
     "0.0.0.0 webproxy.site",
     "0.0.0.0 youproxy.org",
-    "0.0.0.0 onlinevpn.app",
-    "0.0.0.0 www.onlinevpn.app",
     "0.0.0.0 thepiratebay.org",
     "0.0.0.0 www.thepiratebay.org",
     "0.0.0.0 thepiratesproxy.org",
@@ -290,12 +378,22 @@ $hostsEntries = @(
 try {
     if (Test-Path $hostsPath) {
         $existingContent = [System.IO.File]::ReadAllText($hostsPath)
+        # Fix legacy Bing IP if mistakenly mapped to Google SafeSearch VIP
+        $existingContent = $existingContent -replace '216\.239\.38\.120\s+www\.bing\.com', '204.79.197.220 www.bing.com'
+        $existingContent = $existingContent -replace '216\.239\.38\.120\s+strict\.bing\.com', '204.79.197.220 strict.bing.com'
+        $existingLines = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($line in ($existingContent -split "`r?`n")) {
+            $t = $line.Trim()
+            if ($t) { [void]$existingLines.Add($t) }
+        }
         $newEntriesToAdd = @()
         foreach ($entry in $hostsEntries) {
-            if (-not $existingContent.Contains($entry)) {
+            if (-not $existingLines.Contains($entry.Trim())) {
                 $newEntriesToAdd += $entry
+                [void]$existingLines.Add($entry.Trim())
             }
         }
+        [System.IO.File]::WriteAllText($hostsPath, $existingContent)
         if ($newEntriesToAdd.Count -gt 0) {
             $textToAppend = "`r`n" + ($newEntriesToAdd -join "`r`n")
             [System.IO.File]::AppendAllText($hostsPath, $textToAppend)
@@ -309,211 +407,119 @@ try {
 }
 
 # ------------------------------------------------------------------------------
-# 3. APPLY ENTERPRISE BROWSER POLICIES (CHROME, EDGE, BRAVE - HKLM & HKCU)
+# 3. APPLY ENTERPRISE BROWSER POLICIES (CHROME, EDGE & BRAVE BELT-AND-SUSPENDERS)
 # ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[3/6] Enforcing 100% Valid Chromium URLBlocklist Policies...$R"
+Write-Host "`n$C_SEC[3/7] Enforcing Chrome & Edge Enterprise Policies (DoH, SafeSearch, No VPN Extensions)...$R"
 
 $browserConfigs = @(
-    @{ Name = "Google Chrome";  Roots = @("HKLM:\SOFTWARE\Policies\Google\Chrome", "HKCU:\SOFTWARE\Policies\Google\Chrome"); IncognitoProp = "IncognitoModeAvailability" },
-    @{ Name = "Microsoft Edge"; Roots = @("HKLM:\SOFTWARE\Policies\Microsoft\Edge", "HKCU:\SOFTWARE\Policies\Microsoft\Edge"); IncognitoProp = "InPrivateModeAvailability" },
-    @{ Name = "Brave Browser";  Roots = @("HKLM:\SOFTWARE\Policies\BraveSoftware\Brave", "HKCU:\SOFTWARE\Policies\BraveSoftware\Brave"); IncognitoProp = "IncognitoModeAvailability" }
+    @{ Name = "Google Chrome";  Roots = @("HKLM:\SOFTWARE\Policies\Google\Chrome", "HKCU:\SOFTWARE\Policies\Google\Chrome"); IncognitoProp = "IncognitoModeAvailability"; IsEdge = $false; IsBrave = $false },
+    @{ Name = "Microsoft Edge"; Roots = @("HKLM:\SOFTWARE\Policies\Microsoft\Edge", "HKCU:\SOFTWARE\Policies\Microsoft\Edge"); IncognitoProp = "InPrivateModeAvailability"; IsEdge = $true;  IsBrave = $false },
+    @{ Name = "Brave Browser";  Roots = @("HKLM:\SOFTWARE\Policies\BraveSoftware\Brave", "HKCU:\SOFTWARE\Policies\BraveSoftware\Brave"); IncognitoProp = "IncognitoModeAvailability"; IsEdge = $false; IsBrave = $true }
 )
 
-# 100% Valid Chromium URLBlocklist (Domain matching: "example.com" blocks example.com, www, and all subdomains)
 $blockedDomains = @(
+    # Unauthorized Browser Download & Unfiltered Search Domains
+    # (Use specific mozilla subdomains so developer.mozilla.org MDN study docs remain accessible)
+    "brave.com", "bravesoftware.com", "search.brave.com",
+    "opera.com", "www.mozilla.org", "download.mozilla.org", "ftp.mozilla.org", "releases.mozilla.org",
+    "firefox.com", "vivaldi.com",
+    "torproject.org", "waterfox.net", "librewolf.net", "arc.net",
+    "thorium.rocks", "zen-browser.app", "floorp.app", "mullvad.net",
+    "duckduckgo.com", "startpage.com", "qwant.com", "yandex.com",
+    "yandex.ru", "presearch.com", "mojeek.com", "swisscows.com",
+
     # Master Web Proxy Domains & Unblockers
-    "onlineproxy.org",
-    "uproxy.online",
-    "proxysite.com",
-    "proxysite.cloud",
-    "proxysite.site",
-    "proxysite.one",
-    "proxysite.net",
-    "proxysite.org",
-    "hidester.one",
-    "hidester.com",
-    "hidester.net",
-    "hidester.org",
-    "croxyproxy.com",
-    "croxyproxy.net",
-    "croxyproxy.rocks",
-    "croxy.network",
-    "croxy.org",
-    "extremevpn.com",
-    "azureserv.com",
-    "azureserv.net",
-    "proxypal.net",
-    "proxypal.org",
-    "hide.me",
-    "blockaway.net",
-    "proxyium.com",
-    "proxyium.net",
-    "kproxy.com",
-    "vpnbook.com",
-    "plainproxies.com",
-    "hidemyass.com",
-    "whoer.net",
-    "zalmos.com",
-    "filterbypass.me",
-    "4everproxy.com",
-    "toolur.com",
-    "webproxy.to",
-    "turbohide.org",
-    "freeproxy.win",
-    "nodeunblocker.net",
-    "rammerhead.org",
-    "ultraviolet.dev",
-    "anarchyproxy.com",
-    "hyperproxy.network",
-    "shuttleproxy.com",
-    "alohabrowser.com",
-    "vtransmit.com",
-    "p23hxejm1.com",
-    "rm358.com",
-    "shadowproxy.org",
-    "interstellarproxy.com",
-    "incognitoproxy.com",
-    "nebula.net",
-    "titaniumnetwork.org",
-    "womginx.org",
-    "zend2.com",
-    "zendproxy.com",
-    "megaproxy.com",
-    "newipnow.com",
-    "dontfilter.us",
-    "unblock-web.com",
-    "unblockvideos.com",
-    "free-proxy.cz",
-    "proxybroker.online",
-    "smartproxy.com",
-    "brightdata.com",
-    "oxylabs.io",
-    "webproxy.free",
-    "free-proxy-list.net",
-    "usaproxy.info",
-    "german-proxy.de",
-    "myspaceproxy.org",
-    "youtubeproxy.org",
-    "tiktokproxy.com",
-    "unblockyoutube.net",
-    "bypassblocks.com",
-    "surfshield.io",
-    "cloakproxy.org",
-    "scramjet.org",
-    "tomp.app",
-    "arsenic.org",
-    "holyub.org",
-    "dynamicproxy.org",
-    "astralproxy.org",
-    "phantomproxy.org",
-    "metallicproxy.org",
-    "selenite.cc",
-    "ludicrous.org",
-    "shadowtabs.org",
-    "ccproxy.com",
-    "4proxy.de",
-    "vtunnel.com",
-    "polysolve.net",
-    "unblocker.cc",
-    "unblocker.us",
-    "web-proxy.cc",
-    "superproxy.cc",
-    "privacysite.net",
-    "proxyserver.com",
-    "freeproxyserver.co",
-    "freeopenproxy.com",
-    "freewebproxy.com",
-    "myproxy.ca",
-    "quickproxy.co.uk",
-    "snoopblocker.com",
-    "surfbrowser.com",
-    "unblockmyweb.com",
-    "unblockall.org",
-    "unblocker.biz",
-    "unblocker.info",
-    "unblocker.online",
-    "unblocker.site",
-    "unblocker.tech",
-    "unblocksite.org",
-    "unblockwebsites.org",
-    "webproxy.net",
-    "webproxy.org",
-    "webproxy.site",
-    "youproxy.org",
+    "onlineproxy.org", "uproxy.online", "proxysite.com", "proxysite.cloud",
+    "proxysite.site", "proxysite.one", "proxysite.net", "proxysite.org",
+    "hidester.one", "hidester.com", "hidester.net", "hidester.org",
+    "croxyproxy.com", "croxyproxy.net", "croxyproxy.rocks", "croxy.network", "croxy.org",
+    "extremevpn.com", "azureserv.com", "azureserv.net", "proxypal.net", "proxypal.org",
+    "proxyorb.com", "hide.me", "blockaway.net", "proxyium.com", "proxyium.net",
+    "kproxy.com", "vpnbook.com", "plainproxies.com", "hidemyass.com", "whoer.net",
+    "zalmos.com", "filterbypass.me", "4everproxy.com", "toolur.com", "webproxy.to",
+    "turbohide.org", "freeproxy.win", "nodeunblocker.net", "rammerhead.org",
+    "ultraviolet.dev", "anarchyproxy.com", "hyperproxy.network", "shuttleproxy.com",
+    "alohabrowser.com", "browser.lol", "browserling.com", "neverinstall.com",
+    "hyperbeam.com", "kasmweb.com", "vtransmit.com", "p23hxejm1.com", "rm358.com",
+    "shadowproxy.org", "interstellarproxy.com", "incognitoproxy.com", "nebula.net",
+    "titaniumnetwork.org", "womginx.org", "zend2.com", "zendproxy.com", "megaproxy.com",
+    "newipnow.com", "dontfilter.us", "unblock-web.com", "unblockvideos.com",
+    "free-proxy.cz", "proxybroker.online", "smartproxy.com", "brightdata.com",
+    "oxylabs.io", "webproxy.free", "free-proxy-list.net", "usaproxy.info",
+    "german-proxy.de", "myspaceproxy.org", "youtubeproxy.org", "tiktokproxy.com",
+    "unblockyoutube.net", "bypassblocks.com", "surfshield.io", "cloakproxy.org",
+    "scramjet.org", "tomp.app", "arsenic.org", "holyub.org", "dynamicproxy.org",
+    "astralproxy.org", "phantomproxy.org", "metallicproxy.org", "selenite.cc",
+    "ludicrous.org", "shadowtabs.org", "ccproxy.com", "4proxy.de", "vtunnel.com",
+    "polysolve.net", "unblocker.cc", "unblocker.us", "web-proxy.cc", "superproxy.cc",
+    "privacysite.net", "proxyserver.com", "freeproxyserver.co", "freeopenproxy.com",
+    "freewebproxy.com", "myproxy.ca", "quickproxy.co.uk", "snoopblocker.com",
+    "surfbrowser.com", "unblockmyweb.com", "unblockall.org", "unblocker.biz",
+    "unblocker.info", "unblocker.online", "unblocker.site", "unblocker.tech",
+    "unblocksite.org", "unblockwebsites.org", "webproxy.net", "webproxy.org",
+    "webproxy.site", "youproxy.org",
 
     # Notorious Streaming & Social Media
-    "fboxtv.org",
-    "x.com",
-    "twitter.com",
-    "twimg.com",
-    "reddit.com",
-    "redd.it",
-    "redditmedia.com",
-    "tumblr.com",
-    "telegram.org",
-    "t.me",
-    "tiktok.com",
+    "fboxtv.org", "x.com", "twitter.com", "twimg.com",
+    "reddit.com", "redd.it", "redditmedia.com", "tumblr.com",
+    "telegram.org", "t.me", "tiktok.com",
 
     # Online VPN App
     "onlinevpn.app",
 
     # Torrent & Piracy Download Hubs
-    "thepiratebay.org",
-    "thepiratesproxy.org",
-    "tpb.party",
-    "1337x.to",
-    "yts.mx",
-    "torrentgalaxy.to",
-    "limetorrents.lol",
-    "nyaa.si",
-    "eztv.re",
-    "magnetdl.com",
+    "thepiratebay.org", "thepiratesproxy.org", "tpb.party", "1337x.to",
+    "yts.mx", "torrentgalaxy.to", "limetorrents.lol", "nyaa.si", "eztv.re", "magnetdl.com",
 
     # Music Streaming & Audio Platforms (Preserving standard YouTube)
-    "music.youtube.com",
-    "spotify.com",
-    "soundcloud.com",
-    "music.apple.com",
-    "music.amazon.com",
-    "deezer.com",
-    "tidal.com",
-    "pandora.com",
-    "gaana.com",
-    "jiosaavn.com",
-    "saavn.com",
-    "wynk.in",
-    "hungama.com",
-    "bandcamp.com",
-    "audiomack.com",
-    "qobuz.com",
-    "napster.com",
-    "tunein.com",
-    "iheart.com",
-    "last.fm",
-    "mixcloud.com"
+    "music.youtube.com", "spotify.com", "soundcloud.com", "music.apple.com",
+    "music.amazon.com", "deezer.com", "tidal.com", "pandora.com", "gaana.com",
+    "jiosaavn.com", "saavn.com", "wynk.in", "hungama.com", "bandcamp.com",
+    "audiomack.com", "qobuz.com", "napster.com", "tunein.com", "iheart.com",
+    "last.fm", "mixcloud.com"
 )
+
+# Block ONLY extensions requesting 'proxy' or 'vpnProvider' permissions — ALL good extensions remain usable!
+$extSettingsJson = '{"*":{"blocked_permissions":["proxy","vpnProvider"]}}'
 
 foreach ($b in $browserConfigs) {
     foreach ($rootKey in $b.Roots) {
         try {
             if (-not (Test-Path $rootKey)) { New-Item -Path $rootKey -Force -ErrorAction SilentlyContinue | Out-Null }
             Set-ItemProperty -Path $rootKey -Name $b.IncognitoProp -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $rootKey -Name "BrowserGuestModeEnabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $rootKey -Name "BrowserAddPersonEnabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
             Set-ItemProperty -Path $rootKey -Name "ForceGoogleSafeSearch" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
             Set-ItemProperty -Path $rootKey -Name "SafeSitesFilterBehavior" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
             Set-ItemProperty -Path $rootKey -Name "ForceYouTubeRestrict" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
-            Set-ItemProperty -Path $rootKey -Name "DnsOverHttpsMode" -Value "off" -Type String -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $rootKey -Name "DnsOverHttpsMode" -Value "secure" -Type String -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $rootKey -Name "DnsOverHttpsTemplates" -Value "https://doh.cleanbrowsing.org/doh/adult-filter/" -Type String -Force -ErrorAction SilentlyContinue
             Set-ItemProperty -Path $rootKey -Name "ProxyMode" -Value "direct" -Type String -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $rootKey -Name "DefaultSearchProviderEnabled" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $rootKey -Name "DefaultSearchProviderName" -Value "Google" -Type String -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $rootKey -Name "DefaultSearchProviderSearchURL" -Value "https://www.google.com/search?q={searchTerms}&safe=active&ssui=on" -Type String -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $rootKey -Name "ExtensionSettings" -Value $extSettingsJson -Type String -Force -ErrorAction SilentlyContinue
 
-            # Purge any extension blocklists so extensions remain freely usable
+            if ($b.IsEdge) {
+                Set-ItemProperty -Path $rootKey -Name "ForceBingSafeSearch" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $rootKey -Name "SmartScreenEnabled" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+            }
+            if ($b.IsBrave) {
+                Set-ItemProperty -Path $rootKey -Name "TorDisabled" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $rootKey -Name "BraveVPNDisabled" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $rootKey -Name "BraveAIChatEnabled" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+            }
+
+            # Keep general extension installs usable (only proxy/vpnProvider permissions are blocked via ExtensionSettings)
             $extBlockKey = "$rootKey\ExtensionInstallBlocklist"
             if (Test-Path $extBlockKey) { Remove-Item -Path $extBlockKey -Recurse -Force -ErrorAction SilentlyContinue }
             Remove-ItemProperty -Path $rootKey -Name "BlockExternalExtensions" -Force -ErrorAction SilentlyContinue
 
-            # Purge URLAllowlist to avoid conflicts
+            # Purge conflicting URLAllowlist
             $urlAllowKey = "$rootKey\URLAllowlist"
             if (Test-Path $urlAllowKey) { Remove-Item -Path $urlAllowKey -Recurse -Force -ErrorAction SilentlyContinue }
 
-            # Enforce 100% Valid Chromium URLBlocklist
+            # Write base URLBlocklist
             $urlBlockKey = "$rootKey\URLBlocklist"
             if (Test-Path $urlBlockKey) { Remove-Item -Path $urlBlockKey -Recurse -Force -ErrorAction SilentlyContinue }
             New-Item -Path $urlBlockKey -Force -ErrorAction SilentlyContinue | Out-Null
@@ -522,16 +528,116 @@ foreach ($b in $browserConfigs) {
                 Set-ItemProperty -Path $urlBlockKey -Name "$num" -Value $blockedDomains[$i] -Type String -Force -ErrorAction SilentlyContinue
             }
         } catch {
-            # Catch individual key errors gracefully
+            # Ignore per-key errors gracefully
         }
     }
-    Write-Host "  $C_OK[+] $($b.Name): Incognito Disabled | Direct Proxy Active | $($blockedDomains.Count) Proxy & Content Domains Locked$R"
+    Write-Host "  $C_OK[+] $($b.Name): CleanBrowsing DoH | Google SafeSearch Locked | Proxy/VPN Extensions Blocked | Guest/Incognito Disabled$R"
+}
+
+# Append master adult wildcard URLBlocklist so it is never overwritten
+$adultScript = Join-Path $PSScriptRoot "Apply_Adult_URLBlocklist.ps1"
+if (Test-Path $adultScript) {
+    & $adultScript | Out-Null
+    Write-Host "  $C_OK[+] Merged full Adult, Torrent & Music wildcard URLBlocklist rules.$R"
 }
 
 # ------------------------------------------------------------------------------
-# 4. WINDOWS NETWORK & VPN SERVICE LOCKDOWN
+# 4. KERNEL-LEVEL IFEO EXECUTION BLOCKS (EXACT BROWSER & VPN BINARIES ONLY)
 # ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[4/6] Disabling Windows VPN Connections & RasMan Remote Access Service...$R"
+Write-Host "`n$C_SEC[4/7] Applying Kernel-Level IFEO Execution Blocks (Windows 10 Home Native)...$R"
+$ifeoRoot = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options"
+$ifeoStub = "C:\Windows\System32\systray.exe"
+
+# Strictly exact unauthorized browser, browser-installer, and VPN client executables ONLY.
+# NEVER includes generic names (setup.exe, launcher.exe, browser_broker.exe) or good apps!
+$blockedExes = @(
+    # Brave Browser & Installers/Updaters
+    "brave.exe",
+    "BraveUpdate.exe",
+    "BraveUpdateSetup.exe",
+    "BraveBrowserSetup.exe",
+    "BraveBrowserSetup-BRV010.exe",
+    "BraveBrowserStandaloneSetup.exe",
+    "BraveBrowserStandaloneSilentSetup.exe",
+    "BraveBrowserNightlySetup.exe",
+    "BraveBrowserBetaSetup.exe",
+
+    # Opera / Opera GX
+    "opera.exe",
+    "opera_gx.exe",
+    "operagx.exe",
+    "opera_autoupdate.exe",
+    "OperaSetup.exe",
+    "OperaGXSetup.exe",
+
+    # Firefox / Gecko Browsers
+    "firefox.exe",
+    "Firefox Installer.exe",
+    "waterfox.exe",
+    "librewolf.exe",
+    "floorp.exe",
+    "zen.exe",
+    "palemoon.exe",
+    "basilisk.exe",
+    "seamonkey.exe",
+    "mullvadbrowser.exe",
+
+    # Other Unmanaged Chromium / Privacy / Tor Browsers
+    "vivaldi.exe",
+    "arc.exe",
+    "thorium.exe",
+    "comet.exe",
+    "duckduckgo.exe",
+    "tor.exe",
+    "torbrowser.exe",
+    "yandex.exe",
+    "ucbrowser.exe",
+    "aloha.exe",
+    "maxthon.exe",
+    "dragon.exe",
+    "cromite.exe",
+
+    # VPN & Tunnel Clients
+    "skyvpn.exe",
+    "protonvpn.exe",
+    "nordvpn.exe",
+    "windscribe.exe",
+    "expressvpn.exe",
+    "surfshark.exe",
+    "psiphon.exe",
+    "psiphon3.exe",
+    "wireguard.exe",
+    "warp-svc.exe",
+    "cloudflarewarp.exe",
+    "openvpn.exe",
+    "clash.exe",
+    "clash-verge.exe",
+    "v2ray.exe",
+    "xray.exe",
+    "shadowsocks.exe",
+    "ultrasurf.exe",
+    "lantern.exe",
+    "hotspotshield.exe",
+    "cyberghost.exe",
+    "tunnelbear.exe",
+    "mullvad-vpn.exe"
+)
+
+$ifeoCount = 0
+foreach ($exe in $blockedExes) {
+    try {
+        $keyPath = Join-Path $ifeoRoot $exe
+        if (-not (Test-Path $keyPath)) { New-Item -Path $keyPath -Force -ErrorAction SilentlyContinue | Out-Null }
+        Set-ItemProperty -Path $keyPath -Name "Debugger" -Value $ifeoStub -Type String -Force -ErrorAction SilentlyContinue
+        $ifeoCount++
+    } catch {}
+}
+Write-Host "  $C_OK[+] Enforced $ifeoCount kernel-level IFEO blocks (Chrome, Edge & all good apps untouched).$R"
+
+# ------------------------------------------------------------------------------
+# 5. WINDOWS NETWORK, VPN & TOR FIREWALL LOCKDOWN
+# ------------------------------------------------------------------------------
+Write-Host "`n$C_SEC[5/7] Locking Windows VPN Services & Blocking Tor / Unfiltered DoT Ports...$R"
 try {
     $netConnKey = "HKLM:\SOFTWARE\Policies\Microsoft\Network Connections"
     if (-not (Test-Path $netConnKey)) { New-Item -Path $netConnKey -Force -ErrorAction SilentlyContinue | Out-Null }
@@ -543,18 +649,49 @@ try {
     Set-ItemProperty -Path $ieControlKey -Name "Proxy" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
     Set-ItemProperty -Path $ieControlKey -Name "Connwiz Admin Lock" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 
-    # Disable RasMan (Windows Remote Access VPN Service)
     Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\RasMan" -Name "Start" -Value 4 -Type DWord -Force -ErrorAction SilentlyContinue
     Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\RasAuto" -Name "Start" -Value 4 -Type DWord -Force -ErrorAction SilentlyContinue
-    Write-Host "  $C_OK[+] Windows VPN Services & Proxy configuration locked.$R"
+
+    # Block Tor relay/SOCKS outbound ports (9001, 9030, 9050, 9051, 9150) & rogue DoT (853)
+    netsh advfirewall firewall delete rule name="DpcLocker_Block_Tor_TCP" | Out-Null
+    netsh advfirewall firewall add rule name="DpcLocker_Block_Tor_TCP" dir=out action=block protocol=TCP remoteport=9001,9030,9050,9051,9150 | Out-Null
+    netsh advfirewall firewall delete rule name="DpcLocker_Block_Rogue_DoT_853" | Out-Null
+    netsh advfirewall firewall add rule name="DpcLocker_Block_Rogue_DoT_853" dir=out action=block protocol=TCP remoteport=853 | Out-Null
+    Write-Host "  $C_OK[+] Windows VPN services, Proxy UI, Tor ports & rogue DoT locked.$R"
 } catch {
     Write-Host "  $C_WARN[!] Network lockdown notice: $($_.Exception.Message)$R"
 }
 
 # ------------------------------------------------------------------------------
-# 5. FLUSH DNS RESOLVER CACHE
+# 6. CLEAN UP LEFTOVER UNAUTHORIZED BROWSERS (BRAVE & OPERA)
 # ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[5/6] Flushing Windows DNS Cache...$R"
+Write-Host "`n$C_SEC[6/7] Cleaning Up Leftover Unauthorized Browser Files (Brave & Opera)...$R"
+$unauthProcs = @("brave", "BraveUpdate", "opera", "opera_gx", "firefox", "vivaldi", "comet", "tor", "waterfox", "librewolf", "arc", "duckduckgo")
+foreach ($p in $unauthProcs) {
+    Stop-Process -Name $p -Force -ErrorAction SilentlyContinue
+}
+$cleanupPaths = @(
+    "C:\Users\ThinkPad\Downloads\BraveBrowserSetup-BRV010.exe",
+    "C:\Program Files (x86)\BraveSoftware",
+    "C:\Program Files\BraveSoftware",
+    "C:\Users\ThinkPad\AppData\Local\BraveSoftware",
+    "C:\Users\ThinkPad\AppData\Local\Programs\Opera"
+)
+foreach ($cp in $cleanupPaths) {
+    if (Test-Path $cp) {
+        try {
+            Remove-Item -Path $cp -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "  $C_OK[+] Removed leftover unauthorized browser footprint: $cp$R"
+        } catch {
+            Write-Host "  $C_WARN[!] Could not remove $cp : $($_.Exception.Message)$R"
+        }
+    }
+}
+
+# ------------------------------------------------------------------------------
+# 7. FLUSH DNS RESOLVER CACHE & OPTIONAL MANAGED BROWSER REFRESH
+# ------------------------------------------------------------------------------
+Write-Host "`n$C_SEC[7/7] Flushing Windows DNS Cache...$R"
 try {
     Clear-DnsClientCache -ErrorAction SilentlyContinue
     ipconfig /flushdns | Out-Null
@@ -563,22 +700,14 @@ try {
     Write-Host "  $C_WARN[!] DNS flush notice: $($_.Exception.Message)$R"
 }
 
-# ------------------------------------------------------------------------------
-# 6. GRACEFUL BROWSER PROCESS RESTART (POLICY ACTIVATION)
-# ------------------------------------------------------------------------------
-Write-Host "`n$C_SEC[6/6] Checking Running Browser Instances...$R"
-$runningBrowsers = Get-Process -Name "chrome", "msedge", "brave" -ErrorAction SilentlyContinue
-if ($runningBrowsers) {
-    Write-Host "  $C_WARN[!] Active browser instances detected ($($runningBrowsers.Count) processes).$R"
-    Write-Host "  $C_TXT    Chromium browsers must restart to activate new Extension & URL policies.$R"
-    Write-Host "  $C_SUB[*] Refreshing browser processes to apply policies...$R"
-    Stop-Process -Name "chrome", "msedge", "brave" -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
-    Write-Host "  $C_OK[+] Browsers refreshed! All protections are now LIVE.$R"
-} else {
-    Write-Host "  $C_OK[+] No conflicting browser processes active. Policies are ready!$R"
+if ($RestartBrowsers) {
+    $runningBrowsers = Get-Process -Name "chrome", "msedge" -ErrorAction SilentlyContinue
+    if ($runningBrowsers) {
+        Write-Host "  $C_SUB[*] Refreshing Chrome/Edge processes to apply new enterprise policies...$R"
+        Stop-Process -Name "chrome", "msedge" -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Write-Host "`n$C_HDR===============================================================================$R"
-Write-Host " $C_OK[OK] ENTERPRISE PROXY & CONTENT LOCKDOWN IS NOW 100% ACTIVE!$R"
+Write-Host " $C_OK[OK] WINDOWS BROWSER, DNS & CONTENT LOCKDOWN v2 IS NOW 100% ACTIVE!$R"
 Write-Host "$C_HDR===============================================================================$R`n"

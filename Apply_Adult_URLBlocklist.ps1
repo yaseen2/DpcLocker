@@ -85,7 +85,16 @@ $TorrentAndPiracyPatterns = @(
     "eztv.re", "magnetdl.com"
 )
 
-$AllPatternsToBlock = $AdultPatterns + $MusicAndVpnPatterns + $TorrentAndPiracyPatterns
+$UnauthorizedBrowserPatterns = @(
+    "brave.com", "bravesoftware.com", "search.brave.com",
+    "opera.com", "www.mozilla.org", "download.mozilla.org", "ftp.mozilla.org", "releases.mozilla.org",
+    "firefox.com", "vivaldi.com", "torproject.org",
+    "waterfox.net", "librewolf.net", "arc.net", "thorium.rocks",
+    "zen-browser.app", "floorp.app", "mullvad.net",
+    "duckduckgo.com", "startpage.com", "qwant.com", "yandex.com", "yandex.ru"
+)
+
+$AllPatternsToBlock = $AdultPatterns + $MusicAndVpnPatterns + $TorrentAndPiracyPatterns + $UnauthorizedBrowserPatterns
 
 $Targets = @(
     "HKLM:\SOFTWARE\Policies\Microsoft\Edge",
@@ -134,22 +143,40 @@ foreach ($target in $Targets) {
     Write-Host " [+] $browserName`: Added $addedCount new wildcard patterns (Total items: $maxIndex)" -ForegroundColor Green
 }
 
-# Apply Edge-Specific Policies (Strict SafeSearch, DoH disabled, SmartScreen enabled)
-Write-Host "[*] Hardening Microsoft Edge Security & SafeSearch Policies..." -ForegroundColor Cyan
-$edgePolicyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+# Apply Chrome, Edge & Brave Core Security Policies (CleanBrowsing Adult DoH, SafeSearch, No Proxy/VPN Extensions)
+Write-Host "[*] Hardening Chrome, Edge & Brave Enterprise Policies..." -ForegroundColor Cyan
+$extSettingsJson = '{"*":{"blocked_permissions":["proxy","vpnProvider"]}}'
+$dohTemplate = "https://doh.cleanbrowsing.org/doh/adult-filter/"
+$googleSafeSearchUrl = "https://www.google.com/search?q={searchTerms}&safe=active&ssui=on"
 
-# Strict SafeSearch on Bing (2 = Strict) and Google (1 = Enabled)
-New-ItemProperty -Path $edgePolicyPath -Name "ForceBingSafeSearch" -Value 2 -PropertyType DWord -Force | Out-Null
-New-ItemProperty -Path $edgePolicyPath -Name "ForceGoogleSafeSearch" -Value 1 -PropertyType DWord -Force | Out-Null
+foreach ($policyPath in $Targets) {
+    if (-not (Test-Path $policyPath)) { New-Item -Path $policyPath -Force | Out-Null }
+    New-ItemProperty -Path $policyPath -Name "ForceGoogleSafeSearch" -Value 1 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "SafeSitesFilterBehavior" -Value 1 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "ForceYouTubeRestrict" -Value 0 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "BrowserGuestModeEnabled" -Value 0 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "BrowserAddPersonEnabled" -Value 0 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "DnsOverHttpsMode" -Value "secure" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "DnsOverHttpsTemplates" -Value $dohTemplate -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "ProxyMode" -Value "direct" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "DefaultSearchProviderEnabled" -Value 1 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "DefaultSearchProviderName" -Value "Google" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "DefaultSearchProviderSearchURL" -Value $googleSafeSearchUrl -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $policyPath -Name "ExtensionSettings" -Value $extSettingsJson -PropertyType String -Force | Out-Null
 
-# Disable InPrivate / Incognito (1 = InPrivate disabled)
-New-ItemProperty -Path $edgePolicyPath -Name "InPrivateModeAvailability" -Value 1 -PropertyType DWord -Force | Out-Null
+    if ($policyPath -like "*Microsoft\Edge") {
+        New-ItemProperty -Path $policyPath -Name "InPrivateModeAvailability" -Value 1 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $policyPath -Name "ForceBingSafeSearch" -Value 2 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $policyPath -Name "SmartScreenEnabled" -Value 1 -PropertyType DWord -Force | Out-Null
+    } else {
+        New-ItemProperty -Path $policyPath -Name "IncognitoModeAvailability" -Value 1 -PropertyType DWord -Force | Out-Null
+    }
 
-# Disable Edge Secure DNS (DoH) so Edge cannot bypass CleanBrowsing DNS
-New-ItemProperty -Path $edgePolicyPath -Name "DnsOverHttpsMode" -Value "off" -PropertyType String -Force | Out-Null
+    if ($policyPath -like "*BraveSoftware\Brave") {
+        New-ItemProperty -Path $policyPath -Name "TorDisabled" -Value 1 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $policyPath -Name "BraveVPNDisabled" -Value 1 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $policyPath -Name "BraveAIChatEnabled" -Value 0 -PropertyType DWord -Force | Out-Null
+    }
+}
 
-# Enable SmartScreen
-New-ItemProperty -Path $edgePolicyPath -Name "SmartScreenEnabled" -Value 1 -PropertyType DWord -Force | Out-Null
-New-ItemProperty -Path $edgePolicyPath -Name "SmartScreenPuaEnabled" -Value 1 -PropertyType DWord -Force | Out-Null
-
-Write-Host "[+] Microsoft Edge Hardening Complete: Strict SafeSearch + URLBlocklist enforced." -ForegroundColor Green
+Write-Host "[+] Chrome, Edge & Brave Hardening Complete: CleanBrowsing Adult DoH + SafeSearch + No VPN Extensions + URLBlocklist enforced." -ForegroundColor Green
